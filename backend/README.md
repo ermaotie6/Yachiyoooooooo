@@ -1,13 +1,11 @@
-# 🎬 Yachiyo v2.0 - 虚拟主播平台后端
+# 🔧 Yachiyo 后端 - C++20 服务器
 
-![Status](https://img.shields.io/badge/status-beta-brightgreen?style=flat-square)
-![Version](https://img.shields.io/badge/version-2.0-blue?style=flat-square)
-![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
-![Language](https://img.shields.io/badge/language-C%2B%2B20-red?style=flat-square)
-![Tests](https://img.shields.io/badge/tests-50%2B-brightgreen?style=flat-square)
-![Coverage](https://img.shields.io/badge/coverage-85%25-brightgreen?style=flat-square)
+**Yachiyo 项目的后端服务，基于 C++20 和 Crow 框架，提供 RESTful API 和实时通信。**
 
-一个企业级虚拟主播平台后端系统，采用现代 C++20 架构，集成了 **6 层内容审查系统**、**JWT 认证**、**Redis 缓存**和 **Openclaw AI 集成**。
+![Version](https://img.shields.io/badge/version-1.0.0-brightgreen)
+![Language](https://img.shields.io/badge/language-C%2B%2B20-red)
+![Status](https://img.shields.io/badge/status-Production%20Ready-success)
+![Coverage](https://img.shields.io/badge/coverage-85%25-brightgreen)
 
 ---
 
