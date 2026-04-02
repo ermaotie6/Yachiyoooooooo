@@ -1,6 +1,6 @@
-# 🎨 Yachiyo 前端 - Vue 3 + TypeScript
+# 🎨 Yachiyo 前端 - AI 虚拟形象直播应用
 
-**Yachiyo 项目的现代化前端应用，使用 Vue 3、TypeScript 和 Vite 构建。**
+**Yachiyo AI 虚拟形象直播平台的前端应用，使用 Vue 3、TypeScript 和 Vite 构建，提供实时虚拟形象展示和与 OpenClaw 助理的交互界面。**
 
 ![Version](https://img.shields.io/badge/version-1.0.0-brightgreen)
 ![Framework](https://img.shields.io/badge/framework-Vue%203-4FC08D)

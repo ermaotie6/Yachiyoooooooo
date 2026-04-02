@@ -1,6 +1,6 @@
-# 🔧 Yachiyo 后端 - C++20 服务器
+# 🔧 Yachiyo 后端 - AI 虚拟形象直播平台服务
 
-**Yachiyo 项目的后端服务，基于 C++20 和 Crow 框架，提供 RESTful API 和实时通信。**
+**Yachiyo AI 虚拟形象直播平台的后端服务，基于 C++20 和 Crow 框架，为 OpenClaw 虚拟助理提供 RESTful API 和实时通信支持。**
 
 ![Version](https://img.shields.io/badge/version-1.0.0-brightgreen)
 ![Language](https://img.shields.io/badge/language-C%2B%2B20-red)

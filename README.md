@@ -1,6 +1,6 @@
-﻿#  Yachiyo - AI 虚拟助理平台
+﻿#  Yachiyo - AI 虚拟形象直播平台
 
-**一个完整的企业级 AI 虚拟助理平台，集成了先进的自然语言处理、文本转语音和实时动画系统。**
+**一个完整的 AI 虚拟形象直播平台，以 OpenClaw 自主人工智能虚拟助理为核心，提供实时动画展示和智能交互体验。**
 
 ![Version](https://img.shields.io/badge/version-1.0.0-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
@@ -11,12 +11,12 @@
 
 ##  项目简介
 
-**Yachiyo** 是一个完整的 AI 虚拟助理平台，集成了：
+**Yachiyo** 是一个完整的 AI 虚拟形象直播平台，采用 **OpenClaw** 自主人工智能虚拟助理作为核心，提供：
 
--  **OpenClaw 框架** - 统一的 AI 管理中心
--  **GPT-SoVITS** - 高质量文本转语音
--  **Live2D** - 实时 2D 动画系统  
--  **多语言支持** - 中文、英文、日文、韩文
+- 🤖 **OpenClaw 虚拟助理** - 自主执行任务的 AI（不仅是聊天机器人）
+- 🎵 **GPT-SoVITS** - 高质量文本转语音合成
+- 🎭 **Live2D** - 实时 2D 虚拟形象动画
+- 🗣️ **多语言支持** - 中文、英文、日文、韩文
 
 完整的项目包括后端服务 (C++20)、前端应用 (Vue 3)、19+ 份文档和 Docker 容器化部署。
 
@@ -26,14 +26,14 @@
 
 | 特性 | 说明 |
 |------|------|
-|  **OpenClaw AI** | 统一的自然语言处理和情感分析 |
-|  **语音合成** | GPT-SoVITS 高质量语音参数生成 |
-|  **动画系统** | Live2D 实时动画和表情控制 |
-|  **用户管理** | 完整的认证、授权和个人资料系统 |
-|  **聊天系统** | 实时 WebSocket 聊天和历史记录 |
-|  **高性能** | 响应时间 ~150ms，并发>500 连接 |
-|  **安全** | JWT 认证、数据加密、SQL 防护 |
-|  **文档完善** | 19+ 份详细技术文档 |
+| 🤖 **OpenClaw 虚拟助理** | 自主执行任务的 AI（可安排日程、发送消息、整理文件、编写代码等） |
+| 📝 **本地部署** | 支持 macOS、Windows 等本地设备，本地存储配置和交互历史 |
+| 🔌 **API 集成** | 可调用其他 AI 大模型和应用程序接口（API） |
+| 🎭 **虚拟形象直播** | Live2D 实时 2D 动画展示 |
+| 🎵 **语音合成** | GPT-SoVITS 高质量文本转语音 |
+| 💾 **持久化记忆** | 本地存储交互历史，具有持久的记忆能力 |
+| ⚡ **高性能** | 响应时间 ~150ms，并发>500 连接 |
+| 🔐 **安全性** | JWT 认证、本地加密、数据隐私保护 |
 
 ---
 
@@ -126,32 +126,36 @@ yachiyoooooooo/
 
 ---
 
-##  技术栈
+## 技术栈
 
-### 后端
+### 核心组件
+
+- **AI 虚拟助理**: OpenClaw Framework（自主任务执行）
+- **语音合成**: GPT-SoVITS（文本转语音）
+- **动画引擎**: Live2D（虚拟形象展示）
+
+### 后端服务
+
 - **语言**: C++20
 - **Web 框架**: Crow
-- **数据库**: PostgreSQL
-- **缓存**: Redis
-- **认证**: JWT (OpenSSL)
+- **数据库**: PostgreSQL（用户、直播数据）
+- **缓存**: Redis（性能优化）
+- **认证**: JWT（安全认证）
 
-### 前端
+### 前端应用
+
 - **框架**: Vue 3
 - **语言**: TypeScript
 - **构建**: Vite
 - **样式**: Tailwind CSS
-- **状态管理**: Pinia
+- **实时通信**: WebSocket
 
-### AI & 集成
-- **AI 管理**: OpenClaw Framework
-- **语言模型**: GPT-3.5-turbo
-- **语音合成**: GPT-SoVITS
-- **动画**: Live2D
+### 部署和集成
 
-### 部署
 - **容器化**: Docker & Docker Compose
-- **版本控制**: Git
-- **CI/CD**: GitHub Actions (可配置)
+- **本地部署**: 支持 macOS、Windows
+- **API 集成**: 支持调用第三方 AI 和 API
+- **版本控制**: Git & GitHub
 
 ---
 
@@ -179,33 +183,36 @@ yachiyoooooooo/
 
 ---
 
-##  安全特性
+## 安全特性
 
- JWT 令牌认证  
- bcrypt 密码加密  
- SQL 参数化防注入  
- XSS 防护  
- CORS 配置  
- 速率限制  
- 敏感数据加密  
+- JWT 令牌认证
+- bcrypt 密码加密
+- SQL 参数化防注入
+- XSS 防护
+- CORS 配置
+- 速率限制
+- 敏感数据加密
 
 ---
 
-##  环境要求
+## 环境要求
 
 ### 最低配置
+
 - CPU: 2 核
 - 内存: 2GB
 - 存储: 10GB
 - OS: Linux/macOS/Windows
 
 ### 建议配置
+
 - CPU: 4+ 核
 - 内存: 8GB+
 - 存储: 50GB+ SSD
 - 带宽: 100Mbps+
 
 ### 依赖软件
+
 - C++20 编译器 (GCC 10+ 或 Clang 12+)
 - CMake 3.20+
 - Node.js 16+
@@ -214,31 +221,31 @@ yachiyoooooooo/
 
 ---
 
-##  多语言支持
+## 多语言支持
 
 系统支持 4 种语言:
 
--  中文 (Simplified Chinese)
--  英文 (English)
--  日文 (日本語)
--  韩文 (한국어)
+- 中文 (Simplified Chinese)
+- 英文 (English)
+- 日文 (日本語)
+- 韩文 (한국어)
 
 ---
 
-##  性能指标
+## 性能指标
 
 所有指标均已超过目标:
 
 | 指标 | 目标 | 实际 | 状态 |
 |------|------|------|------|
-| API 响应时间 | <200ms | ~150ms |  |
-| 并发连接数 | >100 | >500 |  |
-| 缓存命中率 | >90% | >95% |  |
-| 测试覆盖率 | >80% | >85% |  |
+| API 响应时间 | <200ms | ~150ms | ✅ |
+| 并发连接数 | >100 | >500 | ✅ |
+| 缓存命中率 | >90% | >95% | ✅ |
+| 测试覆盖率 | >80% | >85% | ✅ |
 
 ---
 
-##  开发
+## 开发
 
 ### 后端开发
 
@@ -270,7 +277,7 @@ cd frontend && npm test
 
 ---
 
-##  部署
+## 部署
 
 ### Docker Compose (推荐)
 
@@ -284,7 +291,7 @@ docker-compose up -d
 
 ---
 
-##  贡献
+## 贡献
 
 欢迎提交 PR! 请遵循以下步骤:
 
@@ -306,9 +313,9 @@ docker-compose up -d
 
 ##  获取帮助
 
--  **Bug 报告**: [GitHub Issues](https://github.com/ermaotie6/yachiyoooooooo/issues)
--  **讨论**: [GitHub Discussions](https://github.com/ermaotie6/yachiyoooooooo/discussions)
--  **文档**: 见 `docs/` 目录
+- **Bug 报告**: [GitHub Issues](https://github.com/ermaotie6/yachiyoooooooo/issues)
+- **讨论**: [GitHub Discussions](https://github.com/ermaotie6/yachiyoooooooo/discussions)
+- **文档**: 见 `docs/` 目录
 
 ---
 
@@ -327,12 +334,13 @@ docker-compose up -d
 ##  变更日志
 
 ### v1.0.0 (2026-04-03)
- 项目初始发布  
- 完整的后端和前端系统  
- OpenClaw 集成完成  
- 19+ 份完整文档  
- Docker 容器化部署  
- Git 工作流配置  
+
+- 项目初始发布
+- 完整的后端和前端系统
+- OpenClaw 集成完成
+- 19+ 份完整文档
+- Docker 容器化部署
+- Git 工作流配置
 
 详见 [VERSIONING_AND_RELEASE.md](docs/VERSIONING_AND_RELEASE.md)
 
@@ -340,4 +348,4 @@ docker-compose up -d
 
 **最后更新**: 2026-04-03  
 **版本**: v1.0.0  
-**状态**:  生产就绪
+**状态**: 生产就绪
