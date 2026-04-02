@@ -1,4 +1,5 @@
 ﻿#  Yachiyo - AI 虚拟形象直播平台
+# 🎀 Yachiyo - AI 虚拟人物互动系统
 
 **一个完整的 AI 虚拟形象直播平台，以 OpenClaw 自主人工智能虚拟助理为核心，提供实时动画展示和智能交互体验。**
 
@@ -6,6 +7,7 @@
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Status](https://img.shields.io/badge/status-Production%20Ready-success)
 ![Coverage](https://img.shields.io/badge/coverage-85%25-brightgreen)
+一个基于 C++ 和 Vue 3 的**完整的 AI 虚拟人物交互平台**，集成了 Live2D 形象、实时聊天、语音合成和 OpenClaw 自主 AI 框架。
 
 ---
 
