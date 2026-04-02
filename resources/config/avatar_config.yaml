@@ -1,0 +1,337 @@
+# Yachiyo 虚拟形象交互系统配置文件
+# 2026-04-02
+
+# ============================================================================
+# 数据库配置
+# ============================================================================
+database:
+  host: localhost
+  port: 5432
+  username: yachiyo_user
+  password: yachiyo_password_123
+  database: yachiyo_db
+  
+  # 连接池设置
+  pool:
+    min_size: 5
+    max_size: 20
+    idle_timeout_seconds: 300
+    connection_timeout_seconds: 10
+
+# ============================================================================
+# Redis 缓存配置
+# ============================================================================
+redis:
+  host: localhost
+  port: 6379
+  password: ""
+  database: 0
+  
+  # 连接设置
+  pool_size: 10
+  timeout_seconds: 5
+  
+  # 缓存 TTL (生存时间)
+  ttl:
+    translation_cache_hours: 168      # 翻译缓存 7 天
+    audio_cache_hours: 720             # 音频缓存 30 天
+    response_cache_hours: 24           # 响应缓存 1 天
+
+# ============================================================================
+# OpenClaw 配置
+# ============================================================================
+openclaw:
+  enabled: true
+  api_endpoint: "http://localhost:8000/api/v1"
+  api_key: "your_openclaw_api_key_here"
+  timeout_ms: 5000
+  
+  # 缓存设置
+  cache:
+    enabled: true
+    max_size: 1000
+    ttl_hours: 24
+  
+  # 重试设置
+  retry:
+    max_attempts: 3
+    backoff_ms: 1000
+
+# ============================================================================
+# 翻译服务配置
+# ============================================================================
+translation:
+  # 主翻译引擎 (google, baidu, openai, local)
+  primary_engine: openai
+  
+  # 备用翻译引擎
+  fallback_engines:
+    - baidu
+    - google
+  
+  # Google Translate 配置
+  google:
+    enabled: false
+    project_id: "your_project_id"
+    credentials_path: "/app/config/google_credentials.json"
+  
+  # Baidu 翻译配置
+  baidu:
+    enabled: false
+    app_id: "your_baidu_app_id"
+    secret_key: "your_baidu_secret_key"
+  
+  # OpenAI GPT 配置
+  openai:
+    enabled: true
+    api_key: "sk-your_openai_api_key_here"
+    model: "gpt-3.5-turbo"
+    temperature: 0.7
+    max_tokens: 500
+    timeout_ms: 5000
+  
+  # 本地模型配置
+  local:
+    enabled: false
+    model_path: "/app/models/translation_model"
+    device: "cuda"  # cpu or cuda
+  
+  # 缓存设置
+  cache:
+    enabled: true
+    max_size: 5000
+    ttl_hours: 168
+
+# ============================================================================
+# GPT-SoVITS 语音合成配置
+# ============================================================================
+gpt_sovits:
+  enabled: true
+  api_endpoint: "http://localhost:9000/api/v1"
+  timeout_ms: 10000
+  
+  # 参考音频
+  reference_audio:
+    path: "/app/resources/reference_audio/yachiyo_reference.wav"
+    language: "ja"  # Japanese
+  
+  # 默认语音参数
+  default_voice:
+    speaker_scale: 1.0         # 说话人缩放 (0.5 - 2.0)
+    pitch_shift: 0.0           # 音高偏移 (-24 ~ +24)
+    speech_rate: 1.0           # 语速 (0.5 - 2.0)
+    emotion: "calm"            # 情感 (happy, sad, calm, excited)
+    emotion_intensity: 0.5     # 情感强度 (0.0 - 1.0)
+    volume_scale: 1.0          # 音量缩放 (0.1 - 2.0)
+  
+  # 输出配置
+  output:
+    format: "wav"              # wav, mp3, ogg
+    sample_rate: 22050         # 采样率
+    quality: "high"            # low, medium, high
+  
+  # 缓存设置
+  cache:
+    enabled: true
+    max_size_gb: 10
+    ttl_hours: 720
+
+# ============================================================================
+# Live2D 动作驱动配置
+# ============================================================================
+live2d:
+  # 虚拟形象模型配置
+  avatar:
+    name: "Yachiyo_Kaguya_Hime"
+    model_path: "/app/models/yachiyo_live2d/八千代辉夜姬.model3.json"
+    texture_path: "/app/models/yachiyo_live2d/八千代辉夜姬.8192/"
+    physics_path: "/app/models/yachiyo_live2d/八千代辉夜姬.physics3.json"
+  
+  # 渲染设置
+  rendering:
+    target_fps: 60
+    resolution_width: 1920
+    resolution_height: 1080
+    enable_physics: true
+    physics_scale: 1.0
+  
+  # 表情映射 (emotion -> expression)
+  emotion_mapping:
+    happy: "笑咪咪"
+    shy: "眯眯眼"
+    sad: "眼泪"
+    crying: "泪珠"
+    calm: "眯眯眼"
+    excited: "笑咪咪"
+  
+  # 参数范围限制
+  parameter_limits:
+    ParamMouthSmile: [0.0, 1.0]
+    ParamEyeLOpen: [0.0, 1.0]
+    ParamEyeROpen: [0.0, 1.0]
+    ParamHeadX: [-30.0, 30.0]
+    ParamHeadY: [-30.0, 30.0]
+    ParamBodyX: [-10.0, 10.0]
+
+# ============================================================================
+# WebSocket 配置
+# ============================================================================
+websocket:
+  enabled: true
+  port: 8001
+  
+  # 连接设置
+  max_connections: 100
+  idle_timeout_seconds: 300
+  ping_interval_seconds: 30
+  
+  # 消息设置
+  max_message_size_bytes: 1048576  # 1 MB
+
+# ============================================================================
+# HTTP 服务器配置
+# ============================================================================
+http_server:
+  host: "0.0.0.0"
+  port: 8000
+  
+  # 线程设置
+  worker_threads: 4
+  max_connections: 100
+  request_timeout_seconds: 30
+  
+  # CORS 设置
+  cors:
+    enabled: true
+    allowed_origins:
+      - "http://localhost:3000"
+      - "http://localhost:8080"
+      - "https://yachiyo.example.com"
+    allowed_methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+    allowed_headers:
+      - Content-Type
+      - Authorization
+
+# ============================================================================
+# 消息队列配置
+# ============================================================================
+message_queue:
+  # 队列设置
+  max_size: 1000
+  max_retries: 3
+  
+  # 工作线程
+  worker_threads: 4
+  batch_size: 10
+  processing_timeout_ms: 30000
+  
+  # 速率限制
+  rate_limiting:
+    enabled: true
+    max_messages_per_minute: 60
+    max_messages_per_user_per_minute: 10
+
+# ============================================================================
+# 内容审核配置
+# ============================================================================
+content_review:
+  # 审核层级
+  layers:
+    - type: "rate_limit"
+      enabled: true
+      threshold: 10           # 每分钟最多 10 条消息
+    
+    - type: "ip_blacklist"
+      enabled: true
+      blacklist_path: "/app/config/ip_blacklist.txt"
+    
+    - type: "keyword_filter"
+      enabled: true
+      keyword_list_path: "/app/config/keywords.txt"
+      action: "reject"        # reject or mask
+    
+    - type: "heuristic_analysis"
+      enabled: true
+      min_confidence: 0.7
+    
+    - type: "behavior_analysis"
+      enabled: true
+      suspicious_threshold: 0.8
+    
+    - type: "manual_review"
+      enabled: true
+      require_approval_rate: 0.1  # 10% 需要人工审核
+
+# ============================================================================
+# 日志配置
+# ============================================================================
+logging:
+  level: INFO              # DEBUG, INFO, WARN, ERROR
+  
+  # 日志文件
+  file:
+    enabled: true
+    path: "/app/logs/yachiyo.log"
+    max_size_mb: 100
+    max_backups: 10
+    max_age_days: 30
+    compress: true
+  
+  # 控制台日志
+  console:
+    enabled: true
+    format: "json"          # text or json
+
+# ============================================================================
+# 性能监控配置
+# ============================================================================
+monitoring:
+  enabled: true
+  
+  # Prometheus 指标
+  prometheus:
+    enabled: true
+    port: 9090
+    path: "/metrics"
+  
+  # 性能指标收集
+  metrics:
+    collect_response_time: true
+    collect_cache_stats: true
+    collect_queue_stats: true
+
+# ============================================================================
+# 文件存储配置
+# ============================================================================
+file_storage:
+  # 音频文件存储
+  audio:
+    local_path: "/app/storage/audio"
+    max_size_gb: 100
+    cleanup_after_days: 30
+  
+  # 日志存储
+  logs:
+    local_path: "/app/logs"
+    max_size_gb: 50
+    cleanup_after_days: 90
+
+# ============================================================================
+# 系统配置
+# ============================================================================
+system:
+  # 环境
+  environment: "production"  # development, staging, production
+  
+  # 调试模式
+  debug: false
+  
+  # 时区
+  timezone: "Asia/Shanghai"
+  
+  # 语言
+  language: "zh-CN"

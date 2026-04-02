@@ -1,0 +1,138 @@
+# YachiyoCPP 配置文件
+
+# 服务器配置
+server:
+  port: 8080
+  host: "0.0.0.0"
+  threads: 4
+  max_connections: 1000
+  timeout: 30
+  ssl_enabled: false
+  ssl_cert: ""
+  ssl_key: ""
+
+# 数据库配置
+database:
+  type: "mysql"
+  host: "localhost"
+  port: 3306
+  name: "yachiyo_cpp"
+  username: "root"
+  password: "password"
+  max_connections: 20
+  connection_timeout: 10
+  reconnect_attempts: 3
+
+# Redis配置
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  database: 0
+  max_connections: 10
+  timeout: 5
+
+# JWT配置
+jwt:
+  secret: "yachiyo-cpp-secret-key-change-in-production"
+  expiration_hours: 24
+  issuer: "yachiyo-cpp"
+  audience: "yachiyo-users"
+
+# AI服务配置
+ai:
+  # OpenAI配置
+  openai:
+    api_key: ""  # 填入你的 OpenAI API Key
+    base_url: "https://api.openai.com/v1"
+    model: "gpt-3.5-turbo"
+    temperature: 0.7
+    max_tokens: 1000
+    
+  # DeepSeek配置
+  deepseek:
+    api_key: ""  # 填入你的 DeepSeek API Key (https://platform.deepseek.com)
+    base_url: "https://api.deepseek.com"
+    model: "deepseek-chat"
+    temperature: 0.7
+    max_tokens: 4000
+    
+  # 千问 (阿里云国内版) 配置
+  qianwen:
+    api_key: ""  # 填入你的 千问 API Key (https://dashscope.aliyun.com/api-key_create 或阿里云控制台)
+    base_url: "https://dashscope.aliyuncs.com/api/v1"  # 国内端点
+    model: "qwen-turbo"
+    temperature: 0.7
+    max_tokens: 2000
+    
+  # Qwen (国际版 DashScope) 配置
+  qwen_intl:
+    api_key: ""  # 填入你的 Qwen 国际版 API Key (https://dashscope.aliyun.com)
+    base_url: "https://dashscope.aliyuncs.com/api/v1"  # 国际端点
+    model: "qwen-turbo"
+    temperature: 0.7
+    max_tokens: 2000
+    
+  # Ollama配置 (本地部署)
+  ollama:
+    base_url: "http://localhost:11434"
+    model: "llama2"
+    temperature: 0.7
+    max_tokens: 1000
+    
+  # 语音合成配置
+  tts:
+    provider: "openai"  # openai, elevenlabs, deepseek, qwen, local
+    voice: "alloy"
+    speed: 1.0
+
+# 邮件服务配置
+email:
+  smtp_host: "smtp.gmail.com"
+  smtp_port: 587
+  username: ""
+  password: ""
+  from_address: "noreply@yachiyo.com"
+  use_tls: true
+
+# 日志配置
+logging:
+  level: "info"  # debug, info, warn, error
+  file_path: "logs/yachiyo.log"
+  max_size_mb: 100
+  max_files: 10
+  console_output: true
+
+# 安全配置
+security:
+  password_min_length: 8
+  password_require_uppercase: true
+  password_require_lowercase: true
+  password_require_digits: true
+  password_require_special: true
+  login_attempts_limit: 5
+  login_lockout_minutes: 30
+  cors_enabled: true
+  cors_origins: "*"
+
+# 缓存配置
+cache:
+  enabled: true
+  default_ttl_seconds: 3600
+  user_cache_ttl: 1800
+  conversation_cache_ttl: 7200
+
+# 性能配置
+performance:
+  max_request_size_mb: 10
+  max_response_time_ms: 5000
+  rate_limit_enabled: true
+  rate_limit_requests_per_minute: 60
+  compression_enabled: true
+
+# 监控配置
+monitoring:
+  enabled: true
+  metrics_port: 9090
+  health_check_path: "/health"
+  prometheus_enabled: true
