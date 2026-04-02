@@ -1,10 +1,10 @@
-# 🎀 Yachiyo - AI 虚拱互动系统
+# 🎀 Yachiyo - AI 虚拟人物互动系统
 
 ![Status](https://img.shields.io/badge/status-production--ready-green?style=flat-square)
 ![Version](https://img.shields.io/badge/version-1.0-blue?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
 
-一个基于 C++ 和 Vue 3 的**完整的 AI 虚拱交互平台**，集成了 Live2D 形象、实时聊天、语音合成和 OpenClaw 自主 AI 框架。
+一个基于 C++ 和 Vue 3 的**完整的 AI 虚拟人物交互平台**，集成了 Live2D 形象、实时聊天、语音合成和 OpenClaw 自主 AI 框架。
 
 ---
 
