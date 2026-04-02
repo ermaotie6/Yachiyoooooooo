@@ -327,9 +327,8 @@ docker-compose up -d
 
 - [Crow Framework](https://crowcpp.org/) - C++ Web 框架
 - [Vue.js](https://vuejs.org/) - 前端框架
-- [OpenClaw](https://openclaw.ai/) - AI 框架
+- [OpenClaw](https://openclaw.com/) - AI 框架
 - [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) - 语音合成
-- [Live2D](https://www.live2d.com/) - 动画引擎
 
 ---
 
