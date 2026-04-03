@@ -13,11 +13,11 @@ server:
 
 # 数据库配置
 database:
-  type: "mysql"
+  type: "postgresql"
   host: "localhost"
-  port: 3306
+  port: 5432
   name: "yachiyo_cpp"
-  username: "root"
+  username: "postgres"
   password: "password"
   max_connections: 20
   connection_timeout: 10
@@ -101,24 +101,19 @@ ai:
   translation:
     enabled: true
     engines:
-      - name: "deepseek"
-        type: "ollama"
+      - name: "baidu"
+        type: "api"
         enabled: true
-        endpoint: "http://localhost:11434"
-        model: "deepseek-chat"
-        timeout_seconds: 3
-      - name: "openai"
-        type: "api"
-        enabled: false
-        endpoint: "https://api.openai.com/v1"
-        api_key: ""
-        model: "gpt-3.5-turbo"
+        endpoint: "https://fanyi-api.baidu.com/api/trans/vip/translate"
+        app_id: ""      # 填入百度翻译 APP ID
+        api_key: ""     # 填入百度翻译密钥
         timeout_seconds: 5
-      - name: "google"
+      - name: "deepseek"
         type: "api"
-        enabled: false
-        endpoint: "https://translation.googleapis.com"
-        api_key: ""
+        enabled: true
+        endpoint: "https://api.deepseek.com"
+        api_key: ""     # 复用 DeepSeek API Key
+        model: "deepseek-chat"
         timeout_seconds: 5
     cache:
       enabled: true
@@ -133,7 +128,8 @@ ai:
   deepseek_moderation:
     enabled: true
     engine: "deepseek"
-    endpoint: "http://localhost:11434"
+    endpoint: "https://api.deepseek.com"
+    api_key: ""  # 填入 DeepSeek API Key
     model: "deepseek-chat"
     timeout_seconds: 5
     cache:
@@ -149,15 +145,6 @@ ai:
     performance:
       batch_size: 10
       max_concurrent: 5
-
-# 邮件服务配置
-email:
-  smtp_host: "smtp.gmail.com"
-  smtp_port: 587
-  username: ""
-  password: ""
-  from_address: "noreply@yachiyo.com"
-  use_tls: true
 
 # 日志配置
 logging:

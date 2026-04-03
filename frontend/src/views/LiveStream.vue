@@ -89,13 +89,12 @@
             maxlength="500"
             :disabled="!isConnected || isProcessing"
             @keydown.enter.ctrl="sendMessage"
-            @input="updateCharCount"
             class="message-input"
           />
 
           <!-- 字数统计 -->
           <div class="char-counter">
-            <span :class="{ warning: messageInput.length > 400 }">
+            <span :class="{ warning: messageInput.length > 400, danger: messageInput.length > 450 }">
               {{ messageInput.length }}/500
             </span>
           </div>
@@ -143,6 +142,7 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { useAudioPlayer } from '@/composables/useAudioPlayer'
+import { useAuthStore } from '@/stores/auth'
 import Live2DComponent from '@/components/Live2DComponent.vue'
 
 // ============ 状态管理 ============
@@ -165,10 +165,11 @@ const isConnected = ref(false)
 const isProcessing = ref(false)
 const connectionError = ref<string | null>(null)
 
-const currentUser = {
-  name: '用户',
-  id: 'user_123'
-}
+const authStore = useAuthStore()
+const currentUser = computed(() => ({
+  name: authStore.user?.username || '匿名用户',
+  id: authStore.user?.userId ? String(authStore.user.userId) : `guest_${Date.now()}`
+}))
 
 const connectionStatus = computed(() =>
   isConnected.value ? 'connected' : 'disconnected'
@@ -194,11 +195,12 @@ const sendMessage = async () => {
   const content = messageInput.value.trim()
 
   // 添加用户消息到历史
+  const now = Date.now()
   messages.value.push({
-    id: `msg_${Date.now()}`,
+    id: `msg_${now}_${Math.random().toString(36).slice(2, 8)}`,
     role: 'user',
     text: content,
-    timestamp: Date.now()
+    timestamp: now
   })
 
   messageInput.value = ''
@@ -383,12 +385,7 @@ const onAnimationComplete = () => {
   console.log('动画播放完成')
 }
 
-/**
- * 更新字数统计
- */
-const updateCharCount = () => {
-  // 动态更新（在模板中已处理）
-}
+// 字数统计由模板中 messageInput.length 直接驱动，无需额外方法
 
 // ============ 工具方法 ============
 
@@ -782,6 +779,11 @@ onUnmounted(async () => {
 
 .char-counter span.warning {
   color: #ff9800;
+  font-weight: bold;
+}
+
+.char-counter span.danger {
+  color: #f44336;
   font-weight: bold;
 }
 

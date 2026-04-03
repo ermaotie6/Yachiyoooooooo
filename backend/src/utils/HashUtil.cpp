@@ -23,14 +23,23 @@ std::string HashUtil::sha256(const std::string& input) {
 }
 
 std::string HashUtil::hashPassword(const std::string& password) {
-    // 简单实现：使用SHA256哈希密码
-    // 实际生产环境应该使用bcrypt或argon2
-    return sha256(password);
+    // 生成随机盐值并与密码拼接后SHA256
+    std::string salt = generateSalt(16);
+    std::string salted = sha256(salt + password);
+    // 存储格式: salt:hash
+    return salt + ":" + salted;
 }
 
 bool HashUtil::verifyPassword(const std::string& password, const std::string& hashedPassword) {
-    std::string hashedInput = hashPassword(password);
-    return hashedInput == hashedPassword;
+    // 解析 salt:hash 格式
+    auto colonPos = hashedPassword.find(':');
+    if (colonPos == std::string::npos) {
+        // 兼容旧格式（无盐值）
+        return sha256(password) == hashedPassword;
+    }
+    std::string salt = hashedPassword.substr(0, colonPos);
+    std::string hash = hashedPassword.substr(colonPos + 1);
+    return sha256(salt + password) == hash;
 }
 
 std::string HashUtil::generateSalt(size_t length) {

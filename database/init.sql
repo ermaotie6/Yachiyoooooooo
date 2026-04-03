@@ -1,6 +1,8 @@
 -- Yachiyo 虚拟直播平台数据库初始化脚本
 -- PostgreSQL 版本
 
+BEGIN;
+
 -- ============ 用户表 ============
 
 CREATE TABLE IF NOT EXISTS users (
@@ -19,11 +21,11 @@ CREATE TABLE IF NOT EXISTS users (
     last_login TIMESTAMP,
     
     -- 状态
-    is_active BOOLEAN DEFAULT TRUE,
-    
-    INDEX users_username_idx (username),
-    INDEX users_email_idx (email)
+    is_active BOOLEAN DEFAULT TRUE
 );
+
+CREATE INDEX IF NOT EXISTS users_username_idx ON users(username);
+CREATE INDEX IF NOT EXISTS users_email_idx ON users(email);
 
 -- ============ 会话表 ============
 
@@ -47,12 +49,12 @@ CREATE TABLE IF NOT EXISTS sessions (
     expires_at TIMESTAMP,
     
     -- 状态
-    is_active BOOLEAN DEFAULT TRUE,
-    
-    INDEX sessions_user_id_idx (user_id),
-    INDEX sessions_session_id_idx (session_id),
-    INDEX sessions_expires_at_idx (expires_at)
+    is_active BOOLEAN DEFAULT TRUE
 );
+
+CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS sessions_session_id_idx ON sessions(session_id);
+CREATE INDEX IF NOT EXISTS sessions_expires_at_idx ON sessions(expires_at);
 
 -- ============ 消息表 ============
 
@@ -83,13 +85,13 @@ CREATE TABLE IF NOT EXISTS messages (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
     -- 状态
-    is_visible BOOLEAN DEFAULT TRUE,
-    
-    INDEX messages_user_id_idx (user_id),
-    INDEX messages_created_at_idx (created_at),
-    INDEX messages_review_status_idx (review_status),
-    INDEX messages_user_created_idx (user_id, created_at DESC)
+    is_visible BOOLEAN DEFAULT TRUE
 );
+
+CREATE INDEX IF NOT EXISTS messages_user_id_idx ON messages(user_id);
+CREATE INDEX IF NOT EXISTS messages_created_at_idx ON messages(created_at);
+CREATE INDEX IF NOT EXISTS messages_review_status_idx ON messages(review_status);
+CREATE INDEX IF NOT EXISTS messages_user_created_idx ON messages(user_id, created_at DESC);
 
 -- ============ 对话上下文表 ============
 
@@ -117,12 +119,12 @@ CREATE TABLE IF NOT EXISTS conversation_contexts (
     last_accessed TIMESTAMP,
     
     -- 状态
-    is_active BOOLEAN DEFAULT TRUE,
-    
-    INDEX contexts_user_id_idx (user_id),
-    INDEX contexts_user_updated_idx (user_id, updated_at DESC),
-    INDEX contexts_session_id_idx (session_id)
+    is_active BOOLEAN DEFAULT TRUE
 );
+
+CREATE INDEX IF NOT EXISTS contexts_user_id_idx ON conversation_contexts(user_id);
+CREATE INDEX IF NOT EXISTS contexts_user_updated_idx ON conversation_contexts(user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS contexts_session_id_idx ON conversation_contexts(session_id);
 
 -- ============ Avatar 响应缓存表 ============
 
@@ -149,13 +151,13 @@ CREATE TABLE IF NOT EXISTS avatar_responses (
     
     -- 状态
     is_cached BOOLEAN DEFAULT TRUE,
-    hit_count INT DEFAULT 0,
-    
-    INDEX responses_user_id_idx (user_id),
-    INDEX responses_message_id_idx (message_id),
-    INDEX responses_expires_at_idx (expires_at),
-    INDEX responses_request_hash_idx (request_hash)
+    hit_count INT DEFAULT 0
 );
+
+CREATE INDEX IF NOT EXISTS responses_user_id_idx ON avatar_responses(user_id);
+CREATE INDEX IF NOT EXISTS responses_message_id_idx ON avatar_responses(message_id);
+CREATE INDEX IF NOT EXISTS responses_expires_at_idx ON avatar_responses(expires_at);
+CREATE INDEX IF NOT EXISTS responses_request_hash_idx ON avatar_responses(request_hash);
 
 -- ============ 审核结果表 ============
 
@@ -183,13 +185,13 @@ CREATE TABLE IF NOT EXISTS moderation_logs (
     
     -- 时间戳
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    reviewed_at TIMESTAMP,
-    
-    INDEX moderation_message_idx (message_id),
-    INDEX moderation_user_idx (user_id),
-    INDEX moderation_severity_idx (severity_score),
-    INDEX moderation_created_idx (created_at DESC)
+    reviewed_at TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS moderation_message_idx ON moderation_logs(message_id);
+CREATE INDEX IF NOT EXISTS moderation_user_idx ON moderation_logs(user_id);
+CREATE INDEX IF NOT EXISTS moderation_severity_idx ON moderation_logs(severity_score);
+CREATE INDEX IF NOT EXISTS moderation_created_idx ON moderation_logs(created_at DESC);
 
 -- ============ 用户统计表 ============
 
@@ -217,10 +219,10 @@ CREATE TABLE IF NOT EXISTS user_statistics (
     slowest_response_ms INT,
     
     -- 更新时间
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    INDEX stats_user_id_idx (user_id)
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS stats_user_id_idx ON user_statistics(user_id);
 
 -- ============ WebSocket 连接日志表 ============
 
@@ -245,12 +247,12 @@ CREATE TABLE IF NOT EXISTS websocket_logs (
     
     -- 统计
     messages_sent INT DEFAULT 0,
-    messages_received INT DEFAULT 0,
-    
-    INDEX websocket_user_id_idx (user_id),
-    INDEX websocket_status_idx (status),
-    INDEX websocket_connected_idx (connected_at DESC)
+    messages_received INT DEFAULT 0
 );
+
+CREATE INDEX IF NOT EXISTS websocket_user_id_idx ON websocket_logs(user_id);
+CREATE INDEX IF NOT EXISTS websocket_status_idx ON websocket_logs(status);
+CREATE INDEX IF NOT EXISTS websocket_connected_idx ON websocket_logs(connected_at DESC);
 
 -- ============ 系统日志表 ============
 
@@ -270,18 +272,18 @@ CREATE TABLE IF NOT EXISTS system_logs (
     message_id BIGINT REFERENCES messages(id) ON DELETE SET NULL,
     
     -- 时间戳
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    INDEX logs_level_idx (level),
-    INDEX logs_component_idx (component),
-    INDEX logs_timestamp_idx (timestamp DESC),
-    INDEX logs_user_idx (user_id)
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS logs_level_idx ON system_logs(level);
+CREATE INDEX IF NOT EXISTS logs_component_idx ON system_logs(component);
+CREATE INDEX IF NOT EXISTS logs_timestamp_idx ON system_logs(timestamp DESC);
+CREATE INDEX IF NOT EXISTS logs_user_idx ON system_logs(user_id);
 
 -- ============ 创建视图 ============
 
 -- 活跃用户视图
-CREATE VIEW IF NOT EXISTS active_users AS
+CREATE OR REPLACE VIEW active_users AS
 SELECT u.id, u.username, u.email, COUNT(m.id) as message_count, MAX(m.created_at) as last_activity
 FROM users u
 LEFT JOIN messages m ON u.id = m.user_id
@@ -289,7 +291,7 @@ WHERE u.is_active = TRUE
 GROUP BY u.id, u.username, u.email;
 
 -- 最近消息视图
-CREATE VIEW IF NOT EXISTS recent_messages AS
+CREATE OR REPLACE VIEW recent_messages AS
 SELECT m.id, m.user_id, u.username, m.content, m.review_status, m.created_at
 FROM messages m
 JOIN users u ON m.user_id = u.id

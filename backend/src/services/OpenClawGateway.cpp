@@ -72,10 +72,14 @@ Utils::Result<dto::OpenClawResponse> OpenClawGateway::processMessage(
         std::lock_guard<std::mutex> lock(cache_mutex_);
         auto it = cache_.find(cacheKey);
         if (it != cache_.end()) {
-            // 检查 TTL
-            int64_t ageSeconds = 
-                (std::chrono::steady_clock::now().time_since_epoch().count() - 
-                 it->second.timestamp) / 1000000000;
+            // 检查 TTL（使用 chrono 正确计算秒数）
+            auto now = std::chrono::steady_clock::now();
+            auto cacheTime = std::chrono::steady_clock::time_point(
+                std::chrono::steady_clock::duration(it->second.timestamp)
+            );
+            auto ageSeconds = std::chrono::duration_cast<std::chrono::seconds>(
+                now - cacheTime
+            ).count();
             
             if (ageSeconds < it->second.ttl) {
                 LOG_DEBUG("使用缓存的 OpenClaw 响应");
@@ -165,13 +169,18 @@ bool OpenClawGateway::isHealthy() const {
     CURL* curl = curl_easy_init();
     if (!curl) return false;
     
+    std::string readBuffer;
     curl_easy_setopt(curl, CURLOPT_URL, (endpoint_ + "/health").c_str());
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
     
     CURLcode res = curl_easy_perform(curl);
+    long http_code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
     curl_easy_cleanup(curl);
     
-    return res == CURLE_OK;
+    return res == CURLE_OK && http_code == 200;
 }
 
 // ==================== 私有方法 ====================
@@ -225,10 +234,15 @@ Utils::Result<json> OpenClawGateway::sendRequest(const json& request) {
 void OpenClawGateway::cleanupExpiredCache() {
     std::lock_guard<std::mutex> lock(cache_mutex_);
     
-    int64_t now = std::chrono::steady_clock::now().time_since_epoch().count();
+    auto now = std::chrono::steady_clock::now();
     
     for (auto it = cache_.begin(); it != cache_.end();) {
-        int64_t ageSeconds = (now - it->second.timestamp) / 1000000000;
+        auto cacheTime = std::chrono::steady_clock::time_point(
+            std::chrono::steady_clock::duration(it->second.timestamp)
+        );
+        auto ageSeconds = std::chrono::duration_cast<std::chrono::seconds>(
+            now - cacheTime
+        ).count();
         if (ageSeconds > it->second.ttl) {
             it = cache_.erase(it);
         } else {

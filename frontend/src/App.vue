@@ -9,6 +9,7 @@
           </div>
           <div class="nav-center">
             <router-link to="/" class="nav-link">首页</router-link>
+            <router-link to="/livestream" class="nav-link">直播间</router-link>
             <router-link to="/posts" class="nav-link">内容</router-link>
             <router-link to="/chat" class="nav-link">AI聊天</router-link>
           </div>

@@ -71,6 +71,8 @@ export function useWebSocket() {
 
       console.log('[WebSocket] Connecting to', url)
 
+      let settled = false
+
       try {
         ws = new WebSocket(url)
 
@@ -89,7 +91,7 @@ export function useWebSocket() {
           // 刷新离线消息队列
           flushMessageQueue()
 
-          resolve()
+          if (!settled) { settled = true; resolve() }
         }
 
         ws.onmessage = (event: MessageEvent) => {
@@ -116,7 +118,7 @@ export function useWebSocket() {
           // 尝试重连
           attemptReconnect(userId)
 
-          reject(new Error('WebSocket closed'))
+          if (!settled) { settled = true; reject(new Error('WebSocket closed')) }
         }
       } catch (error) {
         isConnecting.value = false
@@ -124,7 +126,7 @@ export function useWebSocket() {
         if (onError) {
           onError(String(error))
         }
-        reject(error)
+        if (!settled) { settled = true; reject(error) }
       }
     })
   }
@@ -194,10 +196,7 @@ export function useWebSocket() {
         case 'notification':
           if (onError && message.data) {
             const notification = message.data
-            const notificationMessage = `[${notification.level}] ${notification.title}: ${notification.message}`
-            if (onError) {
-              onError(notificationMessage)
-            }
+            onError(`[${notification.level}] ${notification.title}: ${notification.message}`)
           }
           break
 
@@ -255,11 +254,13 @@ export function useWebSocket() {
    * 刷新消息队列
    */
   const flushMessageQueue = () => {
-    while (messageQueue.value.length > 0) {
-      const message = messageQueue.value.shift()
-      if (message && !sendMessage(message)) {
-        // 如果发送失败，重新加入队列
-        messageQueue.value.unshift(message)
+    const pending = [...messageQueue.value]
+    messageQueue.value = []
+
+    for (const message of pending) {
+      if (!sendMessage(message)) {
+        // 发送失败，将剩余消息放回队列
+        messageQueue.value.push(message)
         break
       }
     }

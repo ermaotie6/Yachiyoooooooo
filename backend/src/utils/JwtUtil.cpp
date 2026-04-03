@@ -4,6 +4,8 @@
 #include <ctime>
 #include <chrono>
 #include <regex>
+#include <openssl/hmac.h>
+#include <openssl/evp.h>
 
 // 简单的Base64编码实现
 namespace {
@@ -104,21 +106,17 @@ namespace {
         return ret;
     }
 
-    // 简单的HMAC-SHA256实现（使用OpenSSL如果可用）
-    // 这里使用简化版本，实际生产环境应该使用OpenSSL或类似库
+    // HMAC-SHA256 实现（使用 OpenSSL）
     std::string hmac_sha256(const std::string& message, const std::string& secret) {
-        // 简化实现：直接拼接用于演示
-        // 实际应该使用 OpenSSL 的 HMAC_SHA256
-        std::string combined = message + secret;
-        unsigned char hash[32] = {0};
+        unsigned char hash[EVP_MAX_MD_SIZE];
+        unsigned int hash_len = 0;
         
-        // 这里应该使用真实的SHA256实现
-        // 为了演示，我们使用一个简单的哈希
-        for (size_t i = 0; i < combined.size(); i++) {
-            hash[i % 32] ^= combined[i];
-        }
+        HMAC(EVP_sha256(),
+             secret.c_str(), static_cast<int>(secret.size()),
+             reinterpret_cast<const unsigned char*>(message.c_str()), message.size(),
+             hash, &hash_len);
         
-        return base64_encode(hash, 32);
+        return base64_encode(hash, hash_len);
     }
 
     // JSON简单序列化

@@ -16,7 +16,7 @@ export function useAudioPlayer() {
   // 音频分析
   let audioContext: AudioContext | null = null
   let analyser: AnalyserNode | null = null
-  let sourceNode: AudioBufferAudioSourceNode | null = null
+  let sourceNode: MediaElementAudioSourceNode | null = null
   let animationFrameId: number | null = null
 
   // 事件回调
@@ -34,6 +34,13 @@ export function useAudioPlayer() {
       audioContext = new AudioContextClass()
       analyser = audioContext.createAnalyser()
       analyser.fftSize = 256
+
+      // 将音频元素连接到分析器
+      if (audioContext && analyser) {
+        sourceNode = audioContext.createMediaElementSource(audioElement)
+        sourceNode.connect(analyser)
+        analyser.connect(audioContext.destination)
+      }
 
       console.log('[AudioPlayer] Audio context initialized')
     } catch (error) {
@@ -117,9 +124,8 @@ export function useAudioPlayer() {
       const average = sum / dataArray.length
 
       // 转换为嘴部开合度 (0-1)
-      // 使用非线性映射以获得更好的效果
-      const normalized = Math.min(1, average / 255)
-      const mouthOpenY = Math.pow(normalized, 0.5) * 1.5 // 增强效果
+      const normalized = Math.min(1, average / 180)
+      const mouthOpenY = Math.pow(normalized, 0.6)
 
       // 计算能量和频率信息
       let lowFreqSum = 0

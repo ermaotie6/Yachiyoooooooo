@@ -62,6 +62,7 @@ import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { usePostStore } from '@/stores/post'
+import { api } from '@/api/client'
 
 const route = useRoute()
 const postStore = usePostStore()
@@ -114,13 +115,22 @@ const toggleFavorite = async () => {
   }
 }
 
-const postComment = () => {
+const postComment = async () => {
   if (!commentText.value.trim()) {
     ElMessage.warning('请输入评论内容')
     return
   }
-  ElMessage.success('评论发表成功')
-  commentText.value = ''
+  try {
+    await api.post(`/posts/${postId}/comments`, {
+      content: commentText.value
+    })
+    ElMessage.success('评论发表成功')
+    commentText.value = ''
+    // 刷新帖子详情以更新评论数
+    await postStore.fetchPostDetail(postId)
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.message || '评论发表失败')
+  }
 }
 
 onMounted(async () => {

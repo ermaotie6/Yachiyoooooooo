@@ -109,10 +109,10 @@ const activeTab = ref('pending')
 
 const pendingPosts = ref<Post[]>([])
 const stats = ref({
-  totalUsers: 1250,
-  totalPosts: 5680,
-  pendingReview: 42,
-  reviewRate: 92
+  totalUsers: 0,
+  totalPosts: 0,
+  pendingReview: 0,
+  reviewRate: 0
 })
 
 const settings = ref({
@@ -155,16 +155,30 @@ const rejectPost = async (postId: number) => {
   }
 }
 
-const saveSettings = () => {
-  ElMessage.success('设置已保存')
+const saveSettings = async () => {
+  try {
+    await api.put('/admin/settings', settings.value)
+    ElMessage.success('设置已保存')
+  } catch (error) {
+    ElMessage.error('保存设置失败')
+  }
 }
 
 onMounted(async () => {
+  // 并行加载待审核内容和统计数据
   try {
-    const response = await api.get('/admin/posts/pending')
-    pendingPosts.value = response.data.data.posts || []
+    const [pendingRes, statsRes] = await Promise.allSettled([
+      api.get('/admin/posts/pending'),
+      api.get('/admin/stats')
+    ])
+    if (pendingRes.status === 'fulfilled') {
+      pendingPosts.value = pendingRes.value.data?.data?.posts || []
+    }
+    if (statsRes.status === 'fulfilled' && statsRes.value.data?.data) {
+      stats.value = statsRes.value.data.data
+    }
   } catch (error) {
-    console.error('获取待审核内容失败')
+    console.error('加载管理后台数据失败')
   }
 })
 </script>

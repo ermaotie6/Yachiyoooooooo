@@ -3,6 +3,7 @@ export interface User {
   username: string
   email: string
   displayName: string
+  avatar?: string
   role: 'user' | 'broadcaster' | 'moderator' | 'admin'
   createdAt: string
 }

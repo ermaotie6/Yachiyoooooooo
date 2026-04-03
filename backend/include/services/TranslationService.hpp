@@ -20,9 +20,8 @@ namespace yachiyo::services {
 class TranslationService {
 public:
     enum class Engine {
-        DEEPSEEK,   // 本地 Ollama
-        OPENAI,     // OpenAI API
-        GOOGLE,     // Google 翻译 API
+        BAIDU,      // 百度翻译 API
+        DEEPSEEK,   // DeepSeek API
         AUTO        // 自动选择
     };
     
@@ -100,27 +99,18 @@ private:
     ) const;
     
     /**
-     * 通过 DeepSeek (Ollama) 翻译
+     * 通过百度翻译 API 翻译
+     */
+    Utils::Result<dto::TranslationResponse> translateViaBaidu(
+        const std::string& text,
+        const std::string& sourceLanguage,
+        const std::string& targetLanguage
+    );
+    
+    /**
+     * 通过 DeepSeek API 翻译
      */
     Utils::Result<dto::TranslationResponse> translateViaDeepSeek(
-        const std::string& text,
-        const std::string& sourceLanguage,
-        const std::string& targetLanguage
-    );
-    
-    /**
-     * 通过 OpenAI 翻译
-     */
-    Utils::Result<dto::TranslationResponse> translateViaOpenAI(
-        const std::string& text,
-        const std::string& sourceLanguage,
-        const std::string& targetLanguage
-    );
-    
-    /**
-     * 通过 Google 翻译
-     */
-    Utils::Result<dto::TranslationResponse> translateViaGoogle(
         const std::string& text,
         const std::string& sourceLanguage,
         const std::string& targetLanguage

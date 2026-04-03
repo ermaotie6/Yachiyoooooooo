@@ -8,15 +8,16 @@
     <el-tabs v-model="activeTab">
       <!-- 登录选项卡 -->
       <el-tab-pane label="登录" name="login">
-        <el-form ref="loginFormRef" :model="loginForm" @submit.prevent="handleLogin">
-          <el-form-item label="用户名">
+        <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" @submit.prevent="handleLogin">
+          <el-form-item label="用户名" prop="username">
             <el-input v-model="loginForm.username" placeholder="请输入用户名" />
           </el-form-item>
-          <el-form-item label="密码">
+          <el-form-item label="密码" prop="password">
             <el-input
               v-model="loginForm.password"
               type="password"
               placeholder="请输入密码"
+              show-password
             />
           </el-form-item>
           <el-button type="primary" class="full-width" @click="handleLogin">
@@ -27,25 +28,27 @@
 
       <!-- 注册选项卡 -->
       <el-tab-pane label="注册" name="register">
-        <el-form ref="registerFormRef" :model="registerForm" @submit.prevent="handleRegister">
-          <el-form-item label="用户名">
+        <el-form ref="registerFormRef" :model="registerForm" :rules="registerRules" @submit.prevent="handleRegister">
+          <el-form-item label="用户名" prop="username">
             <el-input v-model="registerForm.username" placeholder="请输入用户名" />
           </el-form-item>
-          <el-form-item label="邮箱">
+          <el-form-item label="邮箱" prop="email">
             <el-input v-model="registerForm.email" type="email" placeholder="请输入邮箱" />
           </el-form-item>
-          <el-form-item label="密码">
+          <el-form-item label="密码" prop="password">
             <el-input
               v-model="registerForm.password"
               type="password"
               placeholder="请输入密码"
+              show-password
             />
           </el-form-item>
-          <el-form-item label="确认密码">
+          <el-form-item label="确认密码" prop="confirmPassword">
             <el-input
               v-model="registerForm.confirmPassword"
               type="password"
               placeholder="请再次输入密码"
+              show-password
             />
           </el-form-item>
           <el-button type="primary" class="full-width" @click="handleRegister">
@@ -58,8 +61,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, reactive } from 'vue'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 
@@ -76,6 +79,8 @@ const router = useRouter()
 const authStore = useAuthStore()
 
 const activeTab = ref('login')
+const loginFormRef = ref<FormInstance>()
+const registerFormRef = ref<FormInstance>()
 
 const loginForm = ref({
   username: '',
@@ -89,50 +94,83 @@ const registerForm = ref({
   confirmPassword: ''
 })
 
-const handleLogin = async () => {
-  if (!loginForm.value.username || !loginForm.value.password) {
-    ElMessage.warning('请输入用户名和密码')
-    return
-  }
+const loginRules = reactive<FormRules>({
+  username: [
+    { required: true, message: '请输入用户名', trigger: 'blur' },
+    { min: 3, max: 20, message: '用户名长度在 3 到 20 个字符', trigger: 'blur' }
+  ],
+  password: [
+    { required: true, message: '请输入密码', trigger: 'blur' },
+    { min: 6, message: '密码至少 6 个字符', trigger: 'blur' }
+  ]
+})
 
-  try {
-    await authStore.login(loginForm.value.username, loginForm.value.password)
-    ElMessage.success('登录成功')
-    emit('close')
-    router.push('/')
-  } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || '登录失败')
+const validateConfirmPassword = (_rule: any, value: string, callback: Function) => {
+  if (value !== registerForm.value.password) {
+    callback(new Error('两次密码输入不一致'))
+  } else {
+    callback()
   }
 }
 
-const handleRegister = async () => {
-  if (!registerForm.value.username || !registerForm.value.email || !registerForm.value.password) {
-    ElMessage.warning('请填写所有必填项')
-    return
-  }
+const registerRules = reactive<FormRules>({
+  username: [
+    { required: true, message: '请输入用户名', trigger: 'blur' },
+    { min: 3, max: 20, message: '用户名长度在 3 到 20 个字符', trigger: 'blur' }
+  ],
+  email: [
+    { required: true, message: '请输入邮箱地址', trigger: 'blur' },
+    { type: 'email', message: '请输入正确的邮箱地址', trigger: 'blur' }
+  ],
+  password: [
+    { required: true, message: '请输入密码', trigger: 'blur' },
+    { min: 8, message: '密码至少 8 个字符', trigger: 'blur' }
+  ],
+  confirmPassword: [
+    { required: true, message: '请再次输入密码', trigger: 'blur' },
+    { validator: validateConfirmPassword, trigger: 'blur' }
+  ]
+})
 
-  if (registerForm.value.password !== registerForm.value.confirmPassword) {
-    ElMessage.warning('两次密码输入不一致')
-    return
-  }
-
-  try {
-    await authStore.register(
-      registerForm.value.username,
-      registerForm.value.email,
-      registerForm.value.password
-    )
-    ElMessage.success('注册成功，请登录')
-    activeTab.value = 'login'
-    registerForm.value = {
-      username: '',
-      email: '',
-      password: '',
-      confirmPassword: ''
+const handleLogin = async () => {
+  if (!loginFormRef.value) return
+  await loginFormRef.value.validate(async (valid) => {
+    if (!valid) return
+    try {
+      await authStore.login(loginForm.value.username, loginForm.value.password)
+      ElMessage.success('登录成功')
+      emit('close')
+      // 如果有 redirect 参数，跳转到目标页面
+      const redirect = router.currentRoute.value.query.redirect as string
+      router.push(redirect || '/')
+    } catch (error: any) {
+      ElMessage.error(error.response?.data?.message || '登录失败')
     }
-  } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || '注册失败')
-  }
+  })
+}
+
+const handleRegister = async () => {
+  if (!registerFormRef.value) return
+  await registerFormRef.value.validate(async (valid) => {
+    if (!valid) return
+    try {
+      await authStore.register(
+        registerForm.value.username,
+        registerForm.value.email,
+        registerForm.value.password
+      )
+      ElMessage.success('注册成功，请登录')
+      activeTab.value = 'login'
+      registerForm.value = {
+        username: '',
+        email: '',
+        password: '',
+        confirmPassword: ''
+      }
+    } catch (error: any) {
+      ElMessage.error(error.response?.data?.message || '注册失败')
+    }
+  })
 }
 </script>
 

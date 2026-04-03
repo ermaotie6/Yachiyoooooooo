@@ -49,6 +49,8 @@ const modelState = {
 const animationQueue: any[] = []
 let currentAnimation: any = null
 let animationStartTime = 0
+let rafId: number | null = null
+let targetMouthOpenY = 0
 
 // ============ 核心方法 ============
 
@@ -110,7 +112,7 @@ const startRenderLoop = () => {
   const render = () => {
     updateAnimation()
     draw()
-    requestAnimationFrame(render)
+    rafId = requestAnimationFrame(render)
   }
   render()
 }
@@ -147,9 +149,7 @@ const updateAnimation = () => {
   }
 
   // 平滑过渡嘴部开合
-  const targetMouth = modelState.mouthOpenY
-  const currentMouth = modelState.mouthOpenY
-  modelState.mouthOpenY += (targetMouth - currentMouth) * 0.2
+  modelState.mouthOpenY += (targetMouthOpenY - modelState.mouthOpenY) * 0.3
 }
 
 /**
@@ -436,7 +436,7 @@ const playMotion = (motionName: string, priority: number = 0) => {
  * 实时嘴部同步
  */
 const setSyncMouthOpenY = (value: number) => {
-  modelState.mouthOpenY = Math.max(0, Math.min(1, value))
+  targetMouthOpenY = Math.max(0, Math.min(1, value))
 }
 
 /**
@@ -467,7 +467,11 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  // 清理资源
+  // 停止渲染循环
+  if (rafId !== null) {
+    cancelAnimationFrame(rafId)
+    rafId = null
+  }
   canvas = null
   ctx = null
 })

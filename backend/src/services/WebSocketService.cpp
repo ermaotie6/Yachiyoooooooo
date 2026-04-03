@@ -53,11 +53,11 @@ void WebSocketService::stop() {
 
 int64_t WebSocketService::addClient(const std::string& user_id, 
                                    const ClientMetadata& metadata) {
+    std::lock_guard<std::mutex> lock(clients_mutex_);
+
     if (clients_.size() >= max_connections_) {
         return -1; // 连接数达到上限
     }
-
-    std::lock_guard<std::mutex> lock(clients_mutex_);
     
     int64_t client_id = next_client_id_++;
     ClientSession session;

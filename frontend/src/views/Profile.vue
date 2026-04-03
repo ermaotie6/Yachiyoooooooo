@@ -94,6 +94,7 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
+import { api } from '@/api/client'
 import type { User, Post } from '@/types'
 
 const authStore = useAuthStore()
@@ -115,8 +116,8 @@ const editForm = ref({
 })
 
 const stats = ref({
-  postCount: 12,
-  totalLikes: 456
+  postCount: 0,
+  totalLikes: 0
 })
 
 const userPosts = ref<Post[]>([])
@@ -137,23 +138,49 @@ const formatDate = (date: string) => {
 
 const saveProfile = async () => {
   try {
+    await api.put(`/users/${user.value.userId}`, {
+      displayName: editForm.value.displayName,
+      email: editForm.value.email
+    })
     ElMessage.success('资料已保存')
     editMode.value = false
     user.value.displayName = editForm.value.displayName
     user.value.email = editForm.value.email
+    // 同步更新 auth store 中的用户信息
+    authStore.setUser({ ...user.value })
   } catch (error) {
     ElMessage.error('保存失败')
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   if (authStore.user) {
-    user.value = authStore.user
+    user.value = { ...authStore.user }
     editForm.value = {
       username: user.value.username,
       displayName: user.value.displayName,
       email: user.value.email
     }
+  }
+
+  // 加载用户统计数据
+  try {
+    const statsRes = await api.get(`/users/${user.value.userId}/stats`)
+    if (statsRes.data?.data) {
+      stats.value = statsRes.data.data
+    }
+  } catch (error) {
+    console.warn('获取用户统计失败，使用默认值')
+  }
+
+  // 加载用户发布的内容
+  try {
+    const postsRes = await api.get(`/users/${user.value.userId}/posts`)
+    if (postsRes.data?.data) {
+      userPosts.value = postsRes.data.data
+    }
+  } catch (error) {
+    console.warn('获取用户内容失败')
   }
 })
 </script>

@@ -74,15 +74,64 @@ Utils::Result<dto::TTSResponse> GPTSoVITSService::synthesize(const dto::TTSReque
         }
     }
     
-    // TODO: 调用 GPT-SoVITS API
-    // 当前返回 mock 结果
     dto::TTSResponse response;
     response.requestId = request.requestId;
-    response.success = true;
-    response.audioUrl = "http://localhost:8000/audio/generated_" + request.requestId + ".wav";
-    response.durationMs = request.text.length() * 50;  // Mock 计算
     response.emotionApplied = request.emotionType;
     response.emotionIntensity = request.emotionIntensity;
+    
+    if (!endpoint_.empty()) {
+        // 真实 API 调用
+        CURL* curl = curl_easy_init();
+        if (!curl) {
+            return Utils::Result<dto::TTSResponse>::error("CURL_INIT_ERROR", "CURL 初始化失败");
+        }
+        
+        nlohmann::json reqJson;
+        reqJson["text"] = request.text;
+        reqJson["emotion"] = request.emotionType;
+        reqJson["voice_preset"] = request.voicePreset;
+        reqJson["pitch_shift"] = request.pitchShift;
+        reqJson["speed_factor"] = request.speedFactor;
+        reqJson["energy_level"] = request.energyLevel;
+        std::string postData = reqJson.dump();
+        
+        std::string readBuffer;
+        curl_easy_setopt(curl, CURLOPT_URL, (endpoint_ + "/synthesize").c_str());
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postData.c_str());
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+        
+        struct curl_slist* headers = nullptr;
+        headers = curl_slist_append(headers, "Content-Type: application/json");
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+        
+        CURLcode res = curl_easy_perform(curl);
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+        
+        if (res != CURLE_OK) {
+            LOG_ERROR("GPT-SoVITS 请求失败: {}", curl_easy_strerror(res));
+            return Utils::Result<dto::TTSResponse>::error("REQUEST_ERROR", curl_easy_strerror(res));
+        }
+        
+        try {
+            auto respJson = nlohmann::json::parse(readBuffer);
+            response.success = respJson.value("success", true);
+            response.audioUrl = respJson.value("audio_url", "");
+            response.durationMs = respJson.value("duration_ms", 0);
+        } catch (const std::exception& e) {
+            LOG_ERROR("GPT-SoVITS 响应解析失败: {}", e.what());
+            return Utils::Result<dto::TTSResponse>::error("PARSE_ERROR", e.what());
+        }
+    } else {
+        // Mock 回退（未配置 endpoint）
+        LOG_WARN("GPT-SoVITS endpoint 未配置，使用 mock 响应");
+        response.success = true;
+        response.audioUrl = "http://localhost:8000/audio/generated_" + request.requestId + ".wav";
+        response.durationMs = request.text.length() * 50;
+    }
+    
     response.processingTimeMs = 
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - startTime

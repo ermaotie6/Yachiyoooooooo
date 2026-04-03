@@ -15,7 +15,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backend/sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - yachiyo-network
     healthcheck:
@@ -55,7 +55,7 @@ services:
         condition: service_healthy
     ports:
       - "8080:8080"    # HTTP API
-      - "8081:8081"    # WebSocket
+      - "9001:9001"    # WebSocket
     environment:
       - DATABASE_HOST=postgres
       - DATABASE_PORT=5432
@@ -63,10 +63,13 @@ services:
       - DATABASE_USER=postgres
       - DATABASE_PASSWORD=postgres
       - DATABASE_POOL_SIZE=20
-      - WEBSOCKET_PORT=8081
+      - WEBSOCKET_PORT=9001
       - WEBSOCKET_HOST=0.0.0.0
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-production-secret-key-change-me}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - BAIDU_TRANSLATE_APP_ID=${BAIDU_TRANSLATE_APP_ID:-}
+      - BAIDU_TRANSLATE_API_KEY=${BAIDU_TRANSLATE_API_KEY:-}
       - APP_LOG_LEVEL=INFO
       - ENVIRONMENT=production
     volumes:
@@ -93,7 +96,7 @@ services:
     environment:
       - VITE_API_BASE_URL=http://localhost:8080/api/v1
       - VITE_API_V2_BASE_URL=http://localhost:8080/api/v2
-      - VITE_WEBSOCKET_URL=ws://localhost:8081
+      - VITE_WS_BASE_URL=ws://localhost:9001
     depends_on:
       - backend
     networks:

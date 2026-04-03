@@ -94,7 +94,7 @@ const sendMessage = async () => {
       processingTime: 0
     })
 
-    const response = await api.post('/chat', {
+    const response = await api.post('/ai/chat', {
       message,
       sessionId: currentSessionId.value
     })
@@ -149,8 +149,10 @@ const formatDate = (date: string) => {
 onMounted(async () => {
   startNewSession()
   try {
-    const response = await api.get('/chat/history')
-    // 获取会话列表
+    const response = await api.get('/ai/chat/sessions')
+    if (response.data?.data) {
+      sessions.value = response.data.data
+    }
   } catch (error) {
     console.log('无会话历史')
   }

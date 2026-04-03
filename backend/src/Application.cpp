@@ -294,7 +294,7 @@ void Application::initializeServices() {
                 logger->info("WebSocket服务启动: {}:{}", 
                             configManager->getString("websocket.host", "0.0.0.0"),
                             configManager->getInt("websocket.port", 8081));
-                // g_webSocketService->run();  // 如果需要同步运行
+                g_webSocketService->run();
             } catch (const std::exception& e) {
                 logger->error("WebSocket服务异常: {}", e.what());
             }
@@ -317,15 +317,6 @@ void Application::initializeServices() {
         // redisPool = std::make_shared<RedisPool>(...);
         logger->info("Redis连接初始化完成: {}:{}", redisHost, redisPort);
     }
-    
-    // 初始化邮件服务
-    if (configManager->getBool("email.enabled", false)) {
-        // emailService = std::make_shared<EmailService>(...);
-        logger->info("邮件服务初始化完成");
-    }
-    
-    // 初始化文件存储服务
-    // fileStorageService = std::make_shared<FileStorageService>(...);
     
     logger->info("其他服务初始化完成");
 }
