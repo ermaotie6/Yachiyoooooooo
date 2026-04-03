@@ -18,6 +18,10 @@ move_files.py
 cleanup.ps1
 __check.txt
 _moved.txt
+__git_commit.ps1
+__git_commit.bat
+__git_log.txt
+__pwd.txt
 
 # 冗余文档 (已归档或待归档到 docs/archive/)
 CLEANUP_AND_CONSOLIDATE.md
