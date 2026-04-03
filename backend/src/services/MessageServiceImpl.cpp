@@ -39,7 +39,7 @@ Result<std::shared_ptr<Message>> MessageServiceImpl::sendMessage(
             msg->setRateLimitViolated(true);
             msg->setReviewStatus(ReviewStatus::REJECTED);
             msg->setReviewReason("触发速率限制");
-            return Result<std::shared_ptr<Message>>::Error(rateLimitResult.getErrorMsg());
+            // 不直接返回，继续保存消息记录以便审计
         }
         
         // 第2层: IP黑名单
@@ -47,28 +47,34 @@ Result<std::shared_ptr<Message>> MessageServiceImpl::sendMessage(
         if (!ipCheckResult.isSuccess()) {
             msg->setReviewStatus(ReviewStatus::REJECTED);
             msg->setReviewReason("来自黑名单IP");
-            return Result<std::shared_ptr<Message>>::Error(ipCheckResult.getErrorMsg());
+            // 不直接返回，继续保存消息记录以便审计
         }
         
         // 第3层: 敏感词检查
         auto keywordResult = checkBlockedKeywords(message);
-        if (!keywordResult.isSuccess()) {
-            msg->setIsBlockedKeyword(true);
-            msg->setSpamScore(keywordResult.getData().second);
-            msg->setReviewStatus(ReviewStatus::MANUAL_REVIEW);
-            msg->setReviewReason("包含敏感词");
+        if (keywordResult.isSuccess()) {
+            auto [foundKeyword, keywordScore] = keywordResult.getData();
+            if (foundKeyword) {
+                msg->setIsBlockedKeyword(true);
+                msg->setSpamScore(keywordScore);
+                msg->setReviewStatus(ReviewStatus::MANUAL_REVIEW);
+                msg->setReviewReason("包含敏感词");
+            }
         }
         
         // 第4层: AI内容审查
         auto aiResult = aiContentReview(message);
-        if (!aiResult.isSuccess()) {
-            msg->setIsAbusive(true);
-            msg->setSpamScore(aiResult.getData().second);
-            if (msg->getSpamScore() > 0.9) {
-                msg->setReviewStatus(ReviewStatus::REJECTED);
-                msg->setReviewReason("AI审查不通过");
-            } else {
-                msg->setReviewStatus(ReviewStatus::MANUAL_REVIEW);
+        if (aiResult.isSuccess()) {
+            auto [isAbusive, aiScore] = aiResult.getData();
+            if (isAbusive) {
+                msg->setIsAbusive(true);
+                msg->setSpamScore(std::max(msg->getSpamScore(), aiScore));
+                if (aiScore > 0.9) {
+                    msg->setReviewStatus(ReviewStatus::REJECTED);
+                    msg->setReviewReason("AI审查不通过");
+                } else {
+                    msg->setReviewStatus(ReviewStatus::MANUAL_REVIEW);
+                }
             }
         }
         

@@ -90,7 +90,7 @@ Utils::Result<ModerationResponse> DeepSeekModerationService::moderate(
     // 3. 如果有情感标签，进行情感验证
     if (enable_emotion_verification_ && !request.emotionTags.empty()) {
         auto emotionResult = verifyEmotions(request.content, request.emotionTags);
-        if (emotionResult.isSuccess()) {
+        if (emotionResult.isSuccess() && emotionResult.getData().has_value()) {
             apiResult.emotionVerification = emotionResult.getData().value().matchedEmotions;
         }
     }

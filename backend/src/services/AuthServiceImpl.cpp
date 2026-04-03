@@ -138,7 +138,10 @@ Result<json> AuthServiceImpl::login(
         std::string passwordHash = row["password_hash"];
         std::string salt = row["salt"];
         
-        if (!hashUtil->verifyPassword(password, passwordHash)) {
+        // passwordHash 格式为 "salt:hash"，verifyPassword 内部会解析
+        // 如果数据库中 salt 和 hash 是分开存储的，需要拼接
+        std::string storedHash = salt + ":" + passwordHash;
+        if (!hashUtil->verifyPassword(password, storedHash)) {
             return Result<json>::Error("用户名或密码错误");
         }
         

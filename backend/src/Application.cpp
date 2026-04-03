@@ -65,17 +65,17 @@ bool Application::initialize(int argc, char* argv[]) {
         // 初始化HTTP服务器
         initializeHttpServer(appConfig);
         
-        // 初始化控制器
-        initializeControllers();
-        
-        // 初始化数据库连接池
+        // 初始化数据库连接池 (必须在控制器之前，因为消息控制器依赖数据库服务)
         initializeDatabase();
         
         // 初始化AI服务
         initializeAIServices();
         
-        // 初始化其他服务
+        // 初始化其他服务 (WebSocket等，必须在控制器之前)
         initializeServices();
+        
+        // 初始化控制器 (最后初始化，确保所有依赖的服务已就绪)
+        initializeControllers();
         
         logger->info("应用程序初始化完成");
         return true;
@@ -386,19 +386,11 @@ void Application::wait() {
 }
 
 void Application::registerSignalHandlers() {
-    std::signal(SIGINT, [](int) {
-        auto app = Application::getInstance();
-        app->stop();
-        exit(0);
-    });
-    
-    std::signal(SIGTERM, [](int) {
-        auto app = Application::getInstance();
-        app->stop();
-        exit(0);
-    });
-    
-    logger->info("信号处理器已注册 (SIGINT, SIGTERM)");
+    // 信号处理器已在 main.cpp globalInit() 中通过 setupSignalHandlers() 注册。
+    // 这里不再重复注册，避免覆盖全局设置。
+    // 注意：C++ 标准不允许 lambda 或有状态函数作为 std::signal 的处理器，
+    //       只允许 extern "C" 函数或无捕获的函数指针。
+    logger->info("信号处理器已在全局初始化阶段注册 (SIGINT, SIGTERM, SIGSEGV, SIGABRT)");
 }
 
 } // namespace yachiyo
