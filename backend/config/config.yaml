@@ -80,11 +80,75 @@ ai:
     temperature: 0.7
     max_tokens: 1000
     
-  # 语音合成配置
-  tts:
-    provider: "openai"  # openai, elevenlabs, deepseek, qwen, local
-    voice: "alloy"
-    speed: 1.0
+  # 语音合成配置 (GPT-SoVITS)
+  gpt_sovits:
+    enabled: true
+    endpoint: "http://localhost:5000"
+    timeout_seconds: 30
+    model: "deepseek-chat"
+    cache:
+      enabled: true
+      ttl_days: 7
+    performance:
+      max_concurrent: 5
+      batch_size: 10
+    voice_presets:
+      default: "yachiyou_default"
+      playful: "yachiyou_playful"
+      cool: "yachiyou_cool"
+  
+  # 翻译服务配置
+  translation:
+    enabled: true
+    engines:
+      - name: "deepseek"
+        type: "ollama"
+        enabled: true
+        endpoint: "http://localhost:11434"
+        model: "deepseek-chat"
+        timeout_seconds: 3
+      - name: "openai"
+        type: "api"
+        enabled: false
+        endpoint: "https://api.openai.com/v1"
+        api_key: ""
+        model: "gpt-3.5-turbo"
+        timeout_seconds: 5
+      - name: "google"
+        type: "api"
+        enabled: false
+        endpoint: "https://translation.googleapis.com"
+        api_key: ""
+        timeout_seconds: 5
+    cache:
+      enabled: true
+      ttl_seconds: 3600
+      max_entries: 100000
+    performance:
+      batch_size: 10
+      max_concurrent: 5
+      fallback_to_source: true
+  
+  # 内容审查 (DeepSeek)
+  deepseek_moderation:
+    enabled: true
+    engine: "deepseek"
+    endpoint: "http://localhost:11434"
+    model: "deepseek-chat"
+    timeout_seconds: 5
+    cache:
+      enabled: true
+      ttl_seconds: 3600
+    categories:
+      - violence
+      - adult
+      - harassment
+      - spam
+      - hate
+      - profanity
+    performance:
+      batch_size: 10
+      max_concurrent: 5
 
 # 邮件服务配置
 email:
