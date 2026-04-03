@@ -1,0 +1,902 @@
+<template>
+  <div class="live-stream-container">
+    <!-- 虚拟形象区域 -->
+    <section class="avatar-section">
+      <div class="avatar-wrapper">
+        <Live2DComponent
+          ref="live2dComponent"
+          :width="800"
+          :height="600"
+          @animation-complete="onAnimationComplete"
+        />
+      </div>
+
+      <!-- 连接状态指示器 -->
+      <div class="status-indicator">
+        <span :class="['status-dot', connectionStatus]"></span>
+        <span class="status-text">
+          {{ connectionStatus === 'connected' ? '已连接' : '已断开' }}
+        </span>
+      </div>
+
+      <!-- 虚拟形象信息 -->
+      <div class="avatar-info">
+        <h2>Yachiyo</h2>
+        <p class="role">AI 虚拟直播助手</p>
+      </div>
+    </section>
+
+    <!-- 聊天区域 -->
+    <section class="chat-section">
+      <!-- 消息历史 -->
+      <div class="message-history" ref="messageHistoryRef">
+        <div
+          v-for="msg in messages"
+          :key="msg.id"
+          :class="['message', `message-${msg.role}`]"
+        >
+          <!-- 用户消息 -->
+          <div v-if="msg.role === 'user'" class="user-message">
+            <div class="sender-name">{{ currentUser.name }}</div>
+            <div class="content">{{ msg.text }}</div>
+            <div class="timestamp">{{ formatTime(msg.timestamp) }}</div>
+          </div>
+
+          <!-- Avatar 响应 -->
+          <div v-if="msg.role === 'avatar'" class="avatar-message">
+            <div class="sender-name">Yachiyo</div>
+            <div class="content">{{ msg.text }}</div>
+
+            <!-- 情感标签 -->
+            <div v-if="msg.emotions && msg.emotions.length > 0" class="emotion-tags">
+              <span v-for="emotion in msg.emotions" :key="emotion" class="emotion-tag">
+                {{ emotion }}
+              </span>
+            </div>
+
+            <!-- 音频播放状态 -->
+            <div v-if="msg.audioUrl" class="audio-status">
+              <span class="audio-indicator" :class="{ playing: msg.isAudioPlaying }">
+                🔊
+              </span>
+              <span class="duration">
+                {{ formatDuration(msg.audioDuration) }}
+              </span>
+            </div>
+
+            <div class="timestamp">{{ formatTime(msg.timestamp) }}</div>
+          </div>
+
+          <!-- 系统消息 -->
+          <div v-if="msg.role === 'system'" class="system-message">
+            {{ msg.text }}
+          </div>
+        </div>
+
+        <!-- 加载状态 -->
+        <div v-if="isProcessing" class="loading-indicator">
+          <div class="spinner"></div>
+          <span>处理中...</span>
+        </div>
+      </div>
+
+      <!-- 消息输入区域 -->
+      <div class="input-section">
+        <div class="input-wrapper">
+          <textarea
+            v-model="messageInput"
+            placeholder="输入你的消息（最多500字）..."
+            maxlength="500"
+            :disabled="!isConnected || isProcessing"
+            @keydown.enter.ctrl="sendMessage"
+            @input="updateCharCount"
+            class="message-input"
+          />
+
+          <!-- 字数统计 -->
+          <div class="char-counter">
+            <span :class="{ warning: messageInput.length > 400 }">
+              {{ messageInput.length }}/500
+            </span>
+          </div>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="action-buttons">
+          <button
+            @click="sendMessage"
+            :disabled="!isConnected || isProcessing || !messageInput.trim()"
+            class="send-button"
+          >
+            <span v-if="!isProcessing">发送</span>
+            <span v-else>
+              <span class="button-spinner"></span>
+              处理中
+            </span>
+          </button>
+
+          <button
+            @click="clearHistory"
+            :disabled="messages.length === 0"
+            class="clear-button"
+            title="清空聊天历史"
+          >
+            清空
+          </button>
+        </div>
+      </div>
+
+      <!-- 连接提示 -->
+      <div v-if="!isConnected" class="connection-hint">
+        <span v-if="connectionError" class="error-message">
+          ❌ {{ connectionError }}
+        </span>
+        <span v-else class="info-message">
+          ⏳ 尝试连接中...
+        </span>
+      </div>
+    </section>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { useWebSocket } from '@/composables/useWebSocket'
+import { useAudioPlayer } from '@/composables/useAudioPlayer'
+import Live2DComponent from '@/components/Live2DComponent.vue'
+
+// ============ 状态管理 ============
+
+interface Message {
+  id: string
+  role: 'user' | 'avatar' | 'system'
+  text: string
+  emotions?: string[]
+  actions?: string[]
+  audioUrl?: string
+  audioDuration?: number
+  isAudioPlaying?: boolean
+  timestamp: number
+}
+
+const messageInput = ref('')
+const messages = ref<Message[]>([])
+const isConnected = ref(false)
+const isProcessing = ref(false)
+const connectionError = ref<string | null>(null)
+
+const currentUser = {
+  name: '用户',
+  id: 'user_123'
+}
+
+const connectionStatus = computed(() =>
+  isConnected.value ? 'connected' : 'disconnected'
+)
+
+// ============ 组件引用 ============
+
+const messageHistoryRef = ref<HTMLElement | null>(null)
+const live2dComponent = ref<InstanceType<typeof Live2DComponent> | null>(null)
+
+const ws = useWebSocket()
+const audioPlayer = useAudioPlayer()
+
+// ============ 事件处理 ============
+
+/**
+ * 发送消息
+ */
+const sendMessage = async () => {
+  if (!messageInput.value.trim()) return
+  if (!isConnected.value) return
+
+  const content = messageInput.value.trim()
+
+  // 添加用户消息到历史
+  messages.value.push({
+    id: `msg_${Date.now()}`,
+    role: 'user',
+    text: content,
+    timestamp: Date.now()
+  })
+
+  messageInput.value = ''
+  isProcessing.value = true
+
+  // 滚动到底部
+  await nextTick()
+  scrollToBottom()
+
+  try {
+    // 发送给后端
+    ws.sendUserMessage(content)
+  } catch (error) {
+    console.error('发送消息失败:', error)
+    isProcessing.value = false
+    addSystemMessage('发送消息失败，请重试')
+  }
+}
+
+/**
+ * 处理 Avatar 响应
+ */
+const handleAvatarResponse = async (response: any) => {
+  isProcessing.value = false
+
+  // 添加 Avatar 消息
+  const avatarMsg: Message = {
+    id: `msg_${Date.now()}`,
+    role: 'avatar',
+    text: response.text,
+    emotions: response.emotions || [],
+    actions: response.actions || [],
+    audioUrl: response.audio_url,
+    audioDuration: response.audio_duration_ms,
+    timestamp: Date.now()
+  }
+
+  messages.value.push(avatarMsg)
+
+  // 滚动到底部
+  await nextTick()
+  scrollToBottom()
+
+  // 播放音频（如果有）
+  if (response.audio_url) {
+    try {
+      await playAudioWithAnimations(response)
+    } catch (error) {
+      console.error('播放音频失败:', error)
+    }
+  } else if (response.animation_commands && response.animation_commands.length > 0) {
+    // 只有动画，没有音频
+    playAnimations(response.animation_commands)
+  }
+}
+
+/**
+ * 播放音频和动画
+ */
+const playAudioWithAnimations = async (response: any) => {
+  // 标记音频正在播放
+  const lastMessage = messages.value[messages.value.length - 1]
+  if (lastMessage) {
+    lastMessage.isAudioPlaying = true
+  }
+
+  try {
+    // 启动音频分析用于嘴部同步
+    audioPlayer.onMouth((data) => {
+      if (live2dComponent.value) {
+        live2dComponent.value.setSyncMouthOpenY(data.mouthOpenY)
+      }
+    })
+
+    // 播放音频
+    await audioPlayer.play(response.audio_url)
+
+    // 播放动画
+    if (response.animation_commands) {
+      playAnimations(response.animation_commands)
+    }
+
+    // 等待音频播放完成
+    await new Promise((resolve) => {
+      audioPlayer.onEnd(() => {
+        if (lastMessage) {
+          lastMessage.isAudioPlaying = false
+        }
+        resolve(null)
+      })
+    })
+  } catch (error) {
+    console.error('音频播放错误:', error)
+    if (lastMessage) {
+      lastMessage.isAudioPlaying = false
+    }
+  }
+}
+
+/**
+ * 播放动画序列
+ */
+const playAnimations = (commands: any[]) => {
+  if (!live2dComponent.value) return
+
+  for (const cmd of commands) {
+    if (cmd.expression) {
+      live2dComponent.value.setExpression(
+        cmd.expression,
+        cmd.duration_ms || 1000
+      )
+    }
+    if (cmd.motion) {
+      live2dComponent.value.playMotion(cmd.motion, cmd.priority || 0)
+    }
+  }
+}
+
+/**
+ * 处理连接状态变化
+ */
+const handleConnectionStatusChange = (connected: boolean) => {
+  isConnected.value = connected
+  connectionError.value = null
+
+  if (connected) {
+    addSystemMessage('✅ 已连接到服务器')
+  } else {
+    addSystemMessage('❌ 连接已断开')
+  }
+}
+
+/**
+ * 处理错误
+ */
+const handleError = (error: string) => {
+  console.error('错误:', error)
+  connectionError.value = error
+  addSystemMessage(`⚠️ 错误: ${error}`)
+}
+
+/**
+ * 处理状态更新
+ */
+const handleStatusUpdate = (status: any) => {
+  if (status.status === 'processing') {
+    addSystemMessage(`处理中 (${status.progress}%)...`)
+  } else if (status.status === 'completed') {
+    // Avatar 响应会通过 onAvatarResponse 处理
+  } else if (status.status === 'error') {
+    addSystemMessage(`❌ 处理失败: ${status.message}`)
+    isProcessing.value = false
+  }
+}
+
+/**
+ * 添加系统消息
+ */
+const addSystemMessage = (text: string) => {
+  messages.value.push({
+    id: `msg_${Date.now()}`,
+    role: 'system',
+    text,
+    timestamp: Date.now()
+  })
+}
+
+/**
+ * 清空聊天历史
+ */
+const clearHistory = () => {
+  if (confirm('确定要清空聊天历史吗？')) {
+    messages.value = []
+    addSystemMessage('聊天历史已清空')
+  }
+}
+
+/**
+ * 动画播放完成回调
+ */
+const onAnimationComplete = () => {
+  console.log('动画播放完成')
+}
+
+/**
+ * 更新字数统计
+ */
+const updateCharCount = () => {
+  // 动态更新（在模板中已处理）
+}
+
+// ============ 工具方法 ============
+
+/**
+ * 格式化时间
+ */
+const formatTime = (timestamp: number): string => {
+  const date = new Date(timestamp)
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${hours}:${minutes}`
+}
+
+/**
+ * 格式化音频时长
+ */
+const formatDuration = (ms: number): string => {
+  const seconds = Math.floor(ms / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  return `${minutes}:${String(secs).padStart(2, '0')}`
+}
+
+/**
+ * 滚动到底部
+ */
+const scrollToBottom = () => {
+  if (messageHistoryRef.value) {
+    messageHistoryRef.value.scrollTop = messageHistoryRef.value.scrollHeight
+  }
+}
+
+// ============ 生命周期 ============
+
+onMounted(async () => {
+  try {
+    // 连接到 WebSocket
+    await ws.connect(currentUser.id)
+    isConnected.value = true
+    addSystemMessage('✅ 已连接到服务器')
+
+    // 监听事件
+    ws.onAvatar(handleAvatarResponse)
+    ws.onStatus(handleStatusUpdate)
+    ws.onErr(handleError)
+    ws.onConnectionStatusChange(handleConnectionStatusChange)
+  } catch (error) {
+    console.error('连接失败:', error)
+    connectionError.value = String(error)
+    addSystemMessage(`❌ 连接失败: ${error}`)
+  }
+})
+
+onUnmounted(async () => {
+  await ws.disconnect()
+  audioPlayer.cleanup()
+})
+</script>
+
+<style scoped>
+.live-stream-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  padding: 20px;
+  height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, Cantarell, sans-serif;
+}
+
+/* ============ 虚拟形象区域 ============ */
+
+.avatar-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 15px;
+  backdrop-filter: blur(10px);
+  position: relative;
+  overflow: hidden;
+}
+
+.avatar-wrapper {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-height: 80%;
+}
+
+.status-indicator {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 8px 12px;
+  border-radius: 20px;
+  backdrop-filter: blur(5px);
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+.status-dot.connected {
+  background-color: #4caf50;
+}
+
+.status-dot.disconnected {
+  background-color: #f44336;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.avatar-info {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  color: white;
+  z-index: 10;
+}
+
+.avatar-info h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.avatar-info .role {
+  margin: 5px 0 0 0;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+/* ============ 聊天区域 ============ */
+
+.chat-section {
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 15px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.message-history {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  scroll-behavior: smooth;
+}
+
+.message-history::-webkit-scrollbar {
+  width: 8px;
+}
+
+.message-history::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.message-history::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.message-history::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.message {
+  display: flex;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.message-user {
+  justify-content: flex-end;
+}
+
+.message-avatar {
+  justify-content: flex-start;
+}
+
+.message-system {
+  justify-content: center;
+}
+
+.user-message {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 12px 16px;
+  border-radius: 15px;
+  max-width: 75%;
+  word-wrap: break-word;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.avatar-message {
+  background: #f5f5f5;
+  color: #333;
+  padding: 12px 16px;
+  border-radius: 15px;
+  max-width: 75%;
+  border-left: 3px solid #667eea;
+}
+
+.system-message {
+  background: rgba(0, 0, 0, 0.05);
+  color: #999;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  text-align: center;
+  max-width: 80%;
+}
+
+.sender-name {
+  font-weight: bold;
+  font-size: 12px;
+  margin-bottom: 5px;
+  opacity: 0.7;
+}
+
+.content {
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.emotion-tags {
+  display: flex;
+  gap: 5px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.emotion-tag {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.audio-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.audio-indicator {
+  font-size: 14px;
+  animation: none;
+}
+
+.audio-indicator.playing {
+  animation: bounce 1s infinite;
+}
+
+@keyframes bounce {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+}
+
+.duration {
+  color: #999;
+  font-size: 11px;
+}
+
+.timestamp {
+  font-size: 11px;
+  opacity: 0.5;
+  margin-top: 5px;
+}
+
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+  color: #999;
+  font-size: 12px;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #f3f3f3;
+  border-top: 2px solid #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============ 输入区域 ============ */
+
+.input-section {
+  padding: 20px;
+  border-top: 1px solid #eee;
+  display: flex;
+  gap: 10px;
+  background: white;
+}
+
+.input-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.message-input {
+  flex: 1;
+  padding: 12px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 14px;
+  resize: vertical;
+  max-height: 100px;
+  min-height: 40px;
+  transition: border-color 0.3s;
+}
+
+.message-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.message-input:disabled {
+  background-color: #f5f5f5;
+  color: #ccc;
+  cursor: not-allowed;
+}
+
+.char-counter {
+  font-size: 12px;
+  color: #999;
+  text-align: right;
+}
+
+.char-counter span.warning {
+  color: #ff9800;
+  font-weight: bold;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.send-button,
+.clear-button {
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.send-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.send-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.send-button:disabled,
+.clear-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.clear-button {
+  background: linear-gradient(135deg, #e0e0e0 0%, #bdbdbd 100%);
+  color: #666;
+  padding: 10px 16px;
+}
+
+.button-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.connection-hint {
+  padding: 10px;
+  text-align: center;
+  font-size: 12px;
+  background: #fff9c4;
+  border-top: 1px solid #eee;
+  color: #f57f17;
+}
+
+.error-message {
+  color: #d32f2f;
+}
+
+.info-message {
+  color: #f57f17;
+}
+
+/* ============ 响应式设计 ============ */
+
+@media (max-width: 1200px) {
+  .live-stream-container {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .avatar-section {
+    min-height: 400px;
+  }
+
+  .chat-section {
+    min-height: 400px;
+  }
+}
+
+@media (max-width: 768px) {
+  .live-stream-container {
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .user-message,
+  .avatar-message {
+    max-width: 90%;
+  }
+
+  .input-section {
+    padding: 10px;
+    gap: 5px;
+  }
+
+  .message-input {
+    padding: 8px;
+    font-size: 13px;
+  }
+
+  .send-button {
+    padding: 8px 16px;
+    font-size: 12px;
+  }
+}
+</style>

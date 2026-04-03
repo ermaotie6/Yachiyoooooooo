@@ -3,6 +3,12 @@
 #include "../include/utils/HttpServer.hpp"
 #include "../include/utils/LogUtils.hpp"
 #include "../include/controllers/BaseController.hpp"
+#include "../include/controllers/MessageController.hpp"
+#include "../include/services/DatabaseService.hpp"
+#include "../include/services/WebSocketService.hpp"
+#include "../include/services/MessageService.hpp"
+#include "../include/services/AuthService.hpp"
+#include "../include/utils/JwtUtil.hpp"
 #include <memory>
 #include <thread>
 #include <csignal>
@@ -11,6 +17,10 @@ namespace yachiyo {
 
 // 全局应用程序实例
 std::shared_ptr<Application> Application::instance = nullptr;
+
+// 全局服务实例
+std::shared_ptr<Yachiyo::Services::DatabaseService> g_databaseService = nullptr;
+std::shared_ptr<Yachiyo::Services::WebSocketService> g_webSocketService = nullptr;
 
 Application::Application() 
     : configManager(nullptr), 
@@ -187,6 +197,26 @@ void Application::initializeControllers() {
     auto postController = std::make_shared<controllers::PostController>();
     httpServer->registerController("/api/v1/posts", postController);
     
+    // 注册消息控制器（需要数据库和WebSocket服务）
+    if (g_databaseService && g_webSocketService) {
+        auto messageService = std::make_shared<Services::MessageServiceImpl>();
+        auto authService = std::make_shared<Services::AuthServiceImpl>();
+        auto jwtUtil = std::make_shared<Utils::JwtUtil>(
+            configManager->getString("jwt.secret", "your-secret-key"),
+            configManager->getInt("jwt.expiresIn", 86400)
+        );
+        auto logger = Utils::LogUtils::getLogger("MessageController");
+        
+        auto messageController = std::make_shared<controllers::MessageController>(
+            messageService, authService, g_databaseService, g_webSocketService, jwtUtil, logger
+        );
+        httpServer->registerController("/api/v1/messages", messageController);
+        
+        logger->info("消息控制器已注册");
+    } else {
+        logger->warn("数据库或WebSocket服务未初始化，跳过消息控制器注册");
+    }
+    
     logger->info("控制器初始化完成");
 }
 
@@ -195,17 +225,39 @@ void Application::initializeDatabase() {
     
     // 获取数据库配置
     std::string dbHost = configManager->getString("database.host", "localhost");
-    int dbPort = configManager->getInt("database.port", 3306);
+    int dbPort = configManager->getInt("database.port", 5432);  // PostgreSQL默认端口
     std::string dbName = configManager->getString("database.name", "yachiyo");
-    std::string dbUser = configManager->getString("database.user", "root");
+    std::string dbUser = configManager->getString("database.user", "postgres");
     std::string dbPassword = configManager->getString("database.password", "");
     int dbPoolSize = configManager->getInt("database.poolSize", 10);
     
-    // 初始化数据库连接池
-    // 这里需要实现具体的数据库连接池初始化
-    // databasePool = std::make_shared<DatabasePool>(...);
-    
-    logger->info("数据库连接初始化完成: {}@{}:{}/{}", dbUser, dbHost, dbPort, dbName);
+    try {
+        // 构建连接字符串
+        std::string connectionString = "host=" + dbHost + 
+                                      " port=" + std::to_string(dbPort) +
+                                      " dbname=" + dbName +
+                                      " user=" + dbUser;
+        
+        if (!dbPassword.empty()) {
+            connectionString += " password=" + dbPassword;
+        }
+        
+        // 初始化全局数据库服务实例
+        g_databaseService = std::make_shared<Yachiyo::Services::DatabaseService>();
+        
+        // 初始化连接池
+        auto poolResult = g_databaseService->initializePool(connectionString, dbPoolSize);
+        if (!poolResult.isSuccess()) {
+            logger->error("数据库连接池初始化失败: {}", poolResult.getError());
+            return;
+        }
+        
+        logger->info("数据库连接初始化完成: {}@{}:{}/{} (pool size: {})", 
+                    dbUser, dbHost, dbPort, dbName, dbPoolSize);
+        
+    } catch (const std::exception& e) {
+        logger->error("数据库初始化异常: {}", e.what());
+    }
 }
 
 void Application::initializeAIServices() {
@@ -225,6 +277,35 @@ void Application::initializeAIServices() {
 
 void Application::initializeServices() {
     logger->info("正在初始化其他服务...");
+    
+    // 初始化WebSocket服务
+    try {
+        g_webSocketService = std::make_shared<Yachiyo::Services::WebSocketService>();
+        
+        int wsPort = configManager->getInt("websocket.port", 8081);
+        std::string wsHost = configManager->getString("websocket.host", "0.0.0.0");
+        
+        g_webSocketService->setPort(wsPort);
+        g_webSocketService->setHost(wsHost);
+        
+        // 启动WebSocket服务（在后台线程中）
+        std::thread wsThread([this]() {
+            try {
+                logger->info("WebSocket服务启动: {}:{}", 
+                            configManager->getString("websocket.host", "0.0.0.0"),
+                            configManager->getInt("websocket.port", 8081));
+                // g_webSocketService->run();  // 如果需要同步运行
+            } catch (const std::exception& e) {
+                logger->error("WebSocket服务异常: {}", e.what());
+            }
+        });
+        wsThread.detach();  // 在后台运行
+        
+        logger->info("WebSocket服务初始化完成: {}:{}", wsHost, wsPort);
+        
+    } catch (const std::exception& e) {
+        logger->error("WebSocket服务初始化失败: {}", e.what());
+    }
     
     // 初始化Redis连接池
     if (configManager->getBool("redis.enabled", false)) {

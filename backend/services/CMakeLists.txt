@@ -7,6 +7,14 @@ add_library(services
     src/services/ChatServiceImpl.cpp
     src/services/TTSServiceImpl.cpp
     src/services/Live2DServiceImpl.cpp
+    src/services/OpenClawGateway.cpp
+    src/services/TranslationService.cpp
+    src/services/GPTSoVITSService.cpp
+    src/services/Live2DAnimationService.cpp
+    src/services/AvatarResponseService.cpp
+    src/services/DeepSeekModerationService.cpp
+    src/services/DatabaseService.cpp
+    src/services/WebSocketService.cpp
 )
 
 target_include_directories(services
@@ -20,4 +28,7 @@ target_link_libraries(services
         models
         mappers
         utils
+        Threads::Threads
+    PRIVATE
+        PostgreSQL::PostgreSQL
 )

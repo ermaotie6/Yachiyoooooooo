@@ -5,6 +5,7 @@ add_library(controllers
     src/controllers/UserController.cpp
     src/controllers/PostController.cpp
     src/controllers/HealthController.cpp
+    src/controllers/MessageController.cpp
 )
 
 target_include_directories(controllers
@@ -18,4 +19,6 @@ target_link_libraries(controllers
         services
         dto
         utils
+    PRIVATE
+        Threads::Threads
 )

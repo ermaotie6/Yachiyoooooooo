@@ -1,0 +1,204 @@
+# Yachiyo 虚拟直播平台配置文件
+
+# ============ 服务器配置 ============
+server:
+  host: "0.0.0.0"
+  port: 8080
+  debug: true
+  log_level: "info"
+
+# ============ WebSocket 配置 ============
+websocket:
+  enabled: true
+  host: "0.0.0.0"
+  port: 9001
+  path: "/ws"
+  max_connections: 1000
+  heartbeat_interval_ms: 30000      # 30 秒心跳
+  idle_timeout_ms: 300000           # 5 分钟空闲超时
+
+# ============ 数据库配置 ============
+database:
+  type: "postgresql"
+  host: "localhost"
+  port: 5432
+  name: "yachiyo"
+  user: "yachiyo_app"
+  password: "${DB_PASSWORD}"  # 从环境变量读取
+  connection_timeout: 30
+  pool_size: 10
+  max_idle_time: 300
+
+# ============ Redis 缓存配置 ============
+redis:
+  enabled: true
+  host: "localhost"
+  port: 6379
+  database: 0
+  password: ""
+  ttl_seconds: 3600
+  pool_size: 10
+
+# ============ GPT-SoVITS 配置 ============
+gpt_sovits:
+  enabled: true
+  api_endpoint: "http://localhost:5000"  # 或云端端点
+  api_key: "${SOVITS_API_KEY}"           # 从环境变量读取
+  
+  # 语音参数预设
+  voice_presets:
+    default:
+      pitch: 1.0
+      speed: 1.0
+      energy: 0.5
+      reference_audio: ""
+    playful:
+      pitch: 1.2
+      speed: 1.1
+      energy: 0.8
+      reference_audio: ""
+    serious:
+      pitch: 0.9
+      speed: 0.9
+      energy: 0.6
+      reference_audio: ""
+
+# ============ Live2D 配置 ============
+live2d:
+  model_path: "./resources/live2d/models"
+  default_model: "yachiyo_default"
+  
+  # 表情映射
+  expression_map:
+    neutral: "f_default"
+    happy: "f_smile"
+    sad: "f_sad"
+    angry: "f_angry"
+    surprised: "f_surprised"
+    confused: "f_confused"
+    thinking: "f_thinking"
+  
+  # 动作映射
+  motion_map:
+    greet: "m_greet"
+    nod: "m_nod"
+    shake: "m_shake"
+    think: "m_think"
+    wave: "m_wave"
+    idle: "m_idle"
+
+# ============ 内容审核配置 ============
+moderation:
+  enabled: true
+  use_deepseek: true
+  deepseek_api_key: "${DEEPSEEK_API_KEY}"  # 从环境变量读取
+  deepseek_api_endpoint: "https://api.deepseek.com/v1"
+  
+  # 审核策略
+  quick_check_enabled: true         # 敏感词快速检查
+  ai_moderation_enabled: true       # AI 审核
+  contextual_check_enabled: true    # 上下文检查
+  
+  # 违规阈值 (0-1)
+  thresholds:
+    violence: 0.8
+    adult: 0.9
+    harassment: 0.7
+    spam: 0.6
+    hate: 0.7
+    profanity: 0.8
+  
+  # 敏感词库路径
+  keywords_path: "./resources/keywords/sensitive_words.txt"
+
+# ============ 本地 OpenClaw 部署配置 ============
+# 注意: OpenClaw 是独立部署的本地系统，不是 API 配置
+openclaw:
+  enabled: true
+  local_deployment: true
+  
+  # 本地部署参数
+  local_endpoint: "http://localhost:8000"  # OpenClaw 本地服务地址
+  local_config_path: "./resources/openclaw/config"
+  local_models_path: "./resources/openclaw/models"
+  
+  # 会话管理
+  session_ttl_seconds: 3600
+  max_context_history: 20            # 最多保留 20 条消息
+  memory_update_interval: 300        # 每 5 分钟更新一次记忆
+  
+  # 任务执行配置
+  enable_task_execution: true        # 启用 OpenClaw 的任务执行能力
+  task_timeout_seconds: 30           # 任务执行超时
+  
+  # 性能优化
+  response_cache_enabled: true
+  response_cache_ttl: 300            # 响应缓存 5 分钟
+  batch_processing_enabled: true
+  batch_size: 10
+
+# ============ 翻译配置 ============
+translation:
+  enabled: true
+  default_language: "zh"
+  
+  # 翻译服务
+  services:
+    - name: "deepseek"
+      api_key: "${DEEPSEEK_API_KEY}"
+      endpoint: "https://api.deepseek.com/v1"
+      priority: 1
+    
+    - name: "google"
+      api_key: "${GOOGLE_TRANSLATE_API_KEY}"
+      endpoint: "https://translation.googleapis.com/language/translate/v2"
+      priority: 2
+
+# ============ JWT 认证配置 ============
+jwt:
+  secret_key: "${JWT_SECRET_KEY}"
+  algorithm: "HS256"
+  expiration_minutes: 60
+  refresh_expiration_days: 7
+
+# ============ 日志配置 ============
+logging:
+  level: "info"  # debug, info, warning, error, critical
+  format: "json"  # json, text
+  file_path: "./logs/yachiyo.log"
+  max_file_size_mb: 100
+  retention_days: 30
+  
+  # 日志模块级别
+  modules:
+    database: "info"
+    websocket: "debug"
+    auth: "info"
+    moderation: "info"
+    openclaw: "info"
+
+# ============ 性能优化配置 ============
+performance:
+  # 消息处理
+  message_queue_size: 1000
+  worker_threads: 4
+  batch_interval_ms: 100
+  
+  # 数据库连接池
+  db_pool_min_size: 5
+  db_pool_max_size: 20
+  db_connection_timeout_ms: 5000
+  
+  # 缓存
+  cache_enabled: true
+  cache_max_size: 10000
+  cache_ttl_seconds: 3600
+
+# ============ 环境变量映射 ============
+# 从环境变量中读取敏感信息
+# 在 Docker 或生产环境中配置：
+# - DB_PASSWORD: PostgreSQL 密码
+# - JWT_SECRET_KEY: JWT 签名密钥
+# - SOVITS_API_KEY: GPT-SoVITS API 密钥
+# - DEEPSEEK_API_KEY: DeepSeek API 密钥
+# - GOOGLE_TRANSLATE_API_KEY: Google 翻译 API 密钥

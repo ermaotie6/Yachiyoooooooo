@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     libssl-dev \
     libyaml-cpp-dev \
-    libmysqlclient-dev \
+    libpq-dev \
     libhiredis-dev \
     libcurl4-openssl-dev \
     nlohmann-json3-dev \
@@ -61,7 +61,7 @@ ENV TZ=Asia/Shanghai
 RUN apt-get update && apt-get install -y \
     libssl3 \
     libyaml-cpp0.7 \
-    libmysqlclient21 \
+    libpq5 \
     libhiredis0.14 \
     libcurl4 \
     ca-certificates \
@@ -78,11 +78,10 @@ RUN groupadd -r yachiyo && useradd -r -g yachiyo -s /bin/bash -m yachiyo
 WORKDIR /app
 
 # 从构建阶段复制可执行文件
-COPY --from=builder /usr/local/bin/yachiyo /usr/local/bin/yachiyo
+COPY --from=builder /usr/local/bin/yachiyo_cpp /usr/local/bin/yachiyo_cpp
 
 # 复制配置文件
 COPY --from=builder /app/config /app/config
-COPY --from=builder /app/docker-compose.yml /app/docker-compose.yml
 
 # 创建日志目录
 RUN mkdir -p /app/logs && chown -R yachiyo:yachiyo /app/logs
@@ -90,15 +89,15 @@ RUN mkdir -p /app/logs && chown -R yachiyo:yachiyo /app/logs
 # 切换用户
 USER yachiyo
 
-# 暴露端口
-EXPOSE 8080
+# 暴露端口 (HTTP 8080, WebSocket 8081)
+EXPOSE 8080 8081
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/api/v1/health || exit 1
 
 # 设置入口点
-ENTRYPOINT ["yachiyo"]
+ENTRYPOINT ["/usr/local/bin/yachiyo_cpp"]
 
 # 默认命令
 CMD ["--config-dir", "/app/config", "--env", "production"]

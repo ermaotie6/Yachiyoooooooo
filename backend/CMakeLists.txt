@@ -12,11 +12,19 @@ add_compile_options(-Wall -Wextra -Wpedantic -O2)
 # 查找依赖
 find_package(Threads REQUIRED)
 find_package(GTest QUIET)
+find_package(PostgreSQL REQUIRED)
+find_package(nlohmann_json 3.2.0 QUIET)
+
+# 如果 nlohmann_json 未安装，使用 header-only 版本
+if(NOT nlohmann_json_FOUND)
+    message(STATUS "nlohmann_json not found, using header-only version")
+endif()
 
 # 包含目录
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/third_party
+    ${PostgreSQL_INCLUDE_DIRS}
 )
 
 # 子目录 - 按照依赖顺序添加
@@ -55,7 +63,13 @@ target_link_libraries(yachiyo_cpp
     mappers
     config
     Threads::Threads
+    PostgreSQL::PostgreSQL
 )
+
+# 如果 nlohmann_json 安装了，链接它
+if(nlohmann_json_FOUND)
+    target_link_libraries(yachiyo_cpp PRIVATE nlohmann_json::nlohmann_json)
+endif()
 
 # 安装目标
 install(TARGETS yachiyo_cpp DESTINATION bin)

@@ -1,10 +1,15 @@
 #include "../include/controllers/MessageController.hpp"
 #include "../include/utils/Logger.hpp"
+#include "../include/services/DatabaseService.hpp"
+#include "../include/services/WebSocketService.hpp"
 #include <nlohmann/json.hpp>
+#include <chrono>
 
 using json = nlohmann::json;
 
 namespace yachiyo::controllers {
+
+using namespace Yachiyo::Services;
 
 // ==================== 辅助函数 ====================
 
