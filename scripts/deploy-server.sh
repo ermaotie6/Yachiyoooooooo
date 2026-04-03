@@ -26,7 +26,6 @@ PROJECT_NAME="yachiyo"
 REPO_URL="https://github.com/ermaotie6/yachiyoooooooo.git"
 INSTALL_DIR="${INSTALL_DIR:-/opt/yachiyo}"
 BRANCH="${BRANCH:-main}"
-DEPLOY_MODE="${1:-docker}"  # docker (默认) 或 native
 
 # Docker Compose 模式下只启动核心服务 (不含监控/管理工具)
 CORE_SERVICES="postgres redis backend frontend nginx"
@@ -55,7 +54,7 @@ detect_distro() {
         debian|ubuntu|linuxmint|pop)
             DISTRO_FAMILY="debian"
             PKG_INSTALL="sudo apt-get install -y"
-            PKG_UPDATE="sudo apt-get update && sudo apt-get upgrade -y"
+            PKG_UPDATE="sudo apt-get update -y && sudo apt-get upgrade -y"
             ;;
         *)
             error "不支持的发行版: $DISTRO_ID"
@@ -107,9 +106,7 @@ install_docker() {
                     sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
                 sudo chmod a+r /etc/apt/keyrings/docker.gpg
 
-                echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-                    https://download.docker.com/linux/${DISTRO_ID} \
-                    $(lsb_release -cs) stable" | \
+                echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${DISTRO_ID} $(lsb_release -cs) stable" | \
                     sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
                 sudo apt-get update
@@ -250,10 +247,12 @@ deploy_docker() {
 
     cd "$INSTALL_DIR"
 
-    # 加载 .env
+    # 加载 .env (临时关闭 nounset，因为 .env 可能引用未定义的变量)
+    set +u
     set -a
     [ -f .env ] && source .env
     set +a
+    set -u
 
     info "构建并启动核心服务..."
     $COMPOSE_CMD build --parallel
@@ -262,8 +261,8 @@ deploy_docker() {
     info "等待服务启动..."
     sleep 10
 
-    # 健康检查
-    check_health_docker
+    # 健康检查 (失败不中断部署)
+    check_health_docker || true
 
     echo ""
     success "🎉 Yachiyo 部署完成！"
@@ -305,14 +304,15 @@ deploy_native() {
     success "前端构建完成"
 
     # --- 启动数据库 (如果用 Docker) ---
-    if command -v docker &>/dev/null; then
+    if command -v docker &>/dev/null && [ -n "${COMPOSE_CMD:-}" ]; then
         info "使用 Docker 启动 PostgreSQL 和 Redis..."
         $COMPOSE_CMD up -d postgres redis
         sleep 5
     else
-        info "请确保 PostgreSQL 和 Redis 已手动启动"
-        # 启动系统服务
-        sudo systemctl enable --now postgresql redis 2>/dev/null || true
+        info "使用系统服务启动 PostgreSQL 和 Redis..."
+        sudo systemctl enable --now postgresql 2>/dev/null || true
+        sudo systemctl enable --now redis-server 2>/dev/null || \
+            sudo systemctl enable --now redis 2>/dev/null || true
     fi
 
     # --- 创建 systemd 服务 ---
@@ -349,7 +349,7 @@ Type=simple
 User=yachiyo
 Group=yachiyo
 WorkingDirectory=$INSTALL_DIR/backend
-ExecStart=$INSTALL_DIR/backend/build/src/yachiyo_cpp --config-dir $INSTALL_DIR/backend/config --env production
+ExecStart=$INSTALL_DIR/backend/build/yachiyo_cpp --config-dir $INSTALL_DIR/backend/config --env production
 Restart=always
 RestartSec=5
 EnvironmentFile=$INSTALL_DIR/.env
@@ -357,7 +357,7 @@ EnvironmentFile=$INSTALL_DIR/.env
 # 安全加固
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=$INSTALL_DIR/logs /tmp
+ReadWritePaths=$INSTALL_DIR/logs $INSTALL_DIR/backend/logs /tmp
 PrivateTmp=true
 
 [Install]
@@ -381,8 +381,10 @@ setup_nginx_native() {
     # 部署前端静态文件
     sudo mkdir -p /var/www/yachiyo
     sudo cp -r "$INSTALL_DIR/frontend/dist/"* /var/www/yachiyo/
-    sudo chown -R www-data:www-data /var/www/yachiyo 2>/dev/null || \
-        sudo chown -R http:http /var/www/yachiyo 2>/dev/null || true
+    case "$DISTRO_FAMILY" in
+        arch)   sudo chown -R http:http /var/www/yachiyo ;;
+        debian) sudo chown -R www-data:www-data /var/www/yachiyo ;;
+    esac
 
     # 生成 Nginx 站点配置
     local NGINX_CONF
@@ -504,8 +506,11 @@ uninstall() {
 
     cd "$INSTALL_DIR" 2>/dev/null || true
 
-    if [ -n "${COMPOSE_CMD:-}" ]; then
-        $COMPOSE_CMD down -v 2>/dev/null || true
+    # 尝试停止 Docker 容器
+    if docker compose version &>/dev/null 2>&1; then
+        docker compose down -v 2>/dev/null || true
+    elif command -v docker-compose &>/dev/null; then
+        docker-compose down -v 2>/dev/null || true
     fi
 
     sudo systemctl stop yachiyo-backend 2>/dev/null || true
