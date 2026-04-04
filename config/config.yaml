@@ -65,10 +65,10 @@ gpt_sovits:
 
 # ============ Live2D 配置 ============
 live2d:
-  model_path: "./resources/live2d/models"
-  default_model: "yachiyo_default"
+  model_path: "./resources/live2d"
+  default_model: "yachiyo"
   
-  # 表情映射
+  # 表情映射 (emotion → expression文件名)
   expression_map:
     neutral: "f_default"
     happy: "f_smile"
@@ -77,6 +77,8 @@ live2d:
     surprised: "f_surprised"
     confused: "f_confused"
     thinking: "f_thinking"
+    cry: "f_cry"
+    squint: "f_squint"
   
   # 动作映射
   motion_map:

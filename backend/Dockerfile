@@ -89,8 +89,8 @@ RUN mkdir -p /app/logs && chown -R yachiyo:yachiyo /app/logs
 # 切换用户
 USER yachiyo
 
-# 暴露端口 (HTTP 8080, WebSocket 8081)
-EXPOSE 8080 8081
+# 暴露端口 (HTTP 8080, WebSocket 9001)
+EXPOSE 8080 9001
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \

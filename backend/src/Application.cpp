@@ -282,7 +282,7 @@ void Application::initializeServices() {
     try {
         g_webSocketService = std::make_shared<Yachiyo::Services::WebSocketService>();
         
-        int wsPort = configManager->getInt("websocket.port", 8081);
+        int wsPort = configManager->getInt("websocket.port", 9001);
         std::string wsHost = configManager->getString("websocket.host", "0.0.0.0");
         
         g_webSocketService->setPort(wsPort);
@@ -293,7 +293,7 @@ void Application::initializeServices() {
             try {
                 logger->info("WebSocket服务启动: {}:{}", 
                             configManager->getString("websocket.host", "0.0.0.0"),
-                            configManager->getInt("websocket.port", 8081));
+                            configManager->getInt("websocket.port", 9001));
                 g_webSocketService->run();
             } catch (const std::exception& e) {
                 logger->error("WebSocket服务异常: {}", e.what());

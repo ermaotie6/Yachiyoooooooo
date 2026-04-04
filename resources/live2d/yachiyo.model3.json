@@ -1,0 +1,45 @@
+{
+	"Version": 3,
+	"FileReferences": {
+		"Moc": "yachiyo.moc3",
+		"Textures": [
+			"yachiyo.8192/texture_00.png",
+			"yachiyo.8192/texture_01.png"
+		],
+		"Physics": "yachiyo.physics3.json",
+		"DisplayInfo": "yachiyo.cdi3.json",
+		"Expressions": [
+			{
+				"Name": "f_smile",
+				"File": "f_smile.exp3.json"
+			},
+			{
+				"Name": "f_sad",
+				"File": "f_sad.exp3.json"
+			},
+			{
+				"Name": "f_squint",
+				"File": "f_squint.exp3.json"
+			},
+			{
+				"Name": "f_cry",
+				"File": "f_cry.exp3.json"
+			}
+		]
+	},
+	"Groups": [
+		{
+			"Target": "Parameter",
+			"Name": "EyeBlink",
+			"Ids": [
+				"ParamEyeLOpen",
+				"ParamEyeROpen"
+			]
+		},
+		{
+			"Target": "Parameter",
+			"Name": "LipSync",
+			"Ids": []
+		}
+	]
+}
