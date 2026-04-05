@@ -1,213 +1,244 @@
-# OpenClaw 对接说明
+# OpenClaw 对接说明 — 桥接服务架构
 
 > 适用于 Yachiyo 虚拟直播平台  
-> OpenClaw 是 AI Agent 编排框架，负责协调 AI 对话、内容审核、语音合成、Live2D 动作等模块。
+> 更新时间: 2025-07
 
 ---
 
-## 1. OpenClaw 在 Yachiyo 中的角色
+## 1. 架构总览
 
-OpenClaw 是整个 AI 直播流水线的 **中枢调度器**，负责将用户的一条消息转换为完整的虚拟主播响应（包括文字、语音、表情、动作）。
-
-### 消息处理流水线
+Yachiyo C++ 后端 **不直接连接 OpenClaw**，而是通过一个 Node.js 桥接服务中转：
 
 ```
-用户发送弹幕/消息
-  │
-  ▼
-┌─────────────────┐
-│  Yachiyo 后端   │
-│  (Crow HTTP)    │
-└────────┬────────┘
-         │ POST /process
-         ▼
-┌─────────────────┐
-│   OpenClaw      │  ← 独立部署的 AI Agent 服务
-│  (localhost:8000)│
-│                 │
-│  1. 内容审核    │  → DeepSeek Moderation (内置或回调)
-│  2. 上下文管理  │  → 维护对话历史 + 角色记忆
-│  3. AI 生成回复 │  → DeepSeek Chat / 自定义模型
-│  4. 情感分析    │  → 从回复中提取情感标签
-│  5. 动作规划    │  → 根据情感决定 Live2D 动作
-│                 │
-└────────┬────────┘
-         │ 返回 OpenClawResponse
-         ▼
-┌─────────────────┐
-│  Yachiyo 后端   │
-│  后处理:        │
-│  1. 语音合成    │  → GPT-SoVITS
-│  2. WebSocket推送│ → 前端
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│    前端         │
-│  1. 显示文字    │
-│  2. 播放语音    │
-│  3. Live2D动画  │
-│  4. 口型同步    │
-└─────────────────┘
+┌──────────────┐   HTTP POST    ┌──────────────┐    session     ┌──────────────┐
+│              │  ──────────→   │              │  ──────────→   │              │
+│  C++ 后端    │    :8765       │  桥接服务     │               │   OpenClaw   │
+│  (Crow)      │                │  (Node.js)   │               │  (:8000)     │
+│              │   HTTP POST    │              │    result      │              │
+│              │  ←──────────   │              │  ←──────────   │              │
+└──────────────┘    :8766       └──────────────┘               └──────────────┘
 ```
+
+### 为什么要加桥接层？
+
+| 原因 | 说明 |
+|------|------|
+| **会话管理** | Node.js 桥接维护用户对话 session，自动管理上下文历史，C++ 端无需关心 |
+| **协议适配** | OpenClaw 可能有 Python SDK / WebSocket / 特殊认证，桥接层统一转为简单 HTTP JSON |
+| **解耦** | C++ 后端只关心「发送消息→拿到回复」，OpenClaw 的部署/替换对后端完全透明 |
+| **异步支持** | 桥接服务支持同步返回 + 异步回调两种模式 |
+| **易于调试** | Node.js 侧可以方便地加日志、mock、限流等中间件 |
 
 ---
 
-## 2. 项目中的相关代码
+## 2. 端口分配
 
-### 2.1 后端 Gateway
+| 端口 | 服务 | 方向 | 说明 |
+|------|------|------|------|
+| **8765** | 桥接服务 (接收端) | C++ → Bridge | 后端发送用户消息到这里 |
+| **8766** | 桥接服务 (回调端) | Bridge → C++ | 异步结果推回 / C++ 轮询 |
+| **8000** | OpenClaw | Bridge → OpenClaw | 桥接服务内部连接 |
 
-**文件**: `backend/src/services/OpenClawGateway.cpp`
+---
 
-```cpp
-// 已实现的功能:
-// - processMessage(text, context, emotion_hints) → 发送到 OpenClaw
-// - 健康检查: GET /health
-// - 响应缓存 (TTL 可配置)
-// - 自动重试
+## 3. 数据流详解
+
+### 3.1 同步模式（默认）
+
+```
+1. C++ 后端 POST http://bridge:8765/process
+   {
+     "request_id": "req_user123_1234567890",
+     "user_id": "user123",
+     "text": "你好呀!",
+     "context": "",
+     "emotion_hints": ["开心"],
+     "max_tokens": 1000,
+     "temperature": 0.7
+   }
+
+2. 桥接服务:
+   - 查找/创建 user123 的 session
+   - 追加用户消息到 session 历史
+   - 转发完整上下文到 OpenClaw POST :8000/process
+   - 等待 OpenClaw 返回
+
+3. OpenClaw 返回:
+   {
+     "text": "你好~欢迎来到我的直播间!",
+     "emotions": ["happy"],
+     "actions": ["wave"]
+   }
+
+4. 桥接服务:
+   - 追加助手回复到 session
+   - 组装标准化响应返回给 C++
+
+5. C++ 后端收到:
+   {
+     "request_id": "req_user123_1234567890",
+     "success": true,
+     "text": "你好~欢迎来到我的直播间!",
+     "emotions": ["happy"],
+     "actions": ["wave"],
+     "processing_time_ms": 1200,
+     "session_id": "session_user123_...",
+     "metadata": {
+       "openclaw_processing_ms": 1100,
+       "bridge_overhead_ms": 100,
+       "message_count": 2
+     }
+   }
 ```
 
-**请求格式** (POST `http://localhost:8000/process`):
+### 3.2 异步模式（可选）
 
-```json
-{
-  "request_id": "uuid-string",
-  "text": "用户发送的消息",
-  "context": "当前对话上下文",
-  "emotion_hints": ["开心", "好奇"],
-  "max_tokens": 512,
-  "temperature": 0.7
-}
 ```
-
-**响应格式**:
-
-```json
-{
-  "request_id": "uuid-string",
-  "success": true,
-  "text": "八千代辉夜姬的回复文本",
-  "emotions": ["happy", "curious"],
-  "actions": ["nod", "smile"],
-  "processing_time_ms": 350
-}
-```
-
-### 2.2 DTO 定义
-
-**文件**: `backend/include/dto/OpenClawDTO.hpp`
-
-```cpp
-struct OpenClawRequest {
-    std::string requestId;
-    std::string text;
-    std::string context;
-    std::string userId;
-    std::string conversationId;
-    int maxTokens = 512;
-    float temperature = 0.7f;
-    std::vector<std::string> emotionHints;
-};
-
-struct OpenClawResponse {
-    std::string requestId;
-    bool success;
-    std::string text;
-    std::vector<std::string> emotions;
-    std::vector<std::string> actions;
-    int processingTimeMs;
-    std::string errorMessage;
-};
-```
-
-### 2.3 配置
-
-**文件**: `config/config.yaml`
-
-```yaml
-openclaw:
-  enabled: true
-  local_deployment: true
-  local_endpoint: "http://localhost:8000"
-  session_ttl_seconds: 3600
-  max_context_history: 20
-  memory_update_interval: 300
-  enable_task_execution: true
-  task_timeout_seconds: 30
-  response_cache_enabled: true
-  response_cache_ttl: 300
-  batch_processing_enabled: true
-  batch_size: 10
+1. C++ 后端 POST http://bridge:8765/process → 桥接立即返回 202
+2. 桥接处理完成后 POST http://backend:8766/callback → 推送结果
+3. 或者 C++ 后端 GET http://bridge:8766/result/{requestId} → 轮询结果
 ```
 
 ---
 
-## 3. OpenClaw 部署
+## 4. 代码文件清单
 
-### 3.1 什么是 OpenClaw
+### 4.1 桥接服务 (Node.js)
 
-OpenClaw 是一个 AI Agent 框架 / 工作流编排器。如果你不熟悉 OpenClaw，也可以用以下替代方案：
+```
+bridge/
+├── package.json           # 依赖: express, axios, uuid, winston, dotenv
+├── Dockerfile             # Node.js 18-alpine
+├── .env.example           # 环境变量模板
+└── src/
+    ├── index.js           # 主入口 (两个 Express 实例: 8765 + 8766)
+    ├── session.js         # 会话管理器 (内存存储, TTL 过期)
+    └── logger.js          # winston 日志
+```
 
-| 方案 | 复杂度 | 说明 |
-| ---- | ---- | ---- |
-| **OpenClaw** | 高 | 完整 Agent 框架，支持工具调用、记忆管理 |
-| **LangChain + FastAPI** | 中 | Python，灵活但需自己搭 API 层 |
-| **自定义 FastAPI 服务** | 低 | 最简方案，只需包装 DeepSeek API + 角色 prompt |
+### 4.2 C++ 后端
 
-### 3.2 最简替代方案（推荐初期使用）
+| 文件 | 变更 |
+|------|------|
+| `backend/include/services/OpenClawGateway.hpp` | 改为桥接模式：`initialize(bridgeEndpoint, callbackPort)` |
+| `backend/src/services/OpenClawGateway.cpp` | `sendToBridge()` 替代 `sendRequest()`，新增 `processMessageAsync()` |
+| `backend/src/services/AvatarResponseService.cpp` | 初始化改为 `initialize("http://localhost:8765", 8766)` |
+| `backend/include/dto/OpenClawDTO.hpp` | 无变更 (DTO 格式兼容) |
 
-如果暂不需要完整的 Agent 框架，可以用一个简单的 Python FastAPI 服务代替 OpenClaw：
+### 4.3 配置文件
+
+| 文件 | 变更 |
+|------|------|
+| `config/config.yaml` | `openclaw.bridge_endpoint` / `openclaw.callback_port` |
+| `backend/.env.example` | `OPENCLAW_BRIDGE_ENDPOINT` / `OPENCLAW_CALLBACK_PORT` |
+| `docker-compose.yml` | 新增 `bridge` 服务 |
+
+---
+
+## 5. 部署方式
+
+### 5.1 Docker Compose（推荐）
+
+已集成到 `docker-compose.yml`，直接启动即可：
+
+```bash
+docker-compose up -d bridge
+```
+
+需要设置环境变量：
+
+```bash
+# .env
+OPENCLAW_ENDPOINT=http://host.docker.internal:8000
+OPENCLAW_API_KEY=your-key  # 如果 OpenClaw 需要
+```
+
+### 5.2 独立运行
+
+```bash
+cd bridge
+npm install
+cp .env.example .env
+# 编辑 .env 配置 OpenClaw 地址
+npm start
+```
+
+### 5.3 开发模式
+
+```bash
+cd bridge
+npm run dev   # 自动热重载 (node --watch)
+```
+
+---
+
+## 6. 桥接服务 API
+
+### 6.1 接收端 (:8765)
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/health` | 健康检查 (含活跃会话数) |
+| `POST` | `/process` | 处理用户消息 → 转发到 OpenClaw |
+| `GET` | `/session/:userId` | 获取用户会话信息 |
+| `DELETE` | `/session/:userId` | 清除用户会话 |
+
+### 6.2 回调端 (:8766)
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/health` | 健康检查 |
+| `POST` | `/callback` | 接收 OpenClaw 异步回调 |
+| `GET` | `/result/:requestId` | 轮询异步结果 |
+
+---
+
+## 7. OpenClaw 替代方案
+
+如果暂时不部署真正的 OpenClaw，可以用以下 Python 服务替代（桥接服务连接到它）：
 
 ```python
 # openclaw_simple/main.py
 from fastapi import FastAPI
 from pydantic import BaseModel
-import httpx
-import uuid
+import httpx, uuid, json
 
 app = FastAPI()
 
 DEEPSEEK_API_KEY = "your-key-here"
-DEEPSEEK_ENDPOINT = "https://api.deepseek.com/v1/chat/completions"
-
 SYSTEM_PROMPT = """你是八千代辉夜姬（やちよかぐやひめ），一个可爱的虚拟主播。
 性格：温柔、偶尔傲娇、喜欢和观众互动。
-说话风格：口语化、偶尔用日语词汇、会用颜文字。
-回复时请同时输出：
-1. 回复文字
-2. 情感标签（如 happy, sad, surprised 等）
-3. 建议动作（如 nod, wave, think 等）
-
-请严格以 JSON 格式返回:
-{"text": "回复内容", "emotions": ["emotion1"], "actions": ["action1"]}
-"""
+回复时请以 JSON 格式返回:
+{"text": "回复内容", "emotions": ["emotion1"], "actions": ["action1"]}"""
 
 class ProcessRequest(BaseModel):
-    request_id: str = ""
+    session_id: str = ""
+    messages: list = []
+    user_id: str = ""
     text: str
     context: str = ""
     emotion_hints: list[str] = []
-    max_tokens: int = 512
+    max_tokens: int = 1000
     temperature: float = 0.7
+    metadata: dict = {}
 
 @app.post("/process")
 async def process(req: ProcessRequest):
-    request_id = req.request_id or str(uuid.uuid4())
+    # 构建消息历史
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-    ]
-    if req.context:
-        messages.append({"role": "assistant", "content": f"[上下文] {req.context}"})
-    messages.append({"role": "user", "content": req.text})
+    # 使用桥接服务传来的会话历史
+    for msg in req.messages[-10:]:  # 最近 10 条
+        messages.append({"role": msg["role"], "content": msg["content"]})
+    
+    # 如果 messages 里没有当前消息, 补上
+    if not req.messages or req.messages[-1].get("content") != req.text:
+        messages.append({"role": "user", "content": req.text})
     
     async with httpx.AsyncClient() as client:
         resp = await client.post(
-            DEEPSEEK_ENDPOINT,
-            headers={
-                "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-                "Content-Type": "application/json",
-            },
+            "https://api.deepseek.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}"},
             json={
                 "model": "deepseek-chat",
                 "messages": messages,
@@ -217,136 +248,71 @@ async def process(req: ProcessRequest):
             timeout=30.0,
         )
     
-    data = resp.json()
-    content = data["choices"][0]["message"]["content"]
+    content = resp.json()["choices"][0]["message"]["content"]
     
-    # 尝试解析 JSON
-    import json
     try:
         parsed = json.loads(content)
         return {
-            "request_id": request_id,
-            "success": True,
             "text": parsed.get("text", content),
             "emotions": parsed.get("emotions", ["neutral"]),
             "actions": parsed.get("actions", ["idle"]),
-            "processing_time_ms": 0,
         }
     except json.JSONDecodeError:
-        return {
-            "request_id": request_id,
-            "success": True,
-            "text": content,
-            "emotions": ["neutral"],
-            "actions": ["idle"],
-            "processing_time_ms": 0,
-        }
+        return {"text": content, "emotions": ["neutral"], "actions": ["idle"]}
 
 @app.get("/health")
 async def health():
     return {"status": "ok"}
 ```
 
-### 3.3 部署替代服务
+部署：
 
 ```bash
-# 安装依赖
 pip install fastapi uvicorn httpx
-
-# 启动
-cd openclaw_simple
 uvicorn main:app --host 0.0.0.0 --port 8000
-
-# 测试
-curl -X POST http://localhost:8000/process \
-  -H "Content-Type: application/json" \
-  -d '{"text": "你好呀!", "request_id": "test-001"}'
-```
-
-### 3.4 Docker 部署
-
-```dockerfile
-# openclaw_simple/Dockerfile
-FROM python:3.11-slim
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
-EXPOSE 8000
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-添加到 `docker-compose.yml`:
-
-```yaml
-  openclaw:
-    build: ./openclaw_simple
-    ports:
-      - "8000:8000"
-    environment:
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
-    restart: unless-stopped
 ```
 
 ---
 
-## 4. 完整的前后端通信流程
+## 8. 端到端消息流程
 
-### 4.1 直播间消息处理（端到端）
+完整的一条用户消息处理链路：
 
 ```
-1. 前端 (LiveStream.vue)
-   └── useWebSocket.ts 发送: {"type": "chat", "text": "你好", "user_id": "123"}
-
-2. 后端 WebSocket 收到消息
-   └── AIController / WebSocket handler
-
-3. 内容审核
-   └── DeepSeekModerationService.moderate(request)
-   └── 如果 verdict == "block" → 返回拒绝提示
-
-4. 调用 OpenClaw
-   └── OpenClawGateway.processMessage(text, context, emotions)
-   └── POST http://localhost:8000/process
-   └── 返回: {text, emotions, actions}
-
-5. 语音合成
-   └── GPTSoVITSService.synthesize(response.text, emotion)
-   └── POST http://localhost:5000/synthesize
-   └── 返回: {audio_url, duration_ms}
-
-6. WebSocket 推送
-   └── 组装完整响应:
-       {
-         "request_id": "xxx",
-         "text": "八千代的回复",
-         "audio_url": "/audio/xxx.wav",
-         "audio_duration_ms": 2500,
-         "emotions": ["happy"],
-         "actions": ["nod", "smile"],
-         "animation_commands": [
-           {"type": "expression", "value": "happy", "duration": 3000},
-           {"type": "motion", "value": "nod", "duration": 1500}
-         ]
-       }
-
-7. 前端处理
-   └── 显示回复文字
-   └── 播放音频
-   └── Live2D 切换表情 + 播放动作
-   └── 音频时长内同步口型动画
+用户发送弹幕 "你好呀!"
+  │
+  ▼
+┌─ 前端 WebSocket ────────────────────────────────────┐
+│  useWebSocket.ts → {"type":"chat","text":"你好呀!"} │
+└──────────────────────────┬──────────────────────────┘
+                           │ ws://backend:9001
+                           ▼
+┌─ C++ 后端 (AvatarResponseService) ──────────────────┐
+│  ① 内容审核 → DeepSeekModerationService             │
+│  ② POST http://bridge:8765/process                   │
+│     └─→ 桥接服务 → OpenClaw → 回复文本 + 情感 + 动作│
+│  ③ 翻译 (如需) → TranslationService                 │
+│  ④ TTS 语音 → GPTSoVITSService                      │
+│  ⑤ 动画命令 → Live2DAnimationService                │
+│  ⑥ 组装完整响应                                      │
+└──────────────────────────┬──────────────────────────┘
+                           │ WebSocket push
+                           ▼
+┌─ 前端 ──────────────────────────────────────────────┐
+│  显示文字 → 播放语音 → Live2D 表情/动作 → 口型同步  │
+└─────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 5. 注意事项
+## 9. 注意事项
 
-1. **延迟优化**: OpenClaw (AI 生成) 是延迟最高的环节（1~5秒），可以：
-   - 使用流式响应（SSE），先返回文字再异步合成语音
-   - 缓存常见问答
+1. **会话持久化**: 当前桥接服务的 session 存储在内存中，重启会丢失。如需持久化，可接入 Redis。
 
-2. **对话记忆**: `max_context_history: 20` 表示保留最近 20 条对话，可在 config.yaml 调整。
+2. **延迟**: AI 生成（OpenClaw/DeepSeek）是延迟最高的环节（1~5秒）。桥接层本身开销极低（<10ms）。
 
-3. **健康检查**: Yachiyo 后端会定期调用 `GET /health` 检查 OpenClaw 是否在线。
+3. **OpenClaw 不可用时**: 桥接服务会返回 503，C++ 端 `OpenClawGateway` 会将错误透传给 `AvatarResponseService`。
 
-4. **错误处理**: `OpenClawGateway` 已实现自动重试和缓存回退，当 OpenClaw 不可用时会返回错误提示而非崩溃。
+4. **多用户并发**: 桥接服务使用 Express 异步处理，每个用户独立 session，天然支持并发。
+
+5. **日志**: 桥接服务日志在 `bridge/logs/` 目录，包含每个请求的完整链路追踪。

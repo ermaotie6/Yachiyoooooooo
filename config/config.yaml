@@ -113,31 +113,30 @@ moderation:
   # 敏感词库路径
   keywords_path: "./resources/keywords/sensitive_words.txt"
 
-# ============ 本地 OpenClaw 部署配置 ============
-# 注意: OpenClaw 是独立部署的本地系统，不是 API 配置
+# ============ OpenClaw 桥接服务配置 ============
+# 架构: C++ 后端 ↔ Node.js 桥接服务 ↔ OpenClaw
+# C++ 后端通过桥接服务间接与 OpenClaw 通信
 openclaw:
   enabled: true
-  local_deployment: true
   
-  # 本地部署参数
-  local_endpoint: "http://localhost:8000"  # OpenClaw 本地服务地址
-  local_config_path: "./resources/openclaw/config"
-  local_models_path: "./resources/openclaw/models"
+  # 桥接服务地址 (Node.js bridge 的接收端口)
+  bridge_endpoint: "http://localhost:8765"
+  # C++ 后端回调监听端口 (桥接服务将结果推到这里)
+  callback_port: 8766
+  
+  # OpenClaw 真实地址 (由桥接服务管理, 此处仅作记录)
+  openclaw_endpoint: "http://localhost:8000"
   
   # 会话管理
   session_ttl_seconds: 3600
   max_context_history: 20            # 最多保留 20 条消息
-  memory_update_interval: 300        # 每 5 分钟更新一次记忆
   
-  # 任务执行配置
-  enable_task_execution: true        # 启用 OpenClaw 的任务执行能力
-  task_timeout_seconds: 30           # 任务执行超时
+  # 请求超时 (秒)
+  request_timeout: 30
   
   # 性能优化
   response_cache_enabled: true
   response_cache_ttl: 300            # 响应缓存 5 分钟
-  batch_processing_enabled: true
-  batch_size: 10
 
 # ============ 翻译配置 ============
 translation:

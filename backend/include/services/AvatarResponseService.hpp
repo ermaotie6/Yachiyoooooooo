@@ -3,6 +3,8 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <map>
+#include <mutex>
 #include <nlohmann/json.hpp>
 #include "utils/Result.hpp"
 #include "dto/OpenClawDTO.hpp"
@@ -19,6 +21,7 @@ class OpenClawGateway;
 class TranslationService;
 class GPTSoVITSService;
 class Live2DAnimationService;
+class DeepSeekModerationService;
 
 /**
  * 虚拱响应服务 - 整合所有服务生成完整的虚拱响应
@@ -35,10 +38,12 @@ class AvatarResponseService {
 public:
     struct AvatarResponse {
         std::string responseId;
+        std::string requestId;
         std::string messageId;
         std::string userId;
         
         // 文本部分
+        std::string text;                // 最终文本 (翻译后或原文)
         std::string originalText;        // 中文原文
         std::string translatedText;      // 翻译后文本
         std::string targetLanguage;      // 目标语言
@@ -50,25 +55,35 @@ public:
         // 音频部分
         std::string audioUrl;
         std::string audioBase64;
-        int audioDurationMs;
+        int audioDurationMs = 0;
         
         // 动画部分
         std::vector<dto::Live2DCommand> animationCommands;
-        int totalDurationMs;
+        int totalDurationMs = 0;
+        
+        // 状态
+        bool isBlocked = false;
+        std::map<std::string, std::string> metadata;
         
         // 元数据
-        int64_t processingTimeMs;
-        int64_t timestamp;
+        int64_t processingTimeMs = 0;
+        int64_t timestamp = 0;
     };
     
-    AvatarResponseService();
+    AvatarResponseService(
+        std::shared_ptr<OpenClawGateway> openclaw,
+        std::shared_ptr<TranslationService> translation,
+        std::shared_ptr<GPTSoVITSService> tts,
+        std::shared_ptr<Live2DAnimationService> animation,
+        std::shared_ptr<DeepSeekModerationService> moderation = nullptr
+    );
     ~AvatarResponseService();
     
     /**
      * 初始化服务
-     * @param config 配置文件路径
+     * @param avatar_language 虚拟形象默认语言
      */
-    bool initialize(const std::string& configPath = "");
+    bool initialize(const std::string& avatar_language = "zh-CN");
     
     /**
      * 处理用户消息并生成完整虚拱响应
@@ -110,8 +125,12 @@ private:
     std::shared_ptr<TranslationService> translation_service_;
     std::shared_ptr<GPTSoVITSService> tts_service_;
     std::shared_ptr<Live2DAnimationService> animation_service_;
+    std::shared_ptr<DeepSeekModerationService> moderation_service_;
     
+    std::string default_language_;
     std::mutex service_mutex_;
+    std::mutex cache_mutex_;
+    std::map<std::string, AvatarResponse> response_cache_;
     
     /**
      * 内部处理流程步骤

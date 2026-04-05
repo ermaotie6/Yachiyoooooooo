@@ -12,8 +12,8 @@ Utils::Result<dto::OpenClawResponse> MockOpenClawGateway::processMessage(
 ) {
     dto::OpenClawResponse response;
     response.text = "这是来自 OpenClaw 的模拟回复: " + text;
-    response.detectedEmotions = {"开心"};
-    response.suggestedActions = {"wave"};
+    response.emotions = {"开心"};
+    response.actions = {"wave"};
     
     return Utils::Result<dto::OpenClawResponse>::success(response);
 }
@@ -103,7 +103,7 @@ void AvatarResponseServiceTest::initializeAllServices() {
     moderation_service_ = std::make_shared<services::DeepSeekModerationService>();
     
     // 初始化各服务
-    ASSERT_TRUE(openclaw_gateway_->initialize("http://localhost:8888/api/v1/chat"));
+    ASSERT_TRUE(openclaw_gateway_->initialize("http://localhost:8765", 8766));
     ASSERT_TRUE(translation_service_->initialize());
     ASSERT_TRUE(tts_service_->initialize());
     ASSERT_TRUE(animation_service_->initialize());
@@ -118,7 +118,7 @@ void AvatarResponseServiceTest::initializeAllServices() {
         moderation_service_
     );
     
-    ASSERT_TRUE(avatar_service_->initialize(nullptr, "zh-CN"));
+    ASSERT_TRUE(avatar_service_->initialize("zh-CN"));
 }
 
 void AvatarResponseServiceTest::createMockServices() {

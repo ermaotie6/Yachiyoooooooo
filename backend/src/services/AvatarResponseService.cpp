@@ -28,7 +28,6 @@ AvatarResponseService::~AvatarResponseService() {
 // ==================== 初始化 ====================
 
 bool AvatarResponseService::initialize(
-    const std::shared_ptr<TranslationService::EngineConfig>& trans_config,
     const std::string& avatar_language
 ) {
     LOG_INFO("初始化 Avatar 响应服务");
@@ -37,9 +36,8 @@ bool AvatarResponseService::initialize(
         LOG_ERROR("OpenClaw 网关未配置");
         return false;
     }
-    if (!openclaw_gateway_->initialize("http://localhost:8888/api/v1/chat")) {
-        LOG_ERROR("OpenClaw 网关初始化失败");
-        return false;
+    if (!openclaw_gateway_->initialize("http://localhost:8765", 8766)) {
+        LOG_WARN("OpenClaw 桥接服务暂不可用 — 服务可能稍后启动");
     }
     
     if (!tts_service_) {
@@ -129,8 +127,8 @@ Utils::Result<AvatarResponse> AvatarResponseService::processUserMessage(
     
     auto openclawResponse = openclawResult.getValue();
     response.originalText = openclawResponse.text;
-    response.emotions = openclawResponse.detectedEmotions;
-    response.suggestedActions = openclawResponse.suggestedActions;
+    response.emotions = openclawResponse.emotions;
+    response.actions = openclawResponse.actions;
     
     // ===== 步骤3: 文本翻译 =====
     std::string finalText = openclawResponse.text;
@@ -163,8 +161,8 @@ Utils::Result<AvatarResponse> AvatarResponseService::processUserMessage(
     ttsRequest.language = targetLanguage.empty() ? "zh-CN" : targetLanguage;
     
     // 设置情感参数
-    if (!openclawResponse.detectedEmotions.empty()) {
-        ttsRequest.emotion = openclawResponse.detectedEmotions[0];
+    if (!openclawResponse.emotions.empty()) {
+        ttsRequest.emotion = openclawResponse.emotions[0];
     }
     
     auto ttsResult = tts_service_->synthesizeWithEmotion(ttsRequest);
@@ -182,8 +180,8 @@ Utils::Result<AvatarResponse> AvatarResponseService::processUserMessage(
     // ===== 步骤5: 动画生成 =====
     LOG_DEBUG("生成动画命令");
     auto animationResult = animation_service_->generateAnimationSequence(
-        openclawResponse.detectedEmotions,
-        openclawResponse.suggestedActions,
+        openclawResponse.emotions,
+        openclawResponse.actions,
         Live2DAnimationService::Model::DEFAULT
     );
     
@@ -238,8 +236,8 @@ Utils::Result<AvatarResponse> AvatarResponseService::generateFromOpenClaw(
     response.userId = userId;
     response.timestamp = std::chrono::system_clock::now().time_since_epoch().count();
     response.originalText = openclawResponse.text;
-    response.emotions = openclawResponse.detectedEmotions;
-    response.suggestedActions = openclawResponse.suggestedActions;
+    response.emotions = openclawResponse.emotions;
+    response.actions = openclawResponse.actions;
     
     // 翻译文本
     std::string finalText = openclawResponse.text;
@@ -257,8 +255,8 @@ Utils::Result<AvatarResponse> AvatarResponseService::generateFromOpenClaw(
     // 生成语音
     dto::TTSRequest ttsRequest;
     ttsRequest.text = finalText;
-    ttsRequest.emotion = openclawResponse.detectedEmotions.empty() ? 
-        "neutral" : openclawResponse.detectedEmotions[0];
+    ttsRequest.emotion = openclawResponse.emotions.empty() ? 
+        "neutral" : openclawResponse.emotions[0];
     
     auto ttsResult = tts_service_->synthesizeWithEmotion(ttsRequest);
     if (ttsResult.isSuccess()) {
@@ -269,8 +267,8 @@ Utils::Result<AvatarResponse> AvatarResponseService::generateFromOpenClaw(
     
     // 生成动画
     auto animationResult = animation_service_->generateAnimationSequence(
-        openclawResponse.detectedEmotions,
-        openclawResponse.suggestedActions
+        openclawResponse.emotions,
+        openclawResponse.actions
     );
     
     if (animationResult.isSuccess()) {

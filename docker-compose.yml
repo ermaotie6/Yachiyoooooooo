@@ -70,6 +70,8 @@ services:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
       - BAIDU_TRANSLATE_APP_ID=${BAIDU_TRANSLATE_APP_ID:-}
       - BAIDU_TRANSLATE_API_KEY=${BAIDU_TRANSLATE_API_KEY:-}
+      - OPENCLAW_BRIDGE_ENDPOINT=http://bridge:8765
+      - OPENCLAW_CALLBACK_PORT=8766
       - APP_LOG_LEVEL=INFO
       - ENVIRONMENT=production
     volumes:
@@ -124,6 +126,37 @@ services:
     depends_on:
       - backend
       - frontend
+
+  # OpenClaw 桥接服务 (Node.js)
+  # 架构: backend → bridge (:8765) → OpenClaw → bridge → backend (:8766)
+  bridge:
+    build:
+      context: ./bridge
+      dockerfile: Dockerfile
+    container_name: yachiyo-bridge
+    restart: unless-stopped
+    ports:
+      - "8765:8765"    # 接收端 (C++ 后端发请求到这里)
+      - "8766:8766"    # 回调端 (异步结果推回)
+    environment:
+      - BRIDGE_RECV_PORT=8765
+      - BRIDGE_CALLBACK_PORT=8766
+      - OPENCLAW_ENDPOINT=${OPENCLAW_ENDPOINT:-http://host.docker.internal:8000}
+      - OPENCLAW_API_KEY=${OPENCLAW_API_KEY:-}
+      - REQUEST_TIMEOUT_MS=30000
+      - SESSION_TTL_SECONDS=3600
+      - LOG_LEVEL=info
+      - BACKEND_CALLBACK_URL=http://backend:8766
+    volumes:
+      - bridge_logs:/app/logs
+    networks:
+      - yachiyo-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8765/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   # pgAdmin - PostgreSQL 管理工具
   pgadmin:
@@ -211,4 +244,6 @@ volumes:
   grafana_data:
     driver: local
   pgadmin_data:
+    driver: local
+  bridge_logs:
     driver: local
