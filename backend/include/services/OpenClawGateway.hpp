@@ -19,11 +19,11 @@ namespace yachiyo::services {
  * OpenClaw 网关服务 - 通过 Node.js 桥接服务与 OpenClaw 通信
  * 
  * 架构:
- *   C++ 后端 --HTTP POST :8765--> 桥接服务 --session--> OpenClaw
- *   C++ 后端 <--HTTP POST :8766-- 桥接服务 <--result--- OpenClaw
+ *   C++ 后端 --HTTP POST :8765--> 桥接服务 --转发--> OpenClaw (:8000)
+ *   C++ 后端 <--JSON 响应-------- 桥接服务 <--响应-- OpenClaw (:8000)
  * 
- * 同步模式: POST /process → 桥接服务同步返回结果
- * 异步模式: POST /process → 桥接服务异步回调 :8766/callback
+ * 纯同步模式: POST /process → 桥接服务同步转发并返回结果
+ * 桥接服务是无状态 HTTP 代理，无会话管理，无异步回调。
  */
 class OpenClawGateway {
 public:
@@ -32,13 +32,11 @@ public:
     
     /**
      * 初始化网关 (连接到桥接服务)
-     * @param bridgeEndpoint 桥接服务接收端地址 (默认 http://localhost:8765)
-     * @param callbackPort 本地回调监听端口 (默认 8766)
+     * @param bridgeEndpoint 桥接服务地址 (默认 http://localhost:8765)
      * @param timeoutSeconds 请求超时
      */
     bool initialize(
         const std::string& bridgeEndpoint = "http://localhost:8765",
-        int callbackPort = 8766,
         int timeoutSeconds = 30
     );
     
@@ -53,19 +51,6 @@ public:
         const std::string& userId,
         const std::string& text,
         const std::string& context = ""
-    );
-    
-    /**
-     * 异步处理用户消息 (发送后不等待，通过回调获取结果)
-     * @param userId 用户 ID
-     * @param text 用户输入的文本
-     * @param callback 结果回调函数
-     * @return 请求 ID
-     */
-    std::string processMessageAsync(
-        const std::string& userId,
-        const std::string& text,
-        std::function<void(const Utils::Result<dto::OpenClawResponse>&)> callback
     );
     
     /**
@@ -100,15 +85,7 @@ private:
         int ttl;  // 生存时间 (秒)
     };
     
-    // 异步回调上下文
-    struct PendingRequest {
-        std::string requestId;
-        std::function<void(const Utils::Result<dto::OpenClawResponse>&)> callback;
-        int64_t timestamp;
-    };
-    
     std::string bridge_endpoint_;   // 桥接服务地址 (默认 http://localhost:8765)
-    int callback_port_;             // 本地回调监听端口 (默认 8766)
     int timeout_;
     
     // 缓存
@@ -118,12 +95,7 @@ private:
     // 情感提示
     std::vector<std::string> emotion_hints_;
     
-    // 异步回调
-    std::map<std::string, PendingRequest> pending_requests_;
-    std::mutex pending_mutex_;
-    
-    // 回调监听线程
-    std::thread callback_thread_;
+    // 运行状态
     std::atomic<bool> running_{false};
     
     /**

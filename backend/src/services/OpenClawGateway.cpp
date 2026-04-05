@@ -17,7 +17,7 @@ static size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::stri
 // ==================== 构造/析构 ====================
 
 OpenClawGateway::OpenClawGateway() 
-    : bridge_endpoint_(""), callback_port_(8766), timeout_(30) {
+    : bridge_endpoint_(""), timeout_(30) {
 }
 
 OpenClawGateway::~OpenClawGateway() {
@@ -29,14 +29,12 @@ OpenClawGateway::~OpenClawGateway() {
 
 bool OpenClawGateway::initialize(
     const std::string& bridgeEndpoint,
-    int callbackPort,
     int timeoutSeconds
 ) {
-    LOG_INFO("初始化 OpenClaw 网关 (桥接模式): bridge={}, callbackPort={}", 
-             bridgeEndpoint, callbackPort);
+    LOG_INFO("初始化 OpenClaw 网关 (桥接模式): bridge={}", 
+             bridgeEndpoint);
     
     bridge_endpoint_ = bridgeEndpoint;
-    callback_port_ = callbackPort;
     timeout_ = timeoutSeconds;
     
     // 检查桥接服务是否可访问
@@ -64,9 +62,8 @@ bool OpenClawGateway::initialize(
     } else if (http_code == 200) {
         try {
             json healthResp = json::parse(readBuffer);
-            LOG_INFO("桥接服务已连接: status={}, activeSessions={}", 
-                     healthResp.value("status", "unknown"),
-                     healthResp.value("activeSessions", 0));
+            LOG_INFO("桥接服务已连接: status={}", 
+                     healthResp.value("status", "unknown"));
         } catch (...) {
             LOG_INFO("桥接服务已连接 (HTTP 200)");
         }
@@ -163,49 +160,6 @@ Utils::Result<dto::OpenClawResponse> OpenClawGateway::processMessage(
     }
 }
 
-// ==================== 异步处理消息 ====================
-
-std::string OpenClawGateway::processMessageAsync(
-    const std::string& userId,
-    const std::string& text,
-    std::function<void(const Utils::Result<dto::OpenClawResponse>&)> callback
-) {
-    std::string requestId = "req_" + userId + "_" + std::to_string(
-        std::chrono::system_clock::now().time_since_epoch().count()
-    );
-    
-    // 注册回调
-    {
-        std::lock_guard<std::mutex> lock(pending_mutex_);
-        pending_requests_[requestId] = {
-            requestId,
-            callback,
-            std::chrono::steady_clock::now().time_since_epoch().count()
-        };
-    }
-    
-    // 在新线程中发送请求
-    std::thread([this, userId, text, requestId]() {
-        auto result = processMessage(userId, text);
-        
-        std::function<void(const Utils::Result<dto::OpenClawResponse>&)> cb;
-        {
-            std::lock_guard<std::mutex> lock(pending_mutex_);
-            auto it = pending_requests_.find(requestId);
-            if (it != pending_requests_.end()) {
-                cb = it->second.callback;
-                pending_requests_.erase(it);
-            }
-        }
-        
-        if (cb) {
-            cb(result);
-        }
-    }).detach();
-    
-    return requestId;
-}
-
 // ==================== 情感提示 ====================
 
 void OpenClawGateway::setEmotionHints(const std::vector<std::string>& emotions) {
@@ -254,9 +208,6 @@ bool OpenClawGateway::isHealthy() const {
 
 void OpenClawGateway::shutdown() {
     running_ = false;
-    if (callback_thread_.joinable()) {
-        callback_thread_.join();
-    }
 }
 
 // ==================== 私有方法 ====================

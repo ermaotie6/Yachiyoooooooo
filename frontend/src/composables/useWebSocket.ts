@@ -84,6 +84,15 @@ export function useWebSocket() {
           reconnectAttempts.value = 0
           reconnectDelay.value = 3000
 
+          // 发送身份识别消息，让后端关联 user_id
+          sendMessage({
+            type: 'identify',
+            data: {
+              user_id: userId,
+              device_type: 'web'
+            }
+          })
+
           if (onConnectionChanged) {
             onConnectionChanged(true)
           }
@@ -154,6 +163,11 @@ export function useWebSocket() {
       console.log('[WebSocket] Received:', message.type, message)
 
       switch (message.type) {
+        case 'welcome':
+          // 服务器欢迎消息，包含分配的 client_id
+          console.log('[WebSocket] Welcome, client_id:', message.data?.client_id)
+          break
+
         case 'ping':
           // 响应心跳
           sendMessage({

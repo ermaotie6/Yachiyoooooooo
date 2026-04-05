@@ -36,7 +36,7 @@ bool AvatarResponseService::initialize(
         LOG_ERROR("OpenClaw 网关未配置");
         return false;
     }
-    if (!openclaw_gateway_->initialize("http://localhost:8765", 8766)) {
+    if (!openclaw_gateway_->initialize("http://localhost:8765")) {
         LOG_WARN("OpenClaw 桥接服务暂不可用 — 服务可能稍后启动");
     }
     

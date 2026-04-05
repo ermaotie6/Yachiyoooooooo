@@ -36,19 +36,27 @@
 
 ## 🎯 项目简介
 
-Yachiyo 是一个 AI 虚拟形象直播互动平台，用户可以通过弹幕与 AI 驱动的 Live2D 虚拟形象进行实时交互。系统基于 **OpenClaw** AI 编排框架处理对话逻辑，通过 **Node.js 桥接服务** 实现 C++ 后端与 Python AI Agent 的跨语言异步通信。
+Yachiyo 是一个 AI 虚拟形象直播互动平台，用户可以通过弹幕与 AI 驱动的 Live2D 虚拟形象进行实时交互。
+
+**核心定位**：本项目 **不负责对话生成**。对话/AI 推理由外部服务 **OpenClaw** 完成。本项目的职责是：
+
+1. 接收用户弹幕 → 6 层内容审核
+2. 将审核通过的弹幕打包为 JSON → 通过桥接服务发给 OpenClaw
+3. 接收 OpenClaw 返回的回答文本 + 情感标签 + 动作指令
+4. 将回答翻译为日语 → GPT-SoVITS 语音合成 → Live2D 表情/动作控制
+5. 通过 WebSocket 将文本、音频、动画指令实时推送到前端
 
 ### 核心功能
 
 | 功能模块 | 说明 |
 |---------|------|
-| 🤖 AI 对话 | 基于 DeepSeek/OpenAI 的多轮对话，支持情感分析与表情映射 |
-| 🎭 Live2D 驱动 | 根据 AI 回复的情感标签实时切换虚拟形象表情与动作 |
-| 🔊 TTS 语音合成 | AI 回复自动转语音，实现虚拟形象"说话" |
-| 💬 WebSocket 实时推送 | 弹幕消息、AI 回复、Live2D 指令全链路实时传输 |
+| 📝 弹幕审核 | 6 层内容安全审核（DeepSeek API + 规则引擎），审核通过后转发 |
+| 🔗 OpenClaw 对接 | 将审核后的弹幕 JSON 发给 OpenClaw，接收回答文本 + 情感 + 动作 |
+| 🌐 翻译服务 | 百度翻译 API + DeepSeek 备选，将回答翻译为日语 |
+| 🔊 TTS 语音合成 | GPT-SoVITS 将日语文本转为八千代声线语音 |
+| 🎭 Live2D 驱动 | 根据情感标签实时切换虚拟形象表情与动作，口型同步 |
+| 💬 WebSocket 实时推送 | 文本、音频、Live2D 指令全链路实时传输到前端 |
 | 🔐 JWT 认证 | 用户注册/登录，Token 鉴权 |
-| 📝 社区功能 | 帖子发布、用户管理 |
-| 🔗 OpenClaw 桥接 | Node.js 桥接服务实现 C++ ↔ Python AI Agent 异步通信 |
 | 📊 监控系统 | Prometheus + Grafana 指标采集与可视化 |
 
 ---
@@ -216,7 +224,7 @@ start()
                                  ▼
                     ┌────────────────────────┐     ┌──────────┐
                     │   backend (:8080/9001) │     │  bridge  │
-                    │   等待 PG+Redis 健康    │     │(:8765/66)│
+                    │   等待 PG+Redis 健康    │     │ (:8765)  │
                     └────────────┬───────────┘     └──────────┘
                                  │
                                  ▼
@@ -241,29 +249,31 @@ start()
 ```
 1. 用户在前端输入弹幕消息
 2. 前端通过 WebSocket (:9001) 发送消息到后端
-3. 后端接收消息，进行内容审核
-4. 后端将消息 POST 到 Bridge (:8765/process)
-   └── 携带: userId, sessionId, message, context
-5. Bridge 管理用户会话 (TTL 3600s)，转发到 OpenClaw (:8000)
-6. OpenClaw AI Agent 处理对话：
-   ├── 生成回复文本
-   ├── 情感分析 (happy/sad/angry/surprise/...)
+3. 后端接收消息，进行 6 层内容审核
+4. 审核通过后，后端将弹幕 POST 到 Bridge (:8765/process)
+   └── 携带: request_id, user_id, text, context, emotion_hints
+5. Bridge 原样转发到 OpenClaw (:8000)（纯 JSON 代理，无状态）
+6. OpenClaw 处理对话并返回结果：
+   ├── 回答文本
+   ├── 情感标签 (happy/sad/angry/surprise/...)
    └── 动作指令 (wave/nod/dance/...)
-7. OpenClaw 返回结果给 Bridge
-8. Bridge 将结果回调到后端 (:8766/callback)
-9. 后端处理回调：
-   ├── TTS 语音合成 → 生成音频数据
+7. Bridge 同步返回 JSON 给后端
+8. 后端处理响应：
+   ├── 翻译为日语（百度翻译 API）
+   ├── GPT-SoVITS 语音合成 → 生成音频
    ├── 映射情感标签 → Live2D 表情参数
-   └── 映射动作指令 → Live2D 动作参数
-10. 后端通过 WebSocket 推送到前端：
-    ├── AI 回复文本
-    ├── 音频数据 (Base64)
-    ├── Live2D 表情指令
-    └── Live2D 动作指令
-11. 前端接收并执行：
+   ├── 映射动作指令 → Live2D 动作参数
+   └── 口型同步参数计算
+9. 后端通过 WebSocket 推送到前端：
+   ├── AI 回复文本
+   ├── 音频数据 (URL)
+   ├── Live2D 表情指令
+   ├── Live2D 动作指令
+   └── 口型同步时间轴
+10. 前端接收并执行：
     ├── 显示弹幕回复
     ├── Web Audio API 播放语音
-    └── Live2D Cubism SDK 播放表情+动作
+    └── Live2D Cubism SDK 播放表情+动作+口型同步
 ```
 
 ---
@@ -304,7 +314,6 @@ start()
 | 运行时 | Node.js 18 |
 | HTTP 框架 | Express |
 | HTTP 客户端 | Axios |
-| 会话管理 | 内置 Map + TTL 自动清理 |
 | 日志 | Winston |
 | 配置 | dotenv |
 

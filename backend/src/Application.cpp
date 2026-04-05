@@ -285,21 +285,19 @@ void Application::initializeServices() {
         int wsPort = configManager->getInt("websocket.port", 9001);
         std::string wsHost = configManager->getString("websocket.host", "0.0.0.0");
         
-        g_webSocketService->setPort(wsPort);
-        g_webSocketService->setHost(wsHost);
-        
-        // 启动WebSocket服务（在后台线程中）
-        std::thread wsThread([this]() {
+        // 启动WebSocket服务（在后台线程中，start() 是阻塞调用）
+        std::thread wsThread([this, wsHost, wsPort]() {
             try {
-                logger->info("WebSocket服务启动: {}:{}", 
-                            configManager->getString("websocket.host", "0.0.0.0"),
-                            configManager->getInt("websocket.port", 9001));
-                g_webSocketService->run();
+                logger->info("WebSocket服务启动: {}:{}", wsHost, wsPort);
+                g_webSocketService->start(wsHost, wsPort, "/");
             } catch (const std::exception& e) {
                 logger->error("WebSocket服务异常: {}", e.what());
             }
         });
         wsThread.detach();  // 在后台运行
+        
+        // 等待 Crow WebSocket 服务启动
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         
         logger->info("WebSocket服务初始化完成: {}:{}", wsHost, wsPort);
         
