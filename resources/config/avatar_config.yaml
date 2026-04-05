@@ -78,7 +78,7 @@ translation:
   # Baidu 翻译配置
   baidu:
     enabled: false
-    app_id: "your_baidu_app_id"
+    appid: "your_baidu_appid"
     secret_key: "your_baidu_secret_key"
   
   # OpenAI GPT 配置

@@ -146,7 +146,7 @@ translation:
   # 翻译服务（按优先级排序）
   services:
     - name: "baidu"
-      app_id: "${BAIDU_TRANSLATE_APP_ID}"
+      appid: "${BAIDU_TRANSLATE_APPID}"
       api_key: "${BAIDU_TRANSLATE_API_KEY}"
       endpoint: "https://fanyi-api.baidu.com/api/trans/vip/translate"
       priority: 1
@@ -203,5 +203,5 @@ performance:
 # - JWT_SECRET_KEY: JWT 签名密钥
 # - SOVITS_API_KEY: GPT-SoVITS API 密钥
 # - DEEPSEEK_API_KEY: DeepSeek API 密钥
-# - BAIDU_TRANSLATE_APP_ID: 百度翻译 APP ID
+# - BAIDU_TRANSLATE_APPID: 百度翻译 APPID
 # - BAIDU_TRANSLATE_API_KEY: 百度翻译密钥

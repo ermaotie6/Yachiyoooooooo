@@ -68,10 +68,9 @@ services:
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-production-secret-key-change-me}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
-      - BAIDU_TRANSLATE_APP_ID=${BAIDU_TRANSLATE_APP_ID:-}
+      - BAIDU_TRANSLATE_APPID=${BAIDU_TRANSLATE_APPID:-}
       - BAIDU_TRANSLATE_API_KEY=${BAIDU_TRANSLATE_API_KEY:-}
       - OPENCLAW_BRIDGE_ENDPOINT=http://bridge:8765
-      - OPENCLAW_CALLBACK_PORT=8766
       - APP_LOG_LEVEL=INFO
       - ENVIRONMENT=production
     volumes:
@@ -128,7 +127,7 @@ services:
       - frontend
 
   # OpenClaw 桥接服务 (Node.js)
-  # 架构: backend → bridge (:8765) → OpenClaw → bridge → backend (:8766)
+  # 职责: 接收 C++ 后端 JSON → 转发 OpenClaw → 返回 JSON
   bridge:
     build:
       context: ./bridge
@@ -136,17 +135,13 @@ services:
     container_name: yachiyo-bridge
     restart: unless-stopped
     ports:
-      - "8765:8765"    # 接收端 (C++ 后端发请求到这里)
-      - "8766:8766"    # 回调端 (异步结果推回)
+      - "8765:8765"
     environment:
-      - BRIDGE_RECV_PORT=8765
-      - BRIDGE_CALLBACK_PORT=8766
+      - BRIDGE_PORT=8765
       - OPENCLAW_ENDPOINT=${OPENCLAW_ENDPOINT:-http://host.docker.internal:8000}
       - OPENCLAW_API_KEY=${OPENCLAW_API_KEY:-}
       - REQUEST_TIMEOUT_MS=30000
-      - SESSION_TTL_SECONDS=3600
       - LOG_LEVEL=info
-      - BACKEND_CALLBACK_URL=http://backend:8766
     volumes:
       - bridge_logs:/app/logs
     networks:

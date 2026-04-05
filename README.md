@@ -75,8 +75,8 @@ Yachiyo 是一个 AI 虚拟形象直播互动平台，用户可以通过弹幕�
                                     ▼             ▼             ▼
                               ┌──────────┐ ┌──────────┐ ┌──────────────────┐
                               │PostgreSQL│ │  Redis   │ │ Bridge (Node.js) │
-                              │  (:5432) │ │ (:6379)  │ │ :8765 ← 接收     │
-                              │  用户数据 │ │  会话缓存 │ │ :8766 → 回调     │
+                              │  (:5432) │ │ (:6379)  │ │ :8765 转发代理    │
+                              │  用户数据 │ │  会话缓存 │ │                  │
                               └──────────┘ └──────────┘ └────────┬─────────┘
                                                                   │
                                                                   ▼
@@ -94,17 +94,17 @@ Yachiyo 是一个 AI 虚拟形象直播互动平台，用户可以通过弹幕�
                                               │
                                               ▼
                                      Node.js Bridge
-                                     (会话管理, 请求转发)
+                                     (纯 JSON 转发, 无状态)
                                               │
                                               ▼
                                      OpenClaw AI Agent (:8000)
                                      (对话生成, 情感分析, 动作指令)
                                               │
                                               ▼
-                                     Bridge 回调 → POST http://backend:8766/callback
+                                     Bridge 同步返回 JSON 给 C++ 后端
                                               │
                                               ▼
-                              C++ Backend 处理回调结果
+                              C++ Backend 处理响应
                               → TTS 语音合成
                               → Live2D 表情/动作指令
                               → WebSocket 推送到前端
@@ -355,8 +355,7 @@ Yachiyo/
 │   ├── Dockerfile                   # 桥接服务容器镜像
 │   ├── package.json                 # npm 依赖
 │   └── src/
-│       ├── index.js                 # 入口：双端口 Express 服务器
-│       ├── session.js               # 用户会话管理 (TTL)
+│       ├── index.js                 # 入口：JSON 转发代理
 │       └── logger.js                # Winston 日志
 ├── resources/                       # 静态资源
 │   ├── live2d/                      # Live2D 模型文件
@@ -460,7 +459,7 @@ node src/index.js
 | backend | yachiyo-backend | 8080, 9001 | C++ 后端 (HTTP + WebSocket) |
 | frontend | yachiyo-frontend | 3000 | Vue 3 前端 |
 | nginx | yachiyo-nginx | 80, 443 | 反向代理 |
-| bridge | yachiyo-bridge | 8765, 8766 | Node.js 桥接服务 (接收 + 回调) |
+| bridge | yachiyo-bridge | 8765 | Node.js 桥接服务 (JSON 转发) |
 | pgadmin | yachiyo-pgadmin | 5050 | PostgreSQL 管理工具 |
 | redis-commander | yachiyo-redis-commander | 8082 | Redis 管理工具 |
 | prometheus | yachiyo-prometheus | 9091 | 监控指标采集 |
@@ -508,7 +507,6 @@ ai:
 
 openclaw:
   bridge_endpoint: "http://localhost:8765"
-  callback_port: 8766
 ```
 
 ### 关键环境变量
@@ -517,6 +515,8 @@ openclaw:
 |------|------|--------|
 | `JWT_SECRET_KEY` | JWT 签名密钥 | (必填) |
 | `DEEPSEEK_API_KEY` | DeepSeek API Key | (选填) |
+| `BAIDU_TRANSLATE_APPID` | 百度翻译 APPID（纯数字） | (选填) |
+| `BAIDU_TRANSLATE_API_KEY` | 百度翻译密钥 | (选填) |
 | `OPENCLAW_ENDPOINT` | OpenClaw 服务地址 | `http://host.docker.internal:8000` |
 | `OPENCLAW_BRIDGE_ENDPOINT` | 桥接服务地址 | `http://bridge:8765` |
 | `DATABASE_HOST` | PostgreSQL 地址 | `postgres` |

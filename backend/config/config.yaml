@@ -105,8 +105,8 @@ ai:
         type: "api"
         enabled: true
         endpoint: "https://fanyi-api.baidu.com/api/trans/vip/translate"
-        app_id: ""      # 填入百度翻译 APP ID
-        api_key: ""     # 填入百度翻译密钥
+        appid: ""       # 填入百度翻译 APPID（开发者信息页面获取）
+        api_key: ""     # 填入百度翻译密钥（同一页面获取）
         timeout_seconds: 5
       - name: "deepseek"
         type: "api"

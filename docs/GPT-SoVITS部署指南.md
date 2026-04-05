@@ -18,6 +18,24 @@
 
 > ⚠️ **无 GPU 方案**: 可以使用 CPU 推理但速度极慢（约 10x），不适合实时直播场景。如果服务器没有 GPU，建议将 GPT-SoVITS 部署在带 GPU 的独立机器上。
 
+### 关于 Intel 核显 (iGPU)
+
+GPT-SoVITS 底层依赖 **PyTorch**，而 PyTorch 的 GPU 加速目前支持：
+
+| GPU 类型 | 支持状态 | 说明 |
+|----------|---------|------|
+| **NVIDIA (CUDA)** | ✅ 官方支持 | 推荐方案，开箱即用 |
+| **AMD (ROCm)** | ⚠️ 有限支持 | 仅 Linux，仅部分型号 |
+| **Intel Arc 独显 (XPU)** | ⚠️ 实验性 | 通过 `intel-extension-for-pytorch`，需自行适配 |
+| **Intel 核显 (UHD/Iris)** | ❌ 不可用 | 核显没有独立显存，VRAM 不足，PyTorch 不支持 |
+
+**结论：Intel 核显不能用于 GPT-SoVITS。** 核显的"共享显存"实际是从内存划出的，没有独立的计算核心和 CUDA/ROCm 支持，PyTorch 无法识别它作为 GPU 设备。即使需求量很小，核显的推理速度也不会比纯 CPU 快，而且会出现兼容性问题。
+
+**如果没有 NVIDIA 独显，你有以下选项：**
+1. **CPU 推理**: 可以跑，但每条语音合成耗时 5~30 秒，不适合实时
+2. **禁用 TTS**: 设置 `gpt_sovits.enabled: false`，AI 只输出文字不配音
+3. **租 GPU 云服务器**: 按需租用（如 AutoDL、RunPod），部署 GPT-SoVITS 后通过内网 HTTP 调用
+
 ### 软件
 
 - Python 3.9 ~ 3.11（推荐 3.10）

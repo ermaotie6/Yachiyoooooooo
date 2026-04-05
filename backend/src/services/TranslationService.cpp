@@ -208,13 +208,13 @@ Utils::Result<dto::TranslationResponse> TranslationService::translateViaBaidu(
     
     auto& config = engines_[Engine::BAIDU];
     if (config.apiKey.empty()) {
-        return Utils::Result<dto::TranslationResponse>::error("BAIDU_NO_KEY", "百度翻译未配置 app_id 或 api_key");
+        return Utils::Result<dto::TranslationResponse>::error("BAIDU_NO_KEY", "百度翻译未配置 appid 或 api_key");
     }
     
     // apiKey 格式: "app_id:secret_key"
     auto sep = config.apiKey.find(':');
     if (sep == std::string::npos) {
-        return Utils::Result<dto::TranslationResponse>::error("BAIDU_BAD_KEY", "百度翻译 apiKey 格式错误，需要 app_id:secret_key");
+        return Utils::Result<dto::TranslationResponse>::error("BAIDU_BAD_KEY", "百度翻译 apiKey 格式错误，需要 appid:secret_key");
     }
     std::string appId = config.apiKey.substr(0, sep);
     std::string secretKey = config.apiKey.substr(sep + 1);
