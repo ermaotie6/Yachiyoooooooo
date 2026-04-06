@@ -15,7 +15,9 @@
     "pinia": "^2.1.0",
     "axios": "^1.4.0",
     "element-plus": "^2.3.0",
-    "@element-plus/icons-vue": "^2.1.0"
+    "@element-plus/icons-vue": "^2.1.0",
+    "pixi.js": "^7.3.0",
+    "pixi-live2d-display": "^0.4.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^4.2.0",

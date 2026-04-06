@@ -84,7 +84,8 @@ ai:
   gpt_sovits:
     enabled: true
     endpoint: "http://localhost:5000"
-    timeout_seconds: 30
+    mode: "cpu"                    # "gpu" (timeout=15s) 或 "cpu" (timeout=60s)
+    timeout_seconds: 60            # CPU 模式建议 60，GPU 模式建议 15
     model: "deepseek-chat"
     cache:
       enabled: true

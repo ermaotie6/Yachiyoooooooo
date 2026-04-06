@@ -1,6 +1,6 @@
 <template>
-  <div class="live2d-container">
-    <canvas ref="canvasRef" class="live2d-canvas"></canvas>
+  <div ref="containerRef" class="live2d-container">
+    <!-- PIXI Canvas 会自动挂载到这里 -->
 
     <!-- 模型加载提示 -->
     <div v-if="!isModelLoaded" class="loading-overlay">
@@ -15,465 +15,345 @@
       <div class="error-content">
         <p>⚠️ 虚拟形象加载失败</p>
         <small>{{ loadError }}</small>
+        <button class="retry-btn" @click="retryLoad">重试</button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
+import * as PIXI from 'pixi.js'
+import { Live2DModel, MotionPreloadStrategy } from 'pixi-live2d-display'
+
+// ============ 注册 Live2D Ticker ============
+// pixi-live2d-display 需要 PIXI.Ticker 来驱动更新
+Live2DModel.registerTicker(PIXI.Ticker)
+
+// ============ Props ============
+
+interface Props {
+  modelPath?: string
+  width?: number
+  height?: number
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  modelPath: '/resources/live2d/yachiyo.model3.json',
+  width: 400,
+  height: 600
+})
 
 // ============ 状态管理 ============
 
-const canvasRef = ref<HTMLCanvasElement | null>(null)
+const containerRef = ref<HTMLDivElement | null>(null)
 const isModelLoaded = ref(false)
 const loadError = ref<string | null>(null)
 
-// 模型状态
-let canvas: HTMLCanvasElement | null = null
-let ctx: CanvasRenderingContext2D | null = null
+let app: PIXI.Application | null = null
+let model: InstanceType<typeof Live2DModel> | null = null
+let resizeObserver: ResizeObserver | null = null
 
-// 参数状态
-const modelState = {
-  mouthOpenY: 0,
-  eyeOpenLeft: 1.0,
-  eyeOpenRight: 1.0,
-  eyeX: 0,
-  eyeY: 0,
-  currentExpression: 'neutral',
-  expressionBlend: 0,
-  targetExpression: 'neutral'
-}
-
-// 动画队列
-const animationQueue: any[] = []
-let currentAnimation: any = null
-let animationStartTime = 0
-let rafId: number | null = null
+// 嘴部同步
+let mouthSyncRAF: number | null = null
 let targetMouthOpenY = 0
+let currentMouthOpenY = 0
 
 // ============ 核心方法 ============
 
 /**
- * 初始化 Canvas
+ * 初始化 PIXI Application
  */
-const initCanvas = () => {
-  canvas = canvasRef.value
-  if (!canvas) {
-    loadError.value = 'Canvas 不可用'
+const initPixiApp = (): boolean => {
+  const container = containerRef.value
+  if (!container) {
+    loadError.value = '容器元素不可用'
     return false
   }
 
-  ctx = canvas.getContext('2d')
-  if (!ctx) {
-    loadError.value = '获取 Canvas 上下文失败'
-    return false
-  }
+  const rect = container.getBoundingClientRect()
+  const width = rect.width || props.width
+  const height = rect.height || props.height
 
-  // 设置 Canvas 大小
-  const rect = canvas.getBoundingClientRect()
-  canvas.width = rect.width * window.devicePixelRatio
-  canvas.height = rect.height * window.devicePixelRatio
-  ctx.scale(window.devicePixelRatio, window.devicePixelRatio)
+  app = new PIXI.Application({
+    width,
+    height,
+    backgroundAlpha: 0, // 透明背景
+    antialias: true,
+    resolution: window.devicePixelRatio || 1,
+    autoDensity: true
+  })
 
-  console.log('[Live2D] Canvas initialized:', canvas.width, canvas.height)
+  // 将 PIXI canvas 挂载到容器
+  container.appendChild(app.view as HTMLCanvasElement)
+
+  console.log('[Live2D] PIXI Application initialized:', width, 'x', height)
   return true
 }
 
 /**
- * 加载模型
+ * 加载 Live2D 模型
  */
 const loadModel = async () => {
+  if (!app) return
+
   try {
-    // 注: 实际部署时，这里会加载真实的 Live2D 模型
-    // 目前使用模拟渲染
+    console.log('[Live2D] Loading model from:', props.modelPath)
+    loadError.value = null
 
-    console.log('[Live2D] Model loading started')
+    model = await Live2DModel.from(props.modelPath, {
+      motionPreload: MotionPreloadStrategy.IDLE,
+      autoInteract: false // 我们自己控制交互
+    })
 
-    // 模拟加载延迟
-    await new Promise((resolve) => setTimeout(resolve, 500))
+    if (!model) {
+      throw new Error('模型加载返回 null')
+    }
+
+    // 调整模型大小使其适应容器
+    fitModelToStage()
+
+    // 添加模型到舞台
+    app.stage.addChild(model as unknown as PIXI.DisplayObject)
 
     isModelLoaded.value = true
     loadError.value = null
-    console.log('[Live2D] Model loaded successfully')
 
-    // 启动渲染循环
-    startRenderLoop()
+    // 启动嘴部同步循环
+    startMouthSyncLoop()
+
+    console.log('[Live2D] Model loaded successfully')
   } catch (error) {
-    loadError.value = String(error)
+    const msg = error instanceof Error ? error.message : String(error)
+    loadError.value = msg
     console.error('[Live2D] Error loading model:', error)
   }
 }
 
 /**
- * 渲染循环
+ * 调整模型大小以适应舞台
  */
-const startRenderLoop = () => {
-  const render = () => {
-    updateAnimation()
-    draw()
-    rafId = requestAnimationFrame(render)
-  }
-  render()
+const fitModelToStage = () => {
+  if (!model || !app) return
+
+  const stageWidth = app.screen.width
+  const stageHeight = app.screen.height
+
+  // 计算缩放比例，保持纵横比
+  const scaleX = stageWidth / model.width
+  const scaleY = stageHeight / model.height
+  const scale = Math.min(scaleX, scaleY) * 0.9 // 留一点边距
+
+  model.scale.set(scale)
+
+  // 居中显示
+  model.x = (stageWidth - model.width * scale) / 2
+  model.y = (stageHeight - model.height * scale) / 2
 }
 
 /**
- * 更新动画状态
+ * 嘴部同步循环 — 平滑过渡 mouthOpenY
  */
-const updateAnimation = () => {
-  if (!currentAnimation) {
-    if (animationQueue.length > 0) {
-      currentAnimation = animationQueue.shift()
-      animationStartTime = Date.now()
+const startMouthSyncLoop = () => {
+  const tick = () => {
+    if (!model) return
+
+    // 平滑插值
+    currentMouthOpenY += (targetMouthOpenY - currentMouthOpenY) * 0.3
+
+    // 设置 Live2D 参数
+    try {
+      const coreModel = (model as any).internalModel?.coreModel
+      if (coreModel) {
+        // Cubism 4 参数名
+        coreModel.setParameterValueById('ParamMouthOpenY', currentMouthOpenY)
+      }
+    } catch {
+      // 静默忽略参数设置错误
     }
-    return
+
+    mouthSyncRAF = requestAnimationFrame(tick)
   }
+  tick()
+}
 
-  const elapsed = Date.now() - animationStartTime
-  const duration = currentAnimation.duration || 1000
-  const progress = Math.min(elapsed / duration, 1)
+/**
+ * 处理容器大小变化
+ */
+const handleResize = () => {
+  if (!app || !containerRef.value) return
 
-  if (currentAnimation.type === 'expression') {
-    modelState.expressionBlend = progress
+  const rect = containerRef.value.getBoundingClientRect()
+  app.renderer.resize(rect.width, rect.height)
+  fitModelToStage()
+}
 
-    if (progress >= 1) {
-      modelState.currentExpression = currentAnimation.expression
-      modelState.expressionBlend = 1
-      currentAnimation = null
-    }
-  } else if (currentAnimation.type === 'motion') {
-    // 动作播放逻辑
-    if (progress >= 1) {
-      currentAnimation = null
-    }
+/**
+ * 重试加载
+ */
+const retryLoad = () => {
+  loadError.value = null
+  isModelLoaded.value = false
+  if (model && app) {
+    app.stage.removeChild(model as unknown as PIXI.DisplayObject)
+    model.destroy()
+    model = null
   }
-
-  // 平滑过渡嘴部开合
-  modelState.mouthOpenY += (targetMouthOpenY - modelState.mouthOpenY) * 0.3
-}
-
-/**
- * 绘制模型
- */
-const draw = () => {
-  if (!canvas || !ctx) return
-
-  const width = canvas.width / window.devicePixelRatio
-  const height = canvas.height / window.devicePixelRatio
-
-  // 清空画布
-  ctx.fillStyle = 'transparent'
-  ctx.clearRect(0, 0, width, height)
-
-  // 绘制头部 (圆形)
-  const headX = width / 2
-  const headY = height / 2.2
-  const headRadius = 80
-
-  // 头部阴影
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.1)'
-  ctx.beginPath()
-  ctx.arc(headX, headY + 5, headRadius, 0, Math.PI * 2)
-  ctx.fill()
-
-  // 头部主体
-  const headGradient = ctx.createRadialGradient(
-    headX - 20,
-    headY - 30,
-    10,
-    headX,
-    headY,
-    headRadius
-  )
-  headGradient.addColorStop(0, '#fdbcb4')
-  headGradient.addColorStop(1, '#f5a89f')
-  ctx.fillStyle = headGradient
-  ctx.beginPath()
-  ctx.arc(headX, headY, headRadius, 0, Math.PI * 2)
-  ctx.fill()
-
-  // 绘制眼睛
-  drawEyes(headX, headY, headRadius)
-
-  // 绘制嘴巴
-  drawMouth(headX, headY + 30, headRadius)
-
-  // 绘制头发
-  drawHair(headX, headY, headRadius)
-
-  // 绘制身体
-  drawBody(headX, headY + headRadius + 10)
-
-  // 绘制表情覆盖
-  drawExpression(headX, headY, headRadius)
-}
-
-/**
- * 绘制眼睛
- */
-const drawEyes = (centerX: number, centerY: number, headRadius: number) => {
-  if (!ctx) return
-
-  const eyeY = centerY - 20
-  const eyeLeftX = centerX - 25
-  const eyeRightX = centerX + 25
-
-  // 眼睛白部
-  ctx.fillStyle = 'white'
-  ctx.beginPath()
-  ctx.arc(eyeLeftX, eyeY, 12, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.beginPath()
-  ctx.arc(eyeRightX, eyeY, 12, 0, Math.PI * 2)
-  ctx.fill()
-
-  // 瞳孔 (跟踪)
-  const pupilOffset = 6
-  const pupilLeftX = eyeLeftX + modelState.eyeX * pupilOffset
-  const pupilLeftY = eyeY + modelState.eyeY * pupilOffset
-  const pupilRightX = eyeRightX + modelState.eyeX * pupilOffset
-  const pupilRightY = eyeY + modelState.eyeY * pupilOffset
-
-  ctx.fillStyle = '#333'
-  ctx.beginPath()
-  ctx.arc(pupilLeftX, pupilLeftY, 7, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.beginPath()
-  ctx.arc(pupilRightX, pupilRightY, 7, 0, Math.PI * 2)
-  ctx.fill()
-
-  // 眼神光
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.6)'
-  ctx.beginPath()
-  ctx.arc(pupilLeftX - 2, pupilLeftY - 2, 3, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.beginPath()
-  ctx.arc(pupilRightX - 2, pupilRightY - 2, 3, 0, Math.PI * 2)
-  ctx.fill()
-
-  // 眼睑
-  if (modelState.eyeOpenLeft < 1) {
-    ctx.fillStyle = '#fdbcb4'
-    ctx.beginPath()
-    ctx.arc(
-      eyeLeftX,
-      eyeY - 12,
-      12,
-      0,
-      Math.PI * 2
-    )
-    ctx.fill()
-  }
-}
-
-/**
- * 绘制嘴巴
- */
-const drawMouth = (centerX: number, centerY: number, headRadius: number) => {
-  if (!ctx) return
-
-  const mouthWidth = 15
-  const mouthHeight = 5 + modelState.mouthOpenY * 15
-
-  // 嘴唇
-  ctx.strokeStyle = '#c1686e'
-  ctx.lineWidth = 2
-  ctx.beginPath()
-  ctx.ellipse(centerX, centerY, mouthWidth, mouthHeight, 0, 0, Math.PI * 2)
-  ctx.stroke()
-
-  // 嘴唇填充 (轻微)
-  ctx.fillStyle = 'rgba(193, 104, 110, 0.2)'
-  ctx.beginPath()
-  ctx.ellipse(centerX, centerY, mouthWidth, mouthHeight, 0, 0, Math.PI * 2)
-  ctx.fill()
-}
-
-/**
- * 绘制头发
- */
-const drawHair = (centerX: number, centerY: number, headRadius: number) => {
-  if (!ctx) return
-
-  ctx.fillStyle = '#8B4513'
-
-  // 前发
-  ctx.beginPath()
-  ctx.ellipse(centerX, centerY - headRadius + 20, headRadius - 10, 30, 0, 0, Math.PI)
-  ctx.fill()
-
-  // 侧发
-  ctx.beginPath()
-  ctx.moveTo(centerX - headRadius, centerY - 20)
-  ctx.bezierCurveTo(
-    centerX - headRadius - 20,
-    centerY - 40,
-    centerX - headRadius - 30,
-    centerY,
-    centerX - headRadius - 10,
-    centerY + 30
-  )
-  ctx.bezierCurveTo(
-    centerX - headRadius,
-    centerY,
-    centerX - headRadius + 10,
-    centerY - 10,
-    centerX - headRadius,
-    centerY - 20
-  )
-  ctx.fill()
-
-  // 右侧发
-  ctx.beginPath()
-  ctx.moveTo(centerX + headRadius, centerY - 20)
-  ctx.bezierCurveTo(
-    centerX + headRadius + 20,
-    centerY - 40,
-    centerX + headRadius + 30,
-    centerY,
-    centerX + headRadius + 10,
-    centerY + 30
-  )
-  ctx.bezierCurveTo(
-    centerX + headRadius,
-    centerY,
-    centerX + headRadius - 10,
-    centerY - 10,
-    centerX + headRadius,
-    centerY - 20
-  )
-  ctx.fill()
-}
-
-/**
- * 绘制身体
- */
-const drawBody = (centerX: number, topY: number) => {
-  if (!ctx) return
-
-  // 颈部
-  ctx.fillStyle = '#fdbcb4'
-  ctx.beginPath()
-  ctx.rect(centerX - 15, topY, 30, 30)
-  ctx.fill()
-
-  // 衣服
-  ctx.fillStyle = '#667eea'
-  ctx.beginPath()
-  ctx.moveTo(centerX - 40, topY + 30)
-  ctx.lineTo(centerX + 40, topY + 30)
-  ctx.lineTo(centerX + 45, topY + 80)
-  ctx.lineTo(centerX - 45, topY + 80)
-  ctx.closePath()
-  ctx.fill()
-
-  // 衣服装饰
-  ctx.strokeStyle = '#764ba2'
-  ctx.lineWidth = 1
-  ctx.beginPath()
-  ctx.moveTo(centerX - 40, topY + 30)
-  ctx.lineTo(centerX + 40, topY + 30)
-  ctx.stroke()
-}
-
-/**
- * 绘制表情覆盖
- */
-const drawExpression = (centerX: number, centerY: number, headRadius: number) => {
-  if (!ctx || modelState.expressionBlend === 0) return
-
-  const blend = modelState.expressionBlend
-
-  switch (modelState.targetExpression) {
-    case 'happy':
-      // 开心表情 - 眼睛和嘴巴的调整由其他函数处理
-      break
-    case 'sad':
-      // 伤心表情
-      ctx.strokeStyle = `rgba(200, 100, 100, ${blend * 0.3})`
-      ctx.lineWidth = 2
-      // 泪水
-      ctx.beginPath()
-      ctx.arc(centerX - 25, centerY - 15, 4, 0, Math.PI * 2)
-      ctx.stroke()
-      break
-    case 'surprised':
-      // 惊讶表情
-      break
-  }
+  loadModel()
 }
 
 // ============ 对外接口 ============
 
 /**
  * 设置表情
+ * @param expressionName 表情名称 (例: "f_smile", "f_sad")
+ * @param _durationMs 持续时间 (Live2D SDK 自动管理过渡)
  */
-const setExpression = (expressionName: string, durationMs: number) => {
-  console.log('[Live2D] Set expression:', expressionName, durationMs)
+const setExpression = (expressionName: string, _durationMs?: number) => {
+  if (!model) {
+    console.warn('[Live2D] Model not loaded, cannot set expression:', expressionName)
+    return
+  }
 
-  animationQueue.push({
-    type: 'expression',
-    expression: expressionName,
-    duration: durationMs
-  })
+  try {
+    model.expression(expressionName)
+    console.log('[Live2D] Expression set:', expressionName)
+  } catch (error) {
+    console.warn('[Live2D] Failed to set expression:', expressionName, error)
+  }
 }
 
 /**
  * 播放动作
+ * @param motionName 动作名/组名 (例: "m_greet", "idle")
+ * @param priority 优先级 (0=idle, 1=normal, 2=force)
  */
-const playMotion = (motionName: string, priority: number = 0) => {
-  console.log('[Live2D] Play motion:', motionName, 'priority:', priority)
+const playMotion = (motionName: string, priority: number = 1) => {
+  if (!model) {
+    console.warn('[Live2D] Model not loaded, cannot play motion:', motionName)
+    return
+  }
 
-  animationQueue.push({
-    type: 'motion',
-    motion: motionName,
-    duration: 1000,
-    priority
-  })
+  try {
+    // pixi-live2d-display 的 motion(group, index, priority)
+    // motionName 作为 group 名称
+    model.motion(motionName, undefined, priority)
+    console.log('[Live2D] Motion played:', motionName, 'priority:', priority)
+  } catch (error) {
+    console.warn('[Live2D] Failed to play motion:', motionName, error)
+  }
 }
 
 /**
  * 实时嘴部同步
+ * @param value 0~1 的开合度
  */
 const setSyncMouthOpenY = (value: number) => {
   targetMouthOpenY = Math.max(0, Math.min(1, value))
 }
 
 /**
- * 眼睛跟踪
+ * 眼睛跟踪 — 让模型看向某个方向
+ * @param x -1 (左) ~ 1 (右)
+ * @param y -1 (上) ~ 1 (下)
  */
 const setEyeTrackingTarget = (x: number, y: number) => {
-  modelState.eyeX = Math.max(-1, Math.min(1, x))
-  modelState.eyeY = Math.max(-1, Math.min(1, y))
+  if (!model) return
+
+  try {
+    const coreModel = (model as any).internalModel?.coreModel
+    if (coreModel) {
+      coreModel.setParameterValueById('ParamEyeBallX', Math.max(-1, Math.min(1, x)))
+      coreModel.setParameterValueById('ParamEyeBallY', Math.max(-1, Math.min(1, y)))
+    }
+  } catch {
+    // 静默忽略
+  }
 }
 
 /**
  * 设置眼睑开度
+ * @param left 左眼 0~1
+ * @param right 右眼 0~1
  */
 const setEyeOpen = (left: number, right: number) => {
-  modelState.eyeOpenLeft = Math.max(0, Math.min(1, left))
-  modelState.eyeOpenRight = Math.max(0, Math.min(1, right))
+  if (!model) return
+
+  try {
+    const coreModel = (model as any).internalModel?.coreModel
+    if (coreModel) {
+      coreModel.setParameterValueById('ParamEyeLOpen', Math.max(0, Math.min(1, left)))
+      coreModel.setParameterValueById('ParamEyeROpen', Math.max(0, Math.min(1, right)))
+    }
+  } catch {
+    // 静默忽略
+  }
+}
+
+/**
+ * 从音频数据更新口型（用于 TTS 播放时的口型同步）
+ * @param analyserNode Web Audio API AnalyserNode
+ */
+const syncMouthFromAudio = (analyserNode: AnalyserNode) => {
+  const dataArray = new Uint8Array(analyserNode.fftSize)
+
+  const update = () => {
+    analyserNode.getByteTimeDomainData(dataArray)
+
+    // 计算音量 RMS
+    let sum = 0
+    for (let i = 0; i < dataArray.length; i++) {
+      const val = (dataArray[i] - 128) / 128
+      sum += val * val
+    }
+    const rms = Math.sqrt(sum / dataArray.length)
+
+    // 映射到嘴部开合 (0~1)
+    setSyncMouthOpenY(Math.min(1, rms * 4))
+
+    requestAnimationFrame(update)
+  }
+  update()
 }
 
 // ============ 生命周期 ============
 
 onMounted(async () => {
-  if (!initCanvas()) {
-    loadError.value = '初始化 Canvas 失败'
-    return
+  if (!initPixiApp()) return
+
+  // 监听容器大小变化
+  if (containerRef.value) {
+    resizeObserver = new ResizeObserver(handleResize)
+    resizeObserver.observe(containerRef.value)
   }
 
   await loadModel()
 })
 
 onUnmounted(() => {
-  // 停止渲染循环
-  if (rafId !== null) {
-    cancelAnimationFrame(rafId)
-    rafId = null
+  // 停止嘴部同步
+  if (mouthSyncRAF !== null) {
+    cancelAnimationFrame(mouthSyncRAF)
+    mouthSyncRAF = null
   }
-  canvas = null
-  ctx = null
+
+  // 断开 ResizeObserver
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
+
+  // 销毁模型
+  if (model) {
+    model.destroy()
+    model = null
+  }
+
+  // 销毁 PIXI 应用
+  if (app) {
+    app.destroy(true, { children: true, texture: true, baseTexture: true })
+    app = null
+  }
 })
 
 // ============ 暴露方法 ============
@@ -483,7 +363,9 @@ defineExpose({
   playMotion,
   setSyncMouthOpenY,
   setEyeTrackingTarget,
-  setEyeOpen
+  setEyeOpen,
+  syncMouthFromAudio,
+  retryLoad
 })
 </script>
 
@@ -493,11 +375,13 @@ defineExpose({
   width: 100%;
   height: 100%;
   background: transparent;
+  overflow: hidden;
 }
 
-.live2d-canvas {
-  width: 100%;
-  height: 100%;
+/* PIXI 自动创建的 canvas */
+.live2d-container :deep(canvas) {
+  width: 100% !important;
+  height: 100% !important;
   display: block;
 }
 
@@ -550,5 +434,22 @@ defineExpose({
 .error-content small {
   font-size: 12px;
   opacity: 0.8;
+  text-align: center;
+  max-width: 300px;
+}
+
+.retry-btn {
+  padding: 8px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.retry-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
 }
 </style>

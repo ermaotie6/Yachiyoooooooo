@@ -24,14 +24,20 @@ public:
         COOL       // yachiyou_cool (冷淡)
     };
     
+    enum class InferenceMode {
+        GPU,       // GPU 推理 (低延迟, timeout ~15s)
+        CPU        // CPU 推理 (高延迟, timeout ~60s)
+    };
+    
     GPTSoVITSService();
     ~GPTSoVITSService();
     
     /**
      * 初始化服务 (连接到 GPT-SoVITS 端点)
      * @param endpoint GPT-SoVITS API 端点 (例: http://localhost:5000)
+     * @param mode 推理模式 (GPU 或 CPU, 影响超时策略)
      */
-    bool initialize(const std::string& endpoint);
+    bool initialize(const std::string& endpoint, InferenceMode mode = InferenceMode::CPU);
     
     /**
      * 合成语音
@@ -104,9 +110,19 @@ private:
     };
     
     std::string endpoint_;
+    InferenceMode inference_mode_;
+    long timeout_seconds_;
     std::map<std::string, CacheEntry> cache_;
     std::mutex cache_mutex_;
     std::map<VoicePreset, VoiceConfig> voice_configs_;
+    
+    // 情感 → 参考音频映射
+    std::map<std::string, std::string> emotion_ref_audio_map_;
+    
+    /**
+     * 获取情感对应的参考音频路径
+     */
+    std::string getRefAudioForEmotion(const std::string& emotionType) const;
     
     /**
      * 生成缓存键

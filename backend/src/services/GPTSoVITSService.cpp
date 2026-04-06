@@ -16,7 +16,7 @@ static size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::stri
 // ==================== 构造/析构 ====================
 
 GPTSoVITSService::GPTSoVITSService() 
-    : endpoint_("") {
+    : endpoint_(""), inference_mode_(InferenceMode::CPU), timeout_seconds_(60) {
 }
 
 GPTSoVITSService::~GPTSoVITSService() {
@@ -25,10 +25,26 @@ GPTSoVITSService::~GPTSoVITSService() {
 
 // ==================== 初始化 ====================
 
-bool GPTSoVITSService::initialize(const std::string& endpoint) {
-    LOG_INFO("初始化 GPT-SoVITS 服务: endpoint={}", endpoint);
+bool GPTSoVITSService::initialize(const std::string& endpoint, InferenceMode mode) {
+    LOG_INFO("初始化 GPT-SoVITS 服务: endpoint={}, mode={}", 
+             endpoint, mode == InferenceMode::GPU ? "GPU" : "CPU");
     
     endpoint_ = endpoint;
+    inference_mode_ = mode;
+    
+    // 根据推理模式设置超时
+    timeout_seconds_ = (mode == InferenceMode::GPU) ? 15L : 60L;
+    LOG_INFO("推理超时设置: {}s ({})", timeout_seconds_, 
+             mode == InferenceMode::GPU ? "GPU低延迟" : "CPU容忍高延迟");
+    
+    // 配置情感参考音频映射
+    // 实际路径在 GPT-SoVITS 服务端的 reference/ 目录下
+    emotion_ref_audio_map_["neutral"]  = "reference/yachiyo_ref.wav";
+    emotion_ref_audio_map_["default"]  = "reference/yachiyo_ref.wav";
+    emotion_ref_audio_map_["happy"]    = "reference/yachiyo_happy.wav";
+    emotion_ref_audio_map_["excited"]  = "reference/yachiyo_happy.wav";
+    emotion_ref_audio_map_["sad"]      = "reference/yachiyo_sad.wav";
+    emotion_ref_audio_map_["angry"]    = "reference/yachiyo_angry.wav";
     
     // 配置预设声音
     voice_configs_[VoicePreset::DEFAULT] = {
@@ -88,17 +104,21 @@ Utils::Result<dto::TTSResponse> GPTSoVITSService::synthesize(const dto::TTSReque
         
         nlohmann::json reqJson;
         reqJson["text"] = request.text;
+        reqJson["text_language"] = request.language;
         reqJson["emotion"] = request.emotionType;
         reqJson["voice_preset"] = request.voicePreset;
         reqJson["pitch_shift"] = request.pitchShift;
         reqJson["speed_factor"] = request.speedFactor;
         reqJson["energy_level"] = request.energyLevel;
+        if (!request.refAudioPath.empty()) {
+            reqJson["ref_audio_path"] = request.refAudioPath;
+        }
         std::string postData = reqJson.dump();
         
         std::string readBuffer;
         curl_easy_setopt(curl, CURLOPT_URL, (endpoint_ + "/synthesize").c_str());
         curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postData.c_str());
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout_seconds_);
         
         struct curl_slist* headers = nullptr;
         headers = curl_slist_append(headers, "Content-Type: application/json");
@@ -161,6 +181,10 @@ Utils::Result<dto::TTSResponse> GPTSoVITSService::synthesizeWithEmotion(
     request.text = text;
     request.emotionType = emotionType;
     request.voicePreset = "yachiyou_" + std::to_string(static_cast<int>(voicePreset));
+    
+    // 根据情感选择参考音频
+    request.refAudioPath = getRefAudioForEmotion(emotionType);
+    LOG_DEBUG("情感 '{}' → 参考音频: {}", emotionType, request.refAudioPath);
     
     // 映射情感到参数
     mapEmotionToParameters(
@@ -255,6 +279,19 @@ void GPTSoVITSService::mapEmotionToParameters(
         speedFactor = 1.0f;
         energyLevel = 0.5f;
     }
+}
+
+std::string GPTSoVITSService::getRefAudioForEmotion(const std::string& emotionType) const {
+    auto it = emotion_ref_audio_map_.find(emotionType);
+    if (it != emotion_ref_audio_map_.end()) {
+        return it->second;
+    }
+    // fallback 到默认参考音频
+    auto defaultIt = emotion_ref_audio_map_.find("default");
+    if (defaultIt != emotion_ref_audio_map_.end()) {
+        return defaultIt->second;
+    }
+    return "reference/yachiyo_ref.wav";
 }
 
 } // namespace yachiyo::services

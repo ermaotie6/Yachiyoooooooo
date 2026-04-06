@@ -22,6 +22,9 @@ struct TTSRequest {
     float speedFactor = 1.0;
     float energyLevel = 0.5;
     
+    // 参考音频路径 (用于情感化语音合成)
+    std::string refAudioPath;
+    
     // 输出配置
     std::string format = "wav";
     int sampleRate = 22050;
@@ -39,6 +42,9 @@ struct TTSRequest {
         j["emotion"]["pitch_shift"] = pitchShift;
         j["emotion"]["speed_factor"] = speedFactor;
         j["emotion"]["energy_level"] = energyLevel;
+        if (!refAudioPath.empty()) {
+            j["ref_audio_path"] = refAudioPath;
+        }
         j["output"]["format"] = format;
         j["output"]["sample_rate"] = sampleRate;
         j["output"]["bit_depth"] = bitDepth;

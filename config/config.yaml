@@ -44,6 +44,8 @@ gpt_sovits:
   enabled: true
   api_endpoint: "http://localhost:5000"  # 或云端端点
   api_key: "${SOVITS_API_KEY}"           # 从环境变量读取
+  mode: "cpu"                              # "gpu" 或 "cpu"（影响超时策略）
+  timeout_seconds: 60                      # CPU 模式建议 60，GPU 模式可设为 15
   
   # 语音参数预设
   voice_presets:
@@ -120,16 +122,8 @@ openclaw:
   enabled: true
   
   # 桥接服务地址 (Node.js bridge 的接收端口)
+  # 架构: C++ 后端 → 桥接服务(:8765) → OpenClaw(:8000) → 同步返回
   bridge_endpoint: "http://localhost:8765"
-  # C++ 后端回调监听端口 (桥接服务将结果推到这里)
-  callback_port: 8766
-  
-  # OpenClaw 真实地址 (由桥接服务管理, 此处仅作记录)
-  openclaw_endpoint: "http://localhost:8000"
-  
-  # 会话管理
-  session_ttl_seconds: 3600
-  max_context_history: 20            # 最多保留 20 条消息
   
   # 请求超时 (秒)
   request_timeout: 30
