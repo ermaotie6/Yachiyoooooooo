@@ -51,31 +51,17 @@ bool AvatarResponseService::initialize(
         LOG_ERROR("TTS 服务未配置");
         return false;
     }
-    if (!tts_service_->initialize()) {
-        LOG_ERROR("TTS 服务初始化失败");
-        return false;
-    }
+    // 注意: tts_service_ 已在 Application.cpp 中通过 initialize(endpoint, mode) 初始化，
+    // 此处不再调用无参 initialize()，否则会覆盖已配置的 endpoint 和 mode。
     
     if (!animation_service_) {
         LOG_ERROR("动画服务未配置");
         return false;
     }
-    if (!animation_service_->initialize()) {
-        LOG_ERROR("动画服务初始化失败");
-        return false;
-    }
+    // 注意: animation_service_ 已在 Application.cpp 中初始化。
     
-    if (translation_service_) {
-        if (!translation_service_->initialize()) {
-            LOG_WARN("翻译服务初始化失败 - 某些功能可能受限");
-        }
-    }
-    
-    if (moderation_service_) {
-        if (!moderation_service_->initialize()) {
-            LOG_WARN("内容审核服务初始化失败 - 将跳过审核");
-        }
-    }
+    // 注意: translation_service_ 和 moderation_service_ 也已在 Application.cpp 中初始化，
+    // 此处仅做空指针检查，不再重复调用 initialize()。
     
     default_language_ = avatar_language;
     

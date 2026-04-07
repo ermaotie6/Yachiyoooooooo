@@ -292,6 +292,18 @@ const playAudioWithAnimations = async (response: any) => {
       }
     })
 
+    // 先注册播放结束回调（在 play 之前），防止极短音频在回调注册前就播完导致 Promise 永不 resolve
+    const playEndPromise = new Promise<void>((resolve) => {
+      audioPlayer.onEnd(() => {
+        if (lastMessage) {
+          lastMessage.isAudioPlaying = false
+        }
+        // 音频播放结束后清除字幕
+        subtitleText.value = ''
+        resolve()
+      })
+    })
+
     // 播放音频
     await audioPlayer.play(response.audio_url)
 
@@ -301,16 +313,7 @@ const playAudioWithAnimations = async (response: any) => {
     }
 
     // 等待音频播放完成
-    await new Promise((resolve) => {
-      audioPlayer.onEnd(() => {
-        if (lastMessage) {
-          lastMessage.isAudioPlaying = false
-        }
-        // 音频播放结束后清除字幕
-        subtitleText.value = ''
-        resolve(null)
-      })
-    })
+    await playEndPromise
   } catch (error) {
     console.error('音频播放错误:', error)
     if (lastMessage) {
@@ -441,7 +444,8 @@ const formatTime = (timestamp: number): string => {
 /**
  * 格式化音频时长
  */
-const formatDuration = (ms: number): string => {
+const formatDuration = (ms?: number): string => {
+  if (!ms || isNaN(ms) || ms <= 0) return '0:00'
   const seconds = Math.floor(ms / 1000)
   const minutes = Math.floor(seconds / 60)
   const secs = seconds % 60

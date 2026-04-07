@@ -40,31 +40,49 @@ int main(int argc, char* argv[]) {
 
 /**
  * @brief 信号处理器
+ * @note 必须处理应用尚未初始化的情况，避免空指针解引用导致递归崩溃
  */
 void signalHandler(int signal) {
-    auto logger = LogUtils::getLogger("Main");
-    
-    switch (signal) {
-        case SIGINT:
-            logger->info("收到SIGINT信号，正在优雅关闭...");
-            break;
-        case SIGTERM:
-            logger->info("收到SIGTERM信号，正在优雅关闭...");
-            break;
-        case SIGSEGV:
-            logger->error("收到SIGSEGV信号，内存访问违规!");
-            break;
-        case SIGABRT:
-            logger->error("收到SIGABRT信号，程序异常终止!");
-            break;
-        default:
-            logger->warn("收到未知信号: {}", signal);
-            break;
+    // 对于致命信号 (SIGSEGV/SIGABRT)，先重置为默认处理器，
+    // 防止 signalHandler 自身再次触发同一信号时无限递归
+    if (signal == SIGSEGV || signal == SIGABRT) {
+        std::signal(signal, SIG_DFL);
     }
     
-    // 获取应用程序实例并停止
-    auto app = Application::getInstance();
-    app->stop();
+    // 尝试记录日志（容忍日志系统不可用的情况）
+    try {
+        auto logger = LogUtils::getLogger("Main");
+        switch (signal) {
+            case SIGINT:
+                logger->info("收到SIGINT信号，正在优雅关闭...");
+                break;
+            case SIGTERM:
+                logger->info("收到SIGTERM信号，正在优雅关闭...");
+                break;
+            case SIGSEGV:
+                logger->error("收到SIGSEGV信号，内存访问违规!");
+                break;
+            case SIGABRT:
+                logger->error("收到SIGABRT信号，程序异常终止!");
+                break;
+            default:
+                logger->warn("收到未知信号: {}", signal);
+                break;
+        }
+    } catch (...) {
+        // 日志系统不可用，写 stderr 作为最后手段
+        std::cerr << "收到信号: " << signal << std::endl;
+    }
+    
+    // 获取应用程序实例并停止（防御空指针）
+    try {
+        auto app = Application::getInstance();
+        if (app) {
+            app->stop();
+        }
+    } catch (...) {
+        // 应用实例不可用，忽略
+    }
     
     exit(signal);
 }

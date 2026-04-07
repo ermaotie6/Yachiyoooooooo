@@ -238,7 +238,11 @@ void WebSocketController::broadcastResponse(
     const std::string& clientId,
     const services::AvatarResponseService::AvatarResponse& response
 ) {
-    LOG_DEBUG("广播 Avatar 响应: {}", clientId);
+    // 注意: 此方法仅记录日志，不执行实际的 WebSocket 广播。
+    // 实际的消息推送（发送给发送者 + 广播给其他观众）由 Application.cpp 中的
+    // onMessageReceived 回调通过 g_webSocketService->sendToClient() 和
+    // 遍历 getClients() 完成。此方法作为 Controller 层的事件追踪点。
+    LOG_DEBUG("Avatar 响应已生成 (clientId={}), 等待 Application 层推送", clientId);
     
     json payload = {
         {"requestId", response.requestId},
@@ -249,8 +253,7 @@ void WebSocketController::broadcastResponse(
         {"processingTimeMs", response.processingTimeMs}
     };
     
-    // 可以在这里添加到消息队列，由事件循环发送
-    logClientEvent(clientId, "RESPONSE_SENT", payload);
+    logClientEvent(clientId, "RESPONSE_GENERATED", payload);
 }
 
 // ==================== 心跳检测 ====================

@@ -392,13 +392,13 @@ Result<bool> MessageServiceImpl::checkIpBlacklist(const std::string& userIp) {
 
 Result<std::pair<bool, double>> MessageServiceImpl::checkBlockedKeywords(const std::string& message) {
     try {
-        // 转换消息为小写以进行不区分大小写的匹配
+        // 转换消息为小写以进行不区分大小写的匹配 (仅对 ASCII 字符有效，中文无大小写)
         std::string lowerMessage = message;
         std::transform(lowerMessage.begin(), lowerMessage.end(), lowerMessage.begin(), ::tolower);
         
-        // 查询数据库中的敏感词
+        // 查询数据库中的敏感词 (使用 LOWER() 确保关键词也被转小写，与 lowerMessage 一致)
         auto result = dbUtil->query(
-            "SELECT keyword, severity FROM blocked_keywords WHERE is_active = true",
+            "SELECT LOWER(keyword) AS keyword, severity FROM blocked_keywords WHERE is_active = true",
             {}
         );
         
@@ -409,7 +409,7 @@ Result<std::pair<bool, double>> MessageServiceImpl::checkBlockedKeywords(const s
             std::string keyword = row["keyword"];
             int severity = std::stoi(row["severity"]);
             
-            // 简单的关键词匹配 (可改进为正则表达式)
+            // 关键词匹配 (消息和关键词均已转小写，英文大小写不敏感)
             if (lowerMessage.find(keyword) != std::string::npos) {
                 foundKeyword = true;
                 // 根据严重程度计算评分 (1-5级 -> 0.2-1.0)
