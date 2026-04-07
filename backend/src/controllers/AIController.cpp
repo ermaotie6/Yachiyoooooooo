@@ -24,13 +24,6 @@ void AIController::registerRoutes(crow::SimpleApp& app) {
             return this->chat(req);
         });
 
-    // 流式聊天
-    CROW_ROUTE(app, "/api/v2/ai/chat/stream")
-        .methods("POST"_method)
-        ([this](const crow::request& req) {
-            return this->chatStream(req);
-        });
-
     // 语音合成
     CROW_ROUTE(app, "/api/v2/ai/tts")
         .methods("POST"_method)
@@ -143,77 +136,6 @@ crow::response AIController::chat(const crow::request& req) {
 
     } catch (const std::exception& e) {
         logger->error("聊天请求失败: {}", e.what());
-        return utils::JsonUtils::createErrorResponse(500, "服务器内部错误");
-    }
-}
-
-crow::response AIController::chatStream(const crow::request& req) {
-    try {
-        // 验证认证令牌
-        std::string authHeader = req.get_header_value("Authorization");
-        if (authHeader.empty() || authHeader.find("Bearer ") != 0) {
-            return utils::JsonUtils::createErrorResponse(401, "未提供有效的认证令牌");
-        }
-        std::string token = authHeader.substr(7);
-
-        auto json = crow::json::load(req.body);
-        if (!json) {
-            return utils::JsonUtils::createErrorResponse(400, "无效的JSON数据");
-        }
-
-        std::string message = json["message"].s();
-        std::string model = json.has("model") ? json["model"].s() : "gpt-3.5-turbo";
-        std::string chatId = json.has("chat_id") ? json["chat_id"].s() : "";
-        
-        if (message.empty()) {
-            return utils::JsonUtils::createErrorResponse(400, "消息内容不能为空");
-        }
-
-        // 创建流式响应
-        auto response = crow::response();
-        response.set_header("Content-Type", "text/event-stream");
-        response.set_header("Cache-Control", "no-cache");
-        response.set_header("Connection", "keep-alive");
-        
-        // 设置响应体写入器
-        response.write("data: {\"event\":\"start\"}\n\n");
-        
-        // 这里应该实现真正的流式响应
-        // 由于Crow框架的限制，这里简化处理
-        auto result = aiService->chatCompletion(token, message, model, chatId, 
-                                               {}, 0.7, 1000);
-        
-        if (result.success) {
-            // 模拟流式输出
-            std::stringstream ss(result.response);
-            std::string line;
-            while (std::getline(ss, line, ' ')) {
-                if (!line.empty()) {
-                    crow::json::wvalue chunk;
-                    chunk["event"] = "chunk";
-                    chunk["data"] = line + " ";
-                    response.write("data: " + crow::json::dump(chunk) + "\n\n");
-                }
-            }
-            
-            crow::json::wvalue endChunk;
-            endChunk["event"] = "end";
-            endChunk["data"]["chat_id"] = result.chatId;
-            endChunk["data"]["message_id"] = result.messageId;
-            endChunk["data"]["tokens_used"] = result.tokensUsed;
-            response.write("data: " + crow::json::dump(endChunk) + "\n\n");
-        } else {
-            crow::json::wvalue errorChunk;
-            errorChunk["event"] = "error";
-            errorChunk["data"] = result.message;
-            response.write("data: " + crow::json::dump(errorChunk) + "\n\n");
-        }
-        
-        response.write("data: {\"event\":\"done\"}\n\n");
-        return response;
-
-    } catch (const std::exception& e) {
-        logger->error("流式聊天请求失败: {}", e.what());
         return utils::JsonUtils::createErrorResponse(500, "服务器内部错误");
     }
 }

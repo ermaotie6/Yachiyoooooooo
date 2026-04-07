@@ -1,7 +1,6 @@
 add_library(utils
     ConfigParser.cpp
     DatabaseUtil.cpp
-    EmailService.cpp
     HashUtil.cpp
     HttpServer.cpp
     JsonUtils.cpp

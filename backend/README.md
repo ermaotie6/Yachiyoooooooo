@@ -108,7 +108,6 @@ backend/
         Result.hpp             # 通用 Result<T>
         ValidationUtils.hpp    # 输入验证
         OpencalwClient.hpp     # OpenClaw HTTP 客户端
-        EmailService.hpp       # 邮件服务 (预留)
         Compat.hpp             # 命名空间兼容层
  src/                           # 源文件实现
     main.cpp                   # 程序入口
@@ -120,7 +119,11 @@ backend/
     utils/                     # 工具实现
  scripts/
     build.sh                   # 构建脚本
- test/                          # 单元测试 (预留)
+ tests/                         # 测试
+    CMakeLists.txt             # 测试 CMake 配置
+    main_test.cpp              # GTest 入口
+    unit/                      # 单元测试 (13 个测试文件)
+    integration/               # 集成测试 (4 个测试文件)
 ```
 
 ---
@@ -152,6 +155,26 @@ bash scripts/build.sh --build
 mkdir -p build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j$(nproc)
+```
+
+### 编译并运行测试
+
+```bash
+cd backend
+
+# 构建测试 (需要安装 Google Test)
+mkdir -p build_test && cd build_test
+cmake .. -DCMAKE_BUILD_TYPE=Debug
+make -j$(nproc) yachiyo_unit_tests yachiyo_integration_tests
+
+# 运行单元测试
+./yachiyo_unit_tests --gtest_color=yes
+
+# 运行集成测试
+./yachiyo_integration_tests --gtest_color=yes
+
+# 或运行全部测试
+make run_all_tests
 ```
 
 ### 运行

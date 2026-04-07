@@ -141,7 +141,6 @@ struct AIModelConfig {
     int maxTokens;
     double topP;
     int topK;
-    bool stream;
     
     AIModelConfig() 
         : modelName("gpt-3.5-turbo"), 
@@ -149,8 +148,7 @@ struct AIModelConfig {
           temperature(0.7),
           maxTokens(2048),
           topP(0.9),
-          topK(50),
-          stream(false) {}
+          topK(50) {}
 };
 
 // ==================== 服务类 ====================

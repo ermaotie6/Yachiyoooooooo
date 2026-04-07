@@ -3,7 +3,6 @@
 #include <string>
 #include <memory>
 #include <vector>
-#include <functional>
 #include "../models/Message.hpp"
 #include "../dto/ChatRequest.hpp"
 #include "../dto/ChatMessageDTO.hpp"
@@ -47,7 +46,6 @@ struct ChatConfig {
     std::string model = "llama2";
     double temperature = 0.7;
     int maxTokens = 1000;
-    bool stream = false;
     
     // OpenAI 特定配置
     std::string openaiApiKey;
@@ -59,9 +57,6 @@ struct ChatConfig {
     // 本地模型配置
     std::string localModelPath;
 };
-
-// 流式响应回调
-using StreamCallback = std::function<void(const std::string& chunk, bool finished)>;
 
 /**
  * @brief AI聊天服务接口
@@ -77,17 +72,6 @@ public:
      * @return 聊天响应
      */
     virtual Utils::Result<std::string> chat(const DTO::ChatRequest& request, int64_t userId) = 0;
-
-    /**
-     * @brief 流式聊天
-     * @param request 聊天请求
-     * @param userId 用户ID
-     * @param callback 流式回调函数
-     * @return 操作结果
-     */
-    virtual Utils::Result<void> chatStream(const DTO::ChatRequest& request, 
-                                          int64_t userId, 
-                                          StreamCallback callback) = 0;
 
     /**
      * @brief 创建新会话
@@ -167,9 +151,6 @@ public:
 
     // 实现接口方法
     Utils::Result<std::string> chat(const DTO::ChatRequest& request, int64_t userId) override;
-    Utils::Result<void> chatStream(const DTO::ChatRequest& request, 
-                                  int64_t userId, 
-                                  StreamCallback callback) override;
     Utils::Result<std::string> createConversation(int64_t userId, 
                                                  const std::string& title = "") override;
     Utils::Result<std::vector<std::string>> getConversations(int64_t userId) override;
@@ -243,20 +224,6 @@ private:
      * @return AI响应
      */
     std::string callLocalModel(const std::vector<ChatMessage>& messages);
-
-    /**
-     * @brief 流式调用OpenAI API
-     * @param messages 消息列表
-     * @param callback 流式回调
-     */
-    void callOpenAIStream(const std::vector<ChatMessage>& messages, StreamCallback callback);
-
-    /**
-     * @brief 流式调用Ollama API
-     * @param messages 消息列表
-     * @param callback 流式回调
-     */
-    void callOllamaStream(const std::vector<ChatMessage>& messages, StreamCallback callback);
 
     /**
      * @brief 生成会话ID

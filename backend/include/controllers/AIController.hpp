@@ -22,7 +22,6 @@ private:
     
     // AI 聊天
     crow::response chat(const crow::request& req);
-    crow::response chatStream(const crow::request& req);
     
     // 语音
     crow::response textToSpeech(const crow::request& req);
