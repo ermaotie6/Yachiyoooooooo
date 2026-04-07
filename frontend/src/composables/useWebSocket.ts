@@ -295,11 +295,13 @@ export function useWebSocket() {
   /**
    * 发送用户消息
    */
-  const sendUserMessage = (content: string): boolean => {
+  const sendUserMessage = (content: string, userId?: string, username?: string): boolean => {
     return sendMessage({
       type: 'user_message',
       data: {
         content,
+        user_id: userId || '',
+        username: username || '',
         timestamp: Date.now(),
         language: 'ja'  // 目标语言：日语（百度翻译 API 翻译为日语）
       }

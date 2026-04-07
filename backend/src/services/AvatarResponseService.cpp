@@ -44,9 +44,8 @@ bool AvatarResponseService::initialize(
         LOG_ERROR("OpenClaw 网关未配置");
         return false;
     }
-    if (!openclaw_gateway_->initialize("http://localhost:8765")) {
-        LOG_WARN("OpenClaw 桥接服务暂不可用 — 服务可能稍后启动");
-    }
+    // OpenClaw 网关已在 Application.cpp 中通过配置文件初始化，
+    // 此处不再重复初始化，避免用硬编码 URL 覆盖配置值。
     
     if (!tts_service_) {
         LOG_ERROR("TTS 服务未配置");

@@ -178,6 +178,19 @@ std::vector<Utils::Result<dto::TranslationResponse>> TranslationService::batchTr
 
 // ==================== 引擎优先级 ====================
 
+void TranslationService::configureEngine(Engine engine, const std::string& apiKey, const std::string& endpoint) {
+    auto it = engines_.find(engine);
+    if (it != engines_.end()) {
+        it->second.apiKey = apiKey;
+        if (!endpoint.empty()) {
+            it->second.endpoint = endpoint;
+        }
+        LOG_INFO("翻译引擎已配置: engine={}, hasKey={}", static_cast<int>(engine), !apiKey.empty());
+    } else {
+        LOG_WARN("未知翻译引擎: {}", static_cast<int>(engine));
+    }
+}
+
 void TranslationService::setEnginePriority(const std::vector<Engine>& priority) {
     engine_priority_ = priority;
 }

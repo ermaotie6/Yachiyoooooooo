@@ -142,7 +142,12 @@ Utils::Result<json> WebSocketController::handleMessage(
                 std::string text = wsMessage.payload["text"].get<std::string>();
                 auto targetLanguage = wsMessage.payload.value("language", "zh-CN");
                 
-                response = processUserMessage(clientId, userId, text, targetLanguage).getValue();
+                auto result = processUserMessage(clientId, userId, text, targetLanguage);
+                if (!result.isSuccess()) {
+                    LOG_ERROR("处理用户消息失败: {}", result.getError().message);
+                    return Utils::Result<json>::fail(5002, "处理用户消息失败");
+                }
+                response = result.getValue();
             }
             break;
         }

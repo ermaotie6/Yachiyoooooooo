@@ -279,8 +279,14 @@ Result<bool> AuthServiceImpl::logout(
     try {
         // 将 refresh token 加入 Redis 黑名单 (TTL 7天)
         if (!refreshToken.empty()) {
-            std::string blacklistKey = "token_blacklist:" + refreshToken;
-            dbUtil->redisSet(blacklistKey, "1", 604800);  // 7天过期
+            try {
+                std::string blacklistKey = "token_blacklist:" + refreshToken;
+                dbUtil->redisSet(blacklistKey, "1", 604800);  // 7天过期
+            } catch (const std::exception& e) {
+                // Redis 不可用时记录警告但不阻止注销
+                // TODO: 考虑将 Redis 操作抽离到独立的 RedisCacheService
+                LOG_WARN("注销时无法将 token 加入黑名单 (Redis 不可用): {}", e.what());
+            }
         }
         
         LOG_INFO("用户注销: " + std::to_string(userId));

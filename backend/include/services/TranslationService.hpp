@@ -65,6 +65,14 @@ public:
     );
     
     /**
+     * 配置翻译引擎的 API Key 和端点
+     * @param engine 引擎类型
+     * @param apiKey API 密钥
+     * @param endpoint 端点 URL (可选，为空则保留默认值)
+     */
+    void configureEngine(Engine engine, const std::string& apiKey, const std::string& endpoint = "");
+
+    /**
      * 设置各引擎的优先级
      */
     void setEnginePriority(const std::vector<Engine>& priority);

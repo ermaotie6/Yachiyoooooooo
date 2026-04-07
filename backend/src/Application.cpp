@@ -365,13 +365,33 @@ void Application::initializeServices() {
         // 2. 翻译服务
         auto translationService = std::make_shared<yachiyo::services::TranslationService>();
         translationService->initialize();
+        // 注入百度翻译 API 配置 (appid:secret_key 格式)
+        std::string baiduAppId = configManager->getString("translation.services.0.appid", "");
+        std::string baiduApiKey = configManager->getString("translation.services.0.api_key", "");
+        if (!baiduAppId.empty() && !baiduApiKey.empty()) {
+            translationService->configureEngine(
+                yachiyo::services::TranslationService::Engine::BAIDU,
+                baiduAppId + ":" + baiduApiKey);
+        }
+        // 注入 DeepSeek 翻译 API 配置
+        std::string deepseekTransKey = configManager->getString("translation.services.1.api_key", "");
+        std::string deepseekTransEndpoint = configManager->getString("translation.services.1.endpoint", "");
+        if (!deepseekTransKey.empty()) {
+            translationService->configureEngine(
+                yachiyo::services::TranslationService::Engine::DEEPSEEK,
+                deepseekTransKey, deepseekTransEndpoint);
+        }
         logger->info("翻译服务初始化完成");
 
         // 3. GPT-SoVITS TTS 服务
         auto ttsService = std::make_shared<yachiyo::services::GPTSoVITSService>();
-        std::string ttsEndpoint = configManager->getString("tts.endpoint", "");
-        ttsService->initialize(ttsEndpoint);
-        logger->info("GPT-SoVITS TTS 服务初始化完成");
+        std::string ttsEndpoint = configManager->getString("gpt_sovits.api_endpoint", "");
+        std::string ttsModeStr = configManager->getString("gpt_sovits.mode", "cpu");
+        auto ttsMode = (ttsModeStr == "gpu")
+            ? yachiyo::services::GPTSoVITSService::InferenceMode::GPU
+            : yachiyo::services::GPTSoVITSService::InferenceMode::CPU;
+        ttsService->initialize(ttsEndpoint, ttsMode);
+        logger->info("GPT-SoVITS TTS 服务初始化完成: endpoint={}, mode={}", ttsEndpoint, ttsModeStr);
 
         // 4. Live2D 动画服务
         auto animationService = std::make_shared<yachiyo::services::Live2DAnimationService>();
@@ -382,8 +402,8 @@ void Application::initializeServices() {
         std::shared_ptr<yachiyo::services::DeepSeekModerationService> moderationService = nullptr;
         if (configManager->getBool("moderation.enabled", false)) {
             moderationService = std::make_shared<yachiyo::services::DeepSeekModerationService>();
-            std::string moderationApiKey = configManager->getString("moderation.apiKey", "");
-            std::string moderationEndpoint = configManager->getString("moderation.endpoint", "");
+            std::string moderationApiKey = configManager->getString("moderation.deepseek_api_key", "");
+            std::string moderationEndpoint = configManager->getString("moderation.deepseek_api_endpoint", "https://api.deepseek.com");
             moderationService->initialize(moderationApiKey, moderationEndpoint);
             logger->info("DeepSeek 内容审查服务初始化完成");
         }
@@ -421,9 +441,13 @@ void Application::initializeServices() {
                             }
 
                             // 获取发送者用户名用于广播
-                            std::string senderName = userId;
-                            if (userId.empty()) {
-                                senderName = "匿名用户";
+                            // 优先从消息中提取 username（前端发送），fallback 到 userId
+                            std::string senderName;
+                            if (message["data"].contains("username")) {
+                                senderName = message["data"]["username"].get<std::string>();
+                            }
+                            if (senderName.empty()) {
+                                senderName = userId.empty() ? "匿名用户" : userId;
                             }
 
                             // 广播用户消息到所有观众的实时消息框
@@ -454,8 +478,20 @@ void Application::initializeServices() {
                                 g_webSocketService->sendToClient(client_id, errorMsg);
                             }
                             else {
-                                // 广播 avatar 响应到所有观众
-                                g_webSocketService->broadcastMessage(result.getValue());
+                                // 将 avatar 响应只发送给发送者（发送者本地处理）
+                                g_webSocketService->sendToClient(client_id, result.getValue());
+
+                                // 广播给其他观众（avatar 回复也让其他人看到）
+                                // 添加 sender_client_id 以便其他客户端区分
+                                json broadcastAvatar = result.getValue();
+                                broadcastAvatar["data"]["sender_client_id"] = client_id;
+                                // 遍历所有客户端，跳过发送者
+                                auto clients = g_webSocketService->getClients();
+                                for (const auto& client : clients) {
+                                    if (client.client_id != client_id && client.is_active) {
+                                        g_webSocketService->sendToClient(client.client_id, broadcastAvatar);
+                                    }
+                                }
                             }
                         }
                     } catch (const std::exception& e) {

@@ -218,8 +218,8 @@ const sendMessage = async () => {
   scrollToBottom()
 
   try {
-    // 发送给后端
-    ws.sendUserMessage(content)
+    // 发送给后端（携带 userId 和 username 供广播使用）
+    ws.sendUserMessage(content, currentUser.value.id, currentUser.value.name)
   } catch (error) {
     console.error('发送消息失败:', error)
     isProcessing.value = false
@@ -344,7 +344,8 @@ const playAnimations = (commands: any[]) => {
  */
 const handleUserBroadcast = (broadcast: { sender_id: string; sender_name: string; content: string; timestamp: number }) => {
   // 跳过自己发送的消息（已在 sendMessage 中添加到本地）
-  if (broadcast.sender_id === currentUser.value.id) return
+  // 显式 String() 确保类型一致性比较
+  if (String(broadcast.sender_id) === String(currentUser.value.id)) return
 
   messages.value.push({
     id: `msg_${broadcast.timestamp}_${Math.random().toString(36).slice(2, 8)}`,
