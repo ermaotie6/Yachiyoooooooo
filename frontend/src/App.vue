@@ -4,7 +4,7 @@
       <el-header class="app-header">
         <div class="header-content">
           <div class="logo">
-            <span class="logo-icon">🎭</span>
+            <img src="/images/logo.svg" alt="Yachiyo" class="logo-icon" />
             <span class="logo-text">Yachiyo</span>
           </div>
           <div class="nav-center">
@@ -77,7 +77,12 @@ const handleLogout = () => {
 <style scoped>
 .app-container {
   min-height: 100vh;
+  /* 背景图片可替换：将 bg.jpg 放入 public/images/ 目录即可生效 */
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background-image: url('/images/bg.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
 .app-header {
@@ -106,8 +111,10 @@ const handleLogout = () => {
 }
 
 .logo-icon {
-  font-size: 32px;
+  width: 36px;
+  height: 36px;
   margin-right: 12px;
+  object-fit: contain;
 }
 
 .logo-text {

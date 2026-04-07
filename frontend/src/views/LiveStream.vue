@@ -24,6 +24,11 @@
         <h2>Yachiyo</h2>
         <p class="role">AI 虚拟直播助手</p>
       </div>
+
+      <!-- 字幕覆盖层 -->
+      <div v-if="subtitleText" class="subtitle-overlay">
+        <span class="subtitle-text">{{ subtitleText }}</span>
+      </div>
     </section>
 
     <!-- 聊天区域 -->
@@ -85,8 +90,8 @@
         <div class="input-wrapper">
           <textarea
             v-model="messageInput"
-            placeholder="输入你的消息（最多500字）..."
-            maxlength="500"
+            placeholder="输入你的消息（最多50字）..."
+            maxlength="50"
             :disabled="!isConnected || isProcessing"
             @keydown.enter.ctrl="sendMessage"
             class="message-input"
@@ -94,8 +99,8 @@
 
           <!-- 字数统计 -->
           <div class="char-counter">
-            <span :class="{ warning: messageInput.length > 400, danger: messageInput.length > 450 }">
-              {{ messageInput.length }}/500
+            <span :class="{ warning: messageInput.length > 40, danger: messageInput.length > 45 }">
+              {{ messageInput.length }}/50
             </span>
           </div>
         </div>
@@ -164,6 +169,7 @@ const messages = ref<Message[]>([])
 const isConnected = ref(false)
 const isProcessing = ref(false)
 const connectionError = ref<string | null>(null)
+const subtitleText = ref('')
 
 const authStore = useAuthStore()
 const currentUser = computed(() => ({
@@ -240,6 +246,9 @@ const handleAvatarResponse = async (response: any) => {
 
   messages.value.push(avatarMsg)
 
+  // 显示字幕（与音频同步）
+  subtitleText.value = response.text || ''
+
   // 滚动到底部
   await nextTick()
   scrollToBottom()
@@ -254,6 +263,13 @@ const handleAvatarResponse = async (response: any) => {
   } else if (response.animation_commands && response.animation_commands.length > 0) {
     // 只有动画，没有音频
     playAnimations(response.animation_commands)
+  }
+
+  // 如果没有音频，延迟清除字幕
+  if (!response.audio_url) {
+    setTimeout(() => {
+      subtitleText.value = ''
+    }, 5000)
   }
 }
 
@@ -289,6 +305,8 @@ const playAudioWithAnimations = async (response: any) => {
         if (lastMessage) {
           lastMessage.isAudioPlaying = false
         }
+        // 音频播放结束后清除字幕
+        subtitleText.value = ''
         resolve(null)
       })
     })
@@ -297,6 +315,7 @@ const playAudioWithAnimations = async (response: any) => {
     if (lastMessage) {
       lastMessage.isAudioPlaying = false
     }
+    subtitleText.value = ''
   }
 }
 
@@ -452,7 +471,12 @@ onUnmounted(async () => {
   gap: 20px;
   padding: 20px;
   height: 100vh;
+  /* 背景图片可替换：与 App.vue 共用 bg.jpg，也可单独设置 */
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background-image: url('/images/bg.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
     Ubuntu, Cantarell, sans-serif;
 }
@@ -539,6 +563,44 @@ onUnmounted(async () => {
   margin: 5px 0 0 0;
   font-size: 12px;
   opacity: 0.8;
+}
+
+/* ============ 字幕覆盖层 ============ */
+
+.subtitle-overlay {
+  position: absolute;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  max-width: 90%;
+  pointer-events: none;
+  animation: subtitleFadeIn 0.3s ease-out;
+}
+
+.subtitle-text {
+  display: inline-block;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-size: 18px;
+  line-height: 1.6;
+  padding: 10px 24px;
+  border-radius: 8px;
+  text-align: center;
+  word-break: break-word;
+  backdrop-filter: blur(4px);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+@keyframes subtitleFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }
 
 /* ============ 聊天区域 ============ */
