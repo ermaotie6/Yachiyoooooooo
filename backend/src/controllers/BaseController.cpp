@@ -1,11 +1,14 @@
-#include "../../include/controllers/BaseController.hpp"
-#include "../../include/utils/LogUtils.hpp"
-#include "../../include/utils/JsonUtils.hpp"
-#include "../../include/utils/JwtUtil.hpp"
+#include "controllers/BaseController.hpp"
+#include "utils/LogUtils.hpp"
+#include "utils/JsonUtils.hpp"
+#include "utils/JwtUtil.hpp"
+#include "config/ConfigManager.hpp"
 #include <crow.h>
 #include <chrono>
 
 namespace yachiyo::controllers {
+
+using yachiyo::utils::LogUtils;
 
 BaseController::BaseController() {
     logger = LogUtils::getLogger("BaseController");
@@ -142,9 +145,17 @@ std::string BaseController::getUserIdFromToken(const crow::request& req) {
     }
     
     try {
-        // 这里应该验证JWT令牌并提取用户ID
-        // 暂时返回模拟用户ID
-        return JwtUtil::verifyToken(token);
+        // 从配置中获取 JWT 密钥
+        auto configManager = config::ConfigManager::getInstance();
+        std::string jwtSecret = configManager->getString("jwt.secret", "yachiyo-default-secret-change-in-production");
+        int jwtExpiration = configManager->getInt("jwt.expiresIn", 24);
+
+        Yachiyo::Utils::JwtUtil jwtUtil(jwtSecret, jwtExpiration);
+        auto [valid, message] = jwtUtil.verifyToken(token);
+        if (!valid) return "";
+
+        int64_t userId = jwtUtil.getUserIdFromToken(token);
+        return userId > 0 ? std::to_string(userId) : "";
     } catch (const std::exception& e) {
         logger->error("从令牌获取用户ID失败: {}", e.what());
         return "";

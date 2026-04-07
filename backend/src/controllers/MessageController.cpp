@@ -1,7 +1,7 @@
-#include "../include/controllers/MessageController.hpp"
-#include "../include/utils/Logger.hpp"
-#include "../include/services/DatabaseService.hpp"
-#include "../include/services/WebSocketService.hpp"
+#include "controllers/MessageController.hpp"
+#include "utils/Logger.hpp"
+#include "services/DatabaseService.hpp"
+#include "services/WebSocketService.hpp"
 #include <nlohmann/json.hpp>
 #include <chrono>
 
@@ -10,6 +10,7 @@ using json = nlohmann::json;
 namespace yachiyo::controllers {
 
 using namespace Yachiyo::Services;
+using yachiyo::models::UserRole;
 
 // ==================== 辅助函数 ====================
 
@@ -71,20 +72,20 @@ void MessageController::sendMessage(const crow::request& req, crow::response& re
         auto result = messageService->sendMessage(userId, message, userIp, userAgent);
         
         if (result.isSuccess()) {
-            auto msg = result.getData();
+            auto msg = result.value();
             res.code = 201;
             res.body = json({
                 {"code", 201},
                 {"msg", "消息已提交审查"},
                 {"data", {
-                    {"message_id", msg->getId()},
+                    {"message_id", msg->getMessageId()},
                     {"user_id", msg->getUserId()},
                     {"review_status", static_cast<int>(msg->getReviewStatus())},
                     {"spam_score", msg->getSpamScore()},
                     {"created_at", msg->getCreatedAt()}
                 }}
             }).dump();
-            LOG_INFO("消息发送成功: " + std::to_string(msg->getId()));
+            LOG_INFO("消息发送成功: " + std::to_string(msg->getMessageId()));
         } else {
             res.code = 400;
             res.body = json({
@@ -152,12 +153,12 @@ void MessageController::getMessages(const crow::request& req, crow::response& re
         auto result = messageService->getUserMessages(userId, limit, offset);
         
         if (result.isSuccess()) {
-            auto messages = result.getData();
+            const auto& messages = result.value();
             json data = json::array();
             
             for (const auto& msg : messages) {
                 data.push_back({
-                    {"message_id", msg->getId()},
+                    {"message_id", msg->getMessageId()},
                     {"user_id", msg->getUserId()},
                     {"message", msg->getOriginalMessage()},
                     {"review_status", static_cast<int>(msg->getReviewStatus())},
@@ -209,7 +210,7 @@ void MessageController::getPendingMessages(const crow::request& req, crow::respo
         std::string token = authHeader.substr(7);
         auto role = authService->getRoleFromToken(token);
         
-        if (role != Models::UserRole::ADMIN) {
+        if (role != UserRole::ADMIN) {
             res.code = 403;
             res.body = json({
                 {"code", 403},
@@ -240,12 +241,12 @@ void MessageController::getPendingMessages(const crow::request& req, crow::respo
         auto result = messageService->getPendingMessages(limit, offset);
         
         if (result.isSuccess()) {
-            auto messages = result.getData();
+            const auto& messages = result.value();
             json data = json::array();
             
             for (const auto& msg : messages) {
                 data.push_back({
-                    {"message_id", msg->getId()},
+                    {"message_id", msg->getMessageId()},
                     {"user_id", msg->getUserId()},
                     {"message", msg->getOriginalMessage()},
                     {"spam_score", msg->getSpamScore()},
@@ -297,7 +298,7 @@ void MessageController::reviewMessage(const crow::request& req, crow::response& 
         int64_t reviewerId = authService->getUserIdFromToken(token);
         auto role = authService->getRoleFromToken(token);
         
-        if (role != Models::UserRole::ADMIN) {
+        if (role != UserRole::ADMIN) {
             res.code = 403;
             res.body = json({
                 {"code", 403},
@@ -370,7 +371,7 @@ void MessageController::getStatistics(const crow::request& req, crow::response& 
         std::string token = authHeader.substr(7);
         auto role = authService->getRoleFromToken(token);
         
-        if (role != Models::UserRole::ADMIN) {
+        if (role != UserRole::ADMIN) {
             res.code = 403;
             res.body = json({
                 {"code", 403},
@@ -383,7 +384,7 @@ void MessageController::getStatistics(const crow::request& req, crow::response& 
         auto result = messageService->getStatistics();
         
         if (result.isSuccess()) {
-            auto stats = result.getData();
+            const auto& stats = result.value();
             res.code = 200;
             res.body = json({
                 {"code", 200},
@@ -425,7 +426,7 @@ void MessageController::getHighRiskMessages(const crow::request& req, crow::resp
         std::string token = authHeader.substr(7);
         auto role = authService->getRoleFromToken(token);
         
-        if (role != Models::UserRole::ADMIN) {
+        if (role != UserRole::ADMIN) {
             res.code = 403;
             res.body = json({
                 {"code", 403},
@@ -456,12 +457,12 @@ void MessageController::getHighRiskMessages(const crow::request& req, crow::resp
         auto result = messageService->getHighRiskMessages(limit, offset);
         
         if (result.isSuccess()) {
-            auto messages = result.getData();
+            const auto& messages = result.value();
             json data = json::array();
             
             for (const auto& msg : messages) {
                 data.push_back({
-                    {"message_id", msg->getId()},
+                    {"message_id", msg->getMessageId()},
                     {"user_id", msg->getUserId()},
                     {"message", msg->getOriginalMessage()},
                     {"spam_score", msg->getSpamScore()},

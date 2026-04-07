@@ -12,8 +12,6 @@
 
 namespace yachiyo::controllers {
 
-using Services::IMessageService, Services::IAuthService, Services::DatabaseService, Services::WebSocketService;
-using Utils::JwtUtil, Utils::Result, Utils::Logger;
 using json = nlohmann::json;
 
 /**
@@ -32,21 +30,21 @@ using json = nlohmann::json;
  */
 class MessageController : public BaseController {
 private:
-    std::shared_ptr<IMessageService> messageService;
-    std::shared_ptr<IAuthService> authService;
-    std::shared_ptr<DatabaseService> databaseService;
-    std::shared_ptr<WebSocketService> webSocketService;
-    std::shared_ptr<JwtUtil> jwtUtil;
-    std::shared_ptr<Logger> logger;
+    std::shared_ptr<services::IMessageService> messageService;
+    std::shared_ptr<services::IAuthService> authService;
+    std::shared_ptr<Yachiyo::Services::DatabaseService> databaseService;
+    std::shared_ptr<Yachiyo::Services::WebSocketService> webSocketService;
+    std::shared_ptr<Yachiyo::Utils::JwtUtil> jwtUtil;
+    std::shared_ptr<Yachiyo::Utils::Logger> logger;
     
 public:
     MessageController(
-        std::shared_ptr<IMessageService> msg,
-        std::shared_ptr<IAuthService> auth,
-        std::shared_ptr<DatabaseService> db,
-        std::shared_ptr<WebSocketService> ws,
-        std::shared_ptr<JwtUtil> jwt,
-        std::shared_ptr<Logger> log
+        std::shared_ptr<services::IMessageService> msg,
+        std::shared_ptr<services::IAuthService> auth,
+        std::shared_ptr<Yachiyo::Services::DatabaseService> db,
+        std::shared_ptr<Yachiyo::Services::WebSocketService> ws,
+        std::shared_ptr<Yachiyo::Utils::JwtUtil> jwt,
+        std::shared_ptr<Yachiyo::Utils::Logger> log
     ) : messageService(msg), authService(auth), databaseService(db),
         webSocketService(ws), jwtUtil(jwt), logger(log) {}
     

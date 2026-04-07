@@ -4,6 +4,8 @@
 #include <memory>
 #include <vector>
 #include <map>
+#include <mutex>
+#include <thread>
 #include <functional>
 #include <nlohmann/json.hpp>
 #include "utils/Result.hpp"
@@ -13,6 +15,7 @@
 namespace yachiyo::controllers {
 
 using json = nlohmann::json;
+using Yachiyo::Utils::Result;
 
 // ==================== WebSocket 消息类型 ====================
 
@@ -69,7 +72,7 @@ public:
     // 发送响应给客户端
     void broadcastResponse(
         const std::string& clientId,
-        const services::AvatarResponse& response
+        const services::AvatarResponseService::AvatarResponse& response
     );
     
     // ===== 心跳检测 =====
@@ -85,7 +88,7 @@ public:
     // ===== 错误处理 =====
     void broadcastError(
         const std::string& clientId,
-        int errorCode,
+        const std::string& errorCode,
         const std::string& errorMessage
     );
     

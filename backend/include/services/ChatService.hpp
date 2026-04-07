@@ -4,12 +4,26 @@
 #include <memory>
 #include <vector>
 #include <functional>
-#include "models/Message.hpp"
-#include "dto/ChatRequest.hpp"
-#include "utils/Result.hpp"
+#include "../models/Message.hpp"
+#include "../dto/ChatRequest.hpp"
+#include "../dto/ChatMessageDTO.hpp"
+#include "../utils/Result.hpp"
+#include "../utils/LogUtils.hpp"
+#include <spdlog/spdlog.h>
+#include <map>
 
 namespace Yachiyo {
 namespace Services {
+
+// 引用 models 命名空间
+namespace Models = yachiyo::models;
+
+// 消息类型枚举 (ChatService 使用)
+enum class MessageType {
+    USER,       // 用户消息
+    ASSISTANT,  // AI 助手消息
+    SYSTEM      // 系统消息
+};
 
 // AI 提供商类型
 enum class AIProvider {
@@ -172,6 +186,42 @@ public:
     ChatConfig getConfig() const override;
     void updateConfig(const ChatConfig& config) override;
 
+    // ==================== 聊天消息/会话 API (前端通信用) ====================
+    
+    /**
+     * @brief 获取聊天历史
+     */
+    std::vector<DTO::ChatMessageDTO> getChatHistory(const std::string& userId,
+                                                     const std::string& targetId,
+                                                     int limit = 50,
+                                                     int offset = 0);
+    
+    /**
+     * @brief 发送聊天消息
+     */
+    DTO::ChatMessageDTO sendMessage(const DTO::ChatMessageDTO& message);
+    
+    /**
+     * @brief 获取聊天会话列表
+     */
+    std::vector<DTO::ChatSessionDTO> getChatSessions(const std::string& userId);
+    
+    /**
+     * @brief 创建聊天会话
+     */
+    DTO::ChatSessionDTO createChatSession(const DTO::ChatSessionDTO& session);
+    
+    /**
+     * @brief 搜索消息
+     */
+    std::vector<DTO::ChatMessageDTO> searchMessages(const std::string& userId,
+                                                     const std::string& keyword);
+    
+    /**
+     * @brief 删除消息
+     */
+    bool deleteMessage(const std::string& messageId, const std::string& userId);
+
 private:
     /**
      * @brief 调用OpenAI API
@@ -231,10 +281,13 @@ private:
      */
     bool saveMessage(const std::string& conversationId, 
                     const std::string& content, 
-                    Models::MessageType type);
+                    MessageType type);
 
     // 配置
     ChatConfig config;
+    
+    // 日志器
+    std::shared_ptr<spdlog::logger> logger;
     
     // 会话缓存（实际应该使用Redis）
     std::map<std::string, int64_t> conversationOwners; // 会话ID -> 用户ID
@@ -242,3 +295,11 @@ private:
 
 } // namespace Services
 } // namespace Yachiyo
+
+// 向后兼容别名
+namespace yachiyo::services {
+    using ChatService = Yachiyo::Services::ChatService;
+    using ChatServiceImpl = Yachiyo::Services::ChatServiceImpl;
+    using LogUtils = yachiyo::utils::LogUtils;
+    namespace dto = yachiyo::dto;
+}

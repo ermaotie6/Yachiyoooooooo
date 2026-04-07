@@ -6,9 +6,15 @@
 #include <map>
 #include <mutex>
 #include "utils/Result.hpp"
+#include "utils/Compat.hpp"
 #include "dto/ModerationDTO.hpp"
 
 namespace yachiyo::services {
+
+// 引入 DTO 类型
+using dto::ModerationRequest;
+using dto::ModerationResult;
+using dto::ModerationResponse;
 
 /**
  * DeepSeek 内容审查服务

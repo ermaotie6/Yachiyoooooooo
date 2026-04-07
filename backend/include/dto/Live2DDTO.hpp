@@ -6,6 +6,9 @@
 
 using json = nlohmann::json;
 
+namespace Yachiyo {
+namespace DTO {
+
 /**
  * Live2D 动画命令 DTO
  */
@@ -173,3 +176,16 @@ struct Live2DSequenceResponse {
         return resp;
     }
 };
+
+} // namespace DTO
+} // namespace Yachiyo
+
+// 后向兼容别名
+namespace yachiyo::dto {
+    using Yachiyo::DTO::Live2DCommand;
+    using Yachiyo::DTO::ExpressionCommand;
+    using Yachiyo::DTO::MotionCommand;
+    using Yachiyo::DTO::ParameterCommand;
+    using Yachiyo::DTO::Live2DSequenceRequest;
+    using Yachiyo::DTO::Live2DSequenceResponse;
+}

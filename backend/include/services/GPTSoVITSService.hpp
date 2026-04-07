@@ -1,8 +1,12 @@
 #pragma once
 
 #include <string>
+#include <vector>
+#include <map>
+#include <mutex>
 #include <memory>
 #include "utils/Result.hpp"
+#include "utils/Compat.hpp"
 #include "dto/TTSServiceDTO.hpp"
 
 namespace yachiyo::services {
@@ -37,7 +41,7 @@ public:
      * @param endpoint GPT-SoVITS API 端点 (例: http://localhost:5000)
      * @param mode 推理模式 (GPU 或 CPU, 影响超时策略)
      */
-    bool initialize(const std::string& endpoint, InferenceMode mode = InferenceMode::CPU);
+    bool initialize(const std::string& endpoint = "", InferenceMode mode = InferenceMode::CPU);
     
     /**
      * 合成语音
@@ -138,11 +142,6 @@ private:
         float& speedFactor,
         float& energyLevel
     ) const;
-    
-    /**
-     * 执行 HTTP POST 请求
-     */
-    Utils::Result<std::string> sendRequest(const json& request);
 };
 
 } // namespace yachiyo::services

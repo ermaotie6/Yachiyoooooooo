@@ -1,8 +1,6 @@
-add_library(models
-    # 模型类通常只有头文件或最小的实现
-)
+add_library(models INTERFACE)
 
 target_include_directories(models
-    PUBLIC
+    INTERFACE
         ${CMAKE_SOURCE_DIR}/include
 )

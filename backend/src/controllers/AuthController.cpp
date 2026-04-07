@@ -1,5 +1,6 @@
-#include "../include/controllers/AuthController.hpp"
-#include "../include/utils/Logger.hpp"
+#include "controllers/AuthController.hpp"
+#include "utils/LogUtils.hpp"
+#include "utils/Logger.hpp"
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
@@ -29,7 +30,7 @@ void AuthController::registerUser(const crow::request& req, crow::response& res)
         auto result = authService->registerUser(username, email, password);
         
         if (result.isSuccess()) {
-            auto user = result.getData();
+            auto user = result.value();
             res.code = 201;
             res.body = json({
                 {"code", 201},
@@ -45,7 +46,7 @@ void AuthController::registerUser(const crow::request& req, crow::response& res)
             res.code = 400;
             res.body = json({
                 {"code", 400},
-                {"msg", result.getErrorMsg()}
+                {"msg", result.getMessage()}
             }).dump();
         }
         
@@ -82,7 +83,7 @@ void AuthController::login(const crow::request& req, crow::response& res) {
         auto result = authService->login(username, password, userIp);
         
         if (result.isSuccess()) {
-            auto data = result.getData();
+            const auto& data = result.value();
             res.code = 200;
             res.body = json({
                 {"code", 200},
@@ -94,7 +95,7 @@ void AuthController::login(const crow::request& req, crow::response& res) {
             res.code = 401;
             res.body = json({
                 {"code", 401},
-                {"msg", result.getErrorMsg()}
+                {"msg", result.getMessage()}
             }).dump();
         }
         
@@ -127,7 +128,7 @@ void AuthController::refreshToken(const crow::request& req, crow::response& res)
         auto result = authService->refreshToken(refreshToken);
         
         if (result.isSuccess()) {
-            auto data = result.getData();
+            const auto& data = result.value();
             res.code = 200;
             res.body = json({
                 {"code", 200},
@@ -138,7 +139,7 @@ void AuthController::refreshToken(const crow::request& req, crow::response& res)
             res.code = 401;
             res.body = json({
                 {"code", 401},
-                {"msg", result.getErrorMsg()}
+                {"msg", result.getMessage()}
             }).dump();
         }
         
@@ -194,7 +195,7 @@ void AuthController::logout(const crow::request& req, crow::response& res) {
             res.code = 500;
             res.body = json({
                 {"code", 500},
-                {"msg", result.getErrorMsg()}
+                {"msg", result.getMessage()}
             }).dump();
         }
         
@@ -237,7 +238,7 @@ void AuthController::getProfile(const crow::request& req, crow::response& res) {
         auto result = authService->getUserById(userId);
         
         if (result.isSuccess()) {
-            auto user = result.getData();
+            auto user = result.value();
             res.code = 200;
             res.body = json({
                 {"code", 200},

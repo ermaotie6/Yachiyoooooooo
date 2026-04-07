@@ -1,13 +1,9 @@
-add_library(config
-    # 配置管理实现
-)
+add_library(config INTERFACE)
 
 target_include_directories(config
-    PUBLIC
+    INTERFACE
         ${CMAKE_SOURCE_DIR}/include
 )
 
-target_link_libraries(config
-    PUBLIC
-        utils
-)
+# config 是 header-only, 使用 INTERFACE 链接
+# target_link_libraries(config INTERFACE utils)

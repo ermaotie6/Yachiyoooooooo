@@ -1,5 +1,5 @@
-#include "../include/utils/OpencalwClient.hpp"
-#include "../include/utils/Logger.hpp"
+#include "utils/OpencalwClient.hpp"
+#include "utils/Logger.hpp"
 #include <curl/curl.h>
 #include <cmath>
 #include <sstream>
@@ -45,7 +45,7 @@ Result<OpencalwClient::ReviewResult> OpencalwClient::reviewContent(
         }
         
         // 解析响应
-        auto reviewResult = parseResponse(result.getData());
+        auto reviewResult = parseResponse(result.value());
         
         LOG_INFO("内容审查完成: userId=" + std::to_string(userId) + 
                  ", allowed=" + (reviewResult.isAllowed ? "true" : "false") +
@@ -89,7 +89,7 @@ Result<std::vector<OpencalwClient::ReviewResult>> OpencalwClient::batchReview(
         }
         
         // 解析响应
-        auto response = result.getData();
+        auto response = result.value();
         if (response.contains("results") && response["results"].is_array()) {
             for (const auto& item : response["results"]) {
                 results.push_back(parseResponse(item));
@@ -134,7 +134,7 @@ Result<json> OpencalwClient::getRateLimit() {
             return Result<json>::Error(result.getErrorMsg());
         }
         
-        return Result<json>::Success(result.getData());
+        return Result<json>::Success(result.value());
         
     } catch (const std::exception& e) {
         LOG_ERROR("获取限流信息异常: " + std::string(e.what()));

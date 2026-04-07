@@ -1,5 +1,4 @@
 add_library(utils
-    ConfigManager.cpp
     ConfigParser.cpp
     DatabaseUtil.cpp
     EmailService.cpp
@@ -7,6 +6,8 @@ add_library(utils
     HttpServer.cpp
     JsonUtils.cpp
     JwtUtil.cpp
+    LogUtils.cpp
+    OpencalwClient.cpp
     RedisUtil.cpp
 )
 
@@ -21,6 +22,10 @@ target_include_directories(utils
 find_package(hiredis REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(Threads REQUIRED)
+find_package(spdlog REQUIRED)
+find_package(yaml-cpp REQUIRED)
+find_package(Crow REQUIRED)
+find_package(CURL REQUIRED)
 
 target_link_libraries(utils
     PUBLIC
@@ -28,4 +33,8 @@ target_link_libraries(utils
         OpenSSL::SSL
         OpenSSL::Crypto
         Threads::Threads
+        spdlog::spdlog
+        yaml-cpp::yaml-cpp
+        Crow::Crow
+        CURL::libcurl
 )

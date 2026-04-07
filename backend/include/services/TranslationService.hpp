@@ -2,8 +2,11 @@
 
 #include <string>
 #include <vector>
+#include <map>
+#include <mutex>
 #include <memory>
 #include "utils/Result.hpp"
+#include "utils/Compat.hpp"
 #include "dto/TranslationDTO.hpp"
 
 namespace yachiyo::services {

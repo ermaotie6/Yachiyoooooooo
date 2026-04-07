@@ -4,21 +4,133 @@
 #include <memory>
 #include <vector>
 #include <functional>
+#include <chrono>
+#include <spdlog/spdlog.h>
 #include "dto/ChatRequest.hpp"
 #include "utils/Result.hpp"
 
 namespace Yachiyo {
 namespace Services {
 
+// DTO 命名空间别名
+namespace dto = ::Yachiyo::DTO;
+
+// ==================== 数据结构 ====================
+
+// 聊天消息 (用于历史记录传递)
+struct ChatMessage {
+    std::string role;    // "system", "user", "assistant"
+    std::string content;
+    std::string id;
+    int tokens = 0;
+    std::string createdAt;
+    
+    ChatMessage() = default;
+    ChatMessage(const std::string& role, const std::string& content)
+        : role(role), content(content) {}
+};
+
+// 聊天完成结果
+struct ChatCompletionResult {
+    bool success = false;
+    std::string message;
+    std::string response;       // AI 回复内容
+    std::string chatId;
+    std::string messageId;
+    std::string model;
+    int tokensUsed = 0;
+    double responseTime = 0.0;  // 响应时间(秒)
+};
+
+// TTS 结果
+struct TTSResult {
+    bool success = false;
+    std::string message;
+    std::string audioData;      // 音频数据 (可能是二进制或Base64)
+    double duration = 0.0;      // 音频时长(秒)
+};
+
+// STT 结果
+struct STTResult {
+    bool success = false;
+    std::string message;
+    std::string text;           // 识别出的文本
+    std::string language;       // 检测到的语言
+    double confidence = 0.0;    // 置信度
+    double duration = 0.0;      // 音频时长(秒)
+};
+
+// 图像生成结果
+struct ImageGenerationResult {
+    bool success = false;
+    std::string message;
+    std::vector<std::string> imageUrls;
+    std::vector<std::string> revisedPrompts;
+    int64_t created = 0;
+};
+
+// 图像分析结果
+struct ImageAnalysisResult {
+    bool success = false;
+    std::string message;
+    std::string analysis;
+    std::vector<std::string> tags;
+};
+
+// AI 模型信息
+struct AIModelInfo {
+    std::string id;
+    std::string name;
+    std::string provider;
+    std::string type;           // "chat", "image", "audio"
+    int maxTokens = 0;
+    bool supportsVision = false;
+    bool supportsAudio = false;
+    bool isAvailable = true;
+};
+
+// 模型列表结果
+struct ModelsResult {
+    bool success = false;
+    std::string message;
+    std::vector<AIModelInfo> models;
+};
+
+// 聊天历史记录
+struct ChatHistoryEntry {
+    std::string id;
+    std::string title;
+    std::string model;
+    int messageCount = 0;
+    std::string createdAt;
+    std::string updatedAt;
+    std::vector<ChatMessage> messages;
+};
+
+// 聊天历史查询结果
+struct ChatHistoryResult {
+    bool success = false;
+    std::string message;
+    int total = 0;
+    std::vector<ChatHistoryEntry> chats;
+};
+
+// 删除聊天记录结果
+struct DeleteChatResult {
+    bool success = false;
+    std::string message;
+    int deletedCount = 0;
+};
+
 // AI 提供商类型
 enum class AIProvider {
-    OPENAI,         // OpenAI (GPT-3.5, GPT-4 等)
-    CLAUDE,         // Anthropic Claude
-    GEMINI,         // Google Gemini
-    DEEPSEEK,       // DeepSeek 深思
-    QIANWEN,        // Alibaba 千问 (阿里云国内版，需要单独API Key)
-    QWEN_INTL,      // Alibaba Qwen (国际版 DashScope，需要单独API Key)
-    LOCAL           // 本地部署模型 (Ollama 等)
+    OPENAI,
+    CLAUDE,
+    GEMINI,
+    DEEPSEEK,
+    QIANWEN,
+    QWEN_INTL,
+    LOCAL
 };
 
 // AI 模型配置
@@ -41,181 +153,108 @@ struct AIModelConfig {
           stream(false) {}
 };
 
-// AI 聊天消息
-struct AIChatMessage {
-    std::string role;  // "system", "user", "assistant"
-    std::string content;
-    std::string name;  // 可选，参与者的名称
-    
-    AIChatMessage() = default;
-    AIChatMessage(const std::string& role, const std::string& content, const std::string& name = "")
-        : role(role), content(content), name(name) {}
-};
-
-// AI 聊天请求
-struct AIChatRequest {
-    std::vector<AIChatMessage> messages;
-    AIModelConfig config;
-    std::string userId;
-    std::string sessionId;
-    
-    // 添加系统消息
-    void addSystemMessage(const std::string& content) {
-        messages.emplace_back("system", content);
-    }
-    
-    // 添加用户消息
-    void addUserMessage(const std::string& content, const std::string& name = "") {
-        messages.emplace_back("user", content, name);
-    }
-    
-    // 添加助手消息
-    void addAssistantMessage(const std::string& content, const std::string& name = "") {
-        messages.emplace_back("assistant", content, name);
-    }
-};
-
-// AI 聊天响应
-struct AIChatResponse {
-    std::string content;
-    std::string modelUsed;
-    int tokensUsed;
-    bool finished;
-    std::string finishReason;
-    std::string errorMessage;
-    
-    AIChatResponse() 
-        : content(""), 
-          modelUsed(""),
-          tokensUsed(0),
-          finished(true),
-          finishReason("stop"),
-          errorMessage("") {}
-    
-    bool hasError() const {
-        return !errorMessage.empty();
-    }
-};
-
-// AI 流式响应回调
-using AIStreamCallback = std::function<void(const std::string& chunk, bool finished)>;
-
-/**
- * @brief AI 服务接口
- */
-class AIService {
-public:
-    virtual ~AIService() = default;
-
-    /**
-     * @brief 初始化 AI 服务
-     * @param config AI 模型配置
-     * @return 初始化结果
-     */
-    virtual Utils::Result<void> initialize(const AIModelConfig& config) = 0;
-
-    /**
-     * @brief 聊天（同步）
-     * @param request 聊天请求
-     * @return 聊天响应
-     */
-    virtual Utils::Result<AIChatResponse> chat(const AIChatRequest& request) = 0;
-
-    /**
-     * @brief 聊天（流式）
-     * @param request 聊天请求
-     * @param callback 流式回调
-     * @return 操作结果
-     */
-    virtual Utils::Result<void> chatStream(const AIChatRequest& request, AIStreamCallback callback) = 0;
-
-    /**
-     * @brief 文本转语音
-     * @param text 要转换的文本
-     * @param voice 语音配置
-     * @return 音频数据
-     */
-    virtual Utils::Result<std::vector<uint8_t>> textToSpeech(const std::string& text, const std::string& voice = "alloy") = 0;
-
-    /**
-     * @brief 语音转文本
-     * @param audioData 音频数据
-     * @param language 语言代码
-     * @return 转换后的文本
-     */
-    virtual Utils::Result<std::string> speechToText(const std::vector<uint8_t>& audioData, const std::string& language = "zh-CN") = 0;
-
-    /**
-     * @brief 生成图像
-     * @param prompt 提示词
-     * @param size 图像尺寸
-     * @param count 生成数量
-     * @return 图像 URL 或数据
-     */
-    virtual Utils::Result<std::vector<std::string>> generateImage(
-        const std::string& prompt, 
-        const std::string& size = "1024x1024", 
-        int count = 1) = 0;
-
-    /**
-     * @brief 获取支持的模型列表
-     * @return 模型列表
-     */
-    virtual std::vector<std::string> getSupportedModels() const = 0;
-
-    /**
-     * @brief 获取当前配置
-     * @return AI 模型配置
-     */
-    virtual AIModelConfig getCurrentConfig() const = 0;
-
-    /**
-     * @brief 设置 API 密钥
-     * @param apiKey API 密钥
-     */
-    virtual void setApiKey(const std::string& apiKey) = 0;
-
-    /**
-     * @brief 验证 API 密钥
-     * @return 验证结果
-     */
-    virtual Utils::Result<void> validateApiKey() = 0;
-};
+// ==================== 服务类 ====================
 
 /**
  * @brief AI 服务实现类
+ * 
+ * 提供 AI 聊天、语音合成/识别、图像生成/分析等功能
  */
-class AIServiceImpl : public AIService {
+class AIServiceImpl {
 public:
     AIServiceImpl();
-    ~AIServiceImpl() override;
+    AIServiceImpl(const std::string& openaiKey,
+                  const std::string& azureKey = "",
+                  const std::string& baiduKey = "");
+    ~AIServiceImpl();
 
-    Utils::Result<void> initialize(const AIModelConfig& config) override;
-    Utils::Result<AIChatResponse> chat(const AIChatRequest& request) override;
-    Utils::Result<void> chatStream(const AIChatRequest& request, AIStreamCallback callback) override;
-    Utils::Result<std::vector<uint8_t>> textToSpeech(const std::string& text, const std::string& voice) override;
-    Utils::Result<std::string> speechToText(const std::vector<uint8_t>& audioData, const std::string& language) override;
-    Utils::Result<std::vector<std::string>> generateImage(
-        const std::string& prompt, 
-        const std::string& size, 
-        int count) override;
+    // ---- 聊天 ----
+    ChatCompletionResult chatCompletion(
+        const std::string& token,
+        const std::string& message,
+        const std::string& model,
+        const std::string& chatId,
+        const std::vector<ChatMessage>& history,
+        double temperature = 0.7,
+        int maxTokens = 1000
+    );
     
-    std::vector<std::string> getSupportedModels() const override;
-    AIModelConfig getCurrentConfig() const override;
-    void setApiKey(const std::string& apiKey) override;
-    Utils::Result<void> validateApiKey() override;
+    // ---- 低级别 chat (DTO 版) ----
+    Utils::Result<dto::ChatRequest> chat(const dto::ChatRequest& request);
+
+    // ---- 语音 ----
+    TTSResult textToSpeech(
+        const std::string& token,
+        const std::string& text,
+        const std::string& voice,
+        double speed = 1.0
+    );
+    
+    STTResult speechToText(
+        const std::string& token,
+        const std::string& audioData,
+        const std::string& language
+    );
+    
+    // 简单版本 (返回 Result<string>)
+    Utils::Result<std::string> textToSpeech(const std::string& text, const std::string& language);
+    Utils::Result<std::string> speechToText(const std::string& audioPath, const std::string& language);
+
+    // ---- 图像 ----
+    ImageGenerationResult generateImage(
+        const std::string& token,
+        const std::string& prompt,
+        const std::string& size,
+        int n,
+        const std::string& style
+    );
+    
+    ImageAnalysisResult analyzeImage(
+        const std::string& token,
+        const std::string& imageUrl,
+        const std::string& imageBase64,
+        const std::string& prompt
+    );
+    
+    // 简单版本 (返回 Result<string>)
+    Utils::Result<std::string> generateImage(const std::string& prompt, const std::string& style);
+    Utils::Result<std::string> analyzeImage(const std::string& imagePath, const std::string& analysisType);
+
+    // ---- 模型管理 ----
+    ModelsResult getAvailableModels(const std::string& token);
+    
+    // ---- 聊天历史 ----
+    ChatHistoryResult getChatHistory(
+        const std::string& token,
+        const std::string& chatId,
+        int limit = 50,
+        int offset = 0
+    );
+    
+    DeleteChatResult deleteChatHistory(
+        const std::string& token,
+        const std::string& chatId
+    );
 
 private:
-    AIModelConfig currentConfig;
-    std::string apiKey;
-    bool initialized;
+    std::string openaiApiKey;
+    std::string azureApiKey;
+    std::string baiduApiKey;
+    std::string requestTimeout;
+    std::shared_ptr<spdlog::logger> logger;
     
-    // 模拟 AI 响应（实际项目中应该调用真实的 AI API）
-    AIChatResponse simulateAIResponse(const AIChatRequest& request);
-    
-    // 模拟流式响应
-    void simulateStreamResponse(const AIChatRequest& request, AIStreamCallback callback);
+    // 内部 API 调用
+    Utils::Result<std::string> callOpenAIAPI(const std::string& endpoint, const std::string& payload);
+    Utils::Result<std::string> callAzureAPI(const std::string& endpoint, const std::string& payload);
+    Utils::Result<std::string> callBaiduAPI(const std::string& endpoint, const std::string& payload);
 };
 
 } // namespace Services
 } // namespace Yachiyo
+
+// 向后兼容别名
+namespace yachiyo::services {
+    using Yachiyo::Services::AIServiceImpl;
+    using Yachiyo::Services::ChatMessage;
+    using Yachiyo::Services::ChatCompletionResult;
+}

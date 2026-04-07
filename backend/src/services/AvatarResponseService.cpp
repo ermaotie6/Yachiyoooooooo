@@ -1,9 +1,17 @@
 #include "services/AvatarResponseService.hpp"
+#include "services/OpenClawGateway.hpp"
+#include "services/TranslationService.hpp"
+#include "services/GPTSoVITSService.hpp"
+#include "services/Live2DAnimationService.hpp"
+#include "services/DeepSeekModerationService.hpp"
 #include "utils/Logger.hpp"
 #include "utils/JsonUtils.hpp"
 #include <chrono>
 
 namespace yachiyo::services {
+
+// 类型别名简化嵌套类型的使用
+using AvatarResponse = AvatarResponseService::AvatarResponse;
 
 // ==================== 构造/析构 ====================
 
@@ -96,16 +104,17 @@ Utils::Result<AvatarResponse> AvatarResponseService::processUserMessage(
     // ===== 步骤1: 内容审核 =====
     if (moderation_service_) {
         LOG_DEBUG("执行内容审核");
-        auto moderationResult = moderation_service_->moderate(userText);
+        ModerationRequest modReq;
+        modReq.content = userText;
+        auto moderationResult = moderation_service_->moderate(modReq);
         
         if (!moderationResult.isSuccess()) {
             LOG_WARN("审核失败: {}", moderationResult.getError().message);
         } else {
-            auto verdict = moderationResult.getValue().verdict;
-            response.metadata["moderation_verdict"] = (verdict == dto::Verdict::PASS) ? "pass" : 
-                                                     (verdict == dto::Verdict::REVIEW) ? "review" : "block";
+            auto verdict = moderationResult.getValue().overallVerdict;
+            response.metadata["moderation_verdict"] = verdict;
             
-            if (verdict == dto::Verdict::BLOCK) {
+            if (verdict == "block") {
                 LOG_WARN("内容被阻止");
                 response.text = "抱歉，您的消息包含不当内容。";
                 response.isBlocked = true;
@@ -155,17 +164,14 @@ Utils::Result<AvatarResponse> AvatarResponseService::processUserMessage(
     
     // ===== 步骤4: 音频生成 (TTS) =====
     LOG_DEBUG("生成语音");
-    dto::TTSRequest ttsRequest;
-    ttsRequest.text = finalText;
-    ttsRequest.voicePreset = "default";
-    ttsRequest.language = targetLanguage.empty() ? "zh-CN" : targetLanguage;
-    
-    // 设置情感参数
+    std::string emotionType = "neutral";
     if (!openclawResponse.emotions.empty()) {
-        ttsRequest.emotion = openclawResponse.emotions[0];
+        emotionType = openclawResponse.emotions[0];
     }
     
-    auto ttsResult = tts_service_->synthesizeWithEmotion(ttsRequest);
+    auto ttsResult = tts_service_->synthesizeWithEmotion(
+        finalText, emotionType, GPTSoVITSService::VoicePreset::DEFAULT
+    );
     
     if (!ttsResult.isSuccess()) {
         LOG_WARN("TTS 生成失败: {}", ttsResult.getError().message);
@@ -253,12 +259,12 @@ Utils::Result<AvatarResponse> AvatarResponseService::generateFromOpenClaw(
     response.text = finalText;
     
     // 生成语音
-    dto::TTSRequest ttsRequest;
-    ttsRequest.text = finalText;
-    ttsRequest.emotion = openclawResponse.emotions.empty() ? 
+    std::string emotionForTTS = openclawResponse.emotions.empty() ? 
         "neutral" : openclawResponse.emotions[0];
     
-    auto ttsResult = tts_service_->synthesizeWithEmotion(ttsRequest);
+    auto ttsResult = tts_service_->synthesizeWithEmotion(
+        finalText, emotionForTTS, GPTSoVITSService::VoicePreset::DEFAULT
+    );
     if (ttsResult.isSuccess()) {
         auto ttsResponse = ttsResult.getValue();
         response.audioUrl = ttsResponse.audioUrl;
@@ -323,6 +329,12 @@ void AvatarResponseService::clearCache(int maxAgeSeconds) {
     }
     
     LOG_INFO("缓存清理完成: 移除 {} 条记录", keysToRemove.size());
+}
+
+// ==================== 服务状态 ====================
+
+bool AvatarResponseService::isHealthy() const {
+    return openclaw_gateway_ && tts_service_ && animation_service_;
 }
 
 } // namespace yachiyo::services

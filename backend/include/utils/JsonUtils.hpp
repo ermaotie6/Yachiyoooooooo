@@ -2,6 +2,7 @@
 
 #include <string>
 #include <nlohmann/json.hpp>
+#include <crow.h>
 #include <fstream>
 #include <sstream>
 
@@ -14,6 +15,44 @@ namespace yachiyo::utils {
  */
 class JsonUtils {
 public:
+    /**
+     * @brief 创建错误响应 (用于 Controller 层)
+     * @param statusCode HTTP 状态码
+     * @param message 错误信息
+     * @return crow::response
+     */
+    static crow::response createErrorResponse(int statusCode, const std::string& message) {
+        nlohmann::json body;
+        body["success"] = false;
+        body["code"] = statusCode;
+        body["message"] = message;
+        
+        auto resp = crow::response(statusCode, body.dump());
+        resp.set_header("Content-Type", "application/json");
+        return resp;
+    }
+    
+    /**
+     * @brief 创建成功响应 (用于 Controller 层)
+     * @param data 响应数据
+     * @param message 成功信息
+     * @return crow::response
+     */
+    static crow::response createSuccessResponse(const nlohmann::json& data = nullptr,
+                                                 const std::string& message = "操作成功") {
+        nlohmann::json body;
+        body["success"] = true;
+        body["code"] = 200;
+        body["message"] = message;
+        if (!data.is_null()) {
+            body["data"] = data;
+        }
+        
+        auto resp = crow::response(200, body.dump());
+        resp.set_header("Content-Type", "application/json");
+        return resp;
+    }
+
     /**
      * @brief 从文件读取JSON
      */

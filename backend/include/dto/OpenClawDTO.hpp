@@ -6,6 +6,9 @@
 
 using json = nlohmann::json;
 
+namespace Yachiyo {
+namespace DTO {
+
 /**
  * OpenClaw 请求 DTO
  */
@@ -94,3 +97,12 @@ struct OpenClawResponse {
         return resp;
     }
 };
+
+} // namespace DTO
+} // namespace Yachiyo
+
+// 后向兼容别名
+namespace yachiyo::dto {
+    using Yachiyo::DTO::OpenClawRequest;
+    using Yachiyo::DTO::OpenClawResponse;
+}

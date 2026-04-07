@@ -217,7 +217,7 @@ Utils::Result<json> WebSocketController::processUserMessage(
         response["payload"]["emotions"].push_back(emotion);
     }
     
-    for (const auto& action : avatarResponse.suggestedActions) {
+    for (const auto& action : avatarResponse.actions) {
         response["payload"]["actions"].push_back(action);
     }
     
@@ -226,7 +226,7 @@ Utils::Result<json> WebSocketController::processUserMessage(
 
 void WebSocketController::broadcastResponse(
     const std::string& clientId,
-    const services::AvatarResponse& response
+    const services::AvatarResponseService::AvatarResponse& response
 ) {
     LOG_DEBUG("广播 Avatar 响应: {}", clientId);
     
@@ -355,7 +355,7 @@ json WebSocketController::getSessionInfo(const std::string& clientId) {
 
 void WebSocketController::broadcastError(
     const std::string& clientId,
-    int errorCode,
+    const std::string& errorCode,
     const std::string& errorMessage
 ) {
     LOG_ERROR("向客户端广播错误: {} - {}", errorCode, errorMessage);

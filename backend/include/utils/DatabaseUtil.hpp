@@ -207,3 +207,8 @@ private:
 
 } // namespace Utils
 } // namespace Yachiyo
+
+// 向后兼容别名
+namespace yachiyo::utils {
+    using DatabaseUtil = Yachiyo::Utils::DatabaseUtil;
+}

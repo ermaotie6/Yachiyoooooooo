@@ -1,8 +1,14 @@
-#include "../include/services/MessageServiceImpl.hpp"
-#include "../include/utils/Logger.hpp"
+#include "services/MessageServiceImpl.hpp"
+#include "utils/LogUtils.hpp"
+#include "utils/RedisUtil.hpp"
 #include <ctime>
+#include <algorithm>
+#include <cctype>
 
 namespace yachiyo::services {
+
+// 静态日志器
+static auto logger = yachiyo::utils::LogUtils::getLogger("MessageServiceImpl");
 
 // ==================== 发送消息 (执行6层审查) ====================
 
@@ -53,7 +59,7 @@ Result<std::shared_ptr<Message>> MessageServiceImpl::sendMessage(
         // 第3层: 敏感词检查
         auto keywordResult = checkBlockedKeywords(message);
         if (keywordResult.isSuccess()) {
-            auto [foundKeyword, keywordScore] = keywordResult.getData();
+            auto [foundKeyword, keywordScore] = keywordResult.value();
             if (foundKeyword) {
                 msg->setIsBlockedKeyword(true);
                 msg->setSpamScore(keywordScore);
@@ -65,7 +71,7 @@ Result<std::shared_ptr<Message>> MessageServiceImpl::sendMessage(
         // 第4层: AI内容审查
         auto aiResult = aiContentReview(message);
         if (aiResult.isSuccess()) {
-            auto [isAbusive, aiScore] = aiResult.getData();
+            auto [isAbusive, aiScore] = aiResult.value();
             if (isAbusive) {
                 msg->setIsAbusive(true);
                 msg->setSpamScore(std::max(msg->getSpamScore(), aiScore));
@@ -120,18 +126,18 @@ Result<std::shared_ptr<Message>> MessageServiceImpl::sendMessage(
             );
             
             if (!result.empty()) {
-                msg->setId(std::stoll(result[0]["id"]));
+                msg->setMessageId(std::stoll(result[0]["id"]));
             }
         } catch (const std::exception& e) {
-            LOG_ERROR("保存消息失败: " + std::string(e.what()));
+            logger->error("保存消息失败: {}", e.what());
             return Result<std::shared_ptr<Message>>::Error("保存消息失败");
         }
         
-        LOG_INFO("消息创建成功: " + std::to_string(msg->getId()));
+        logger->info("消息创建成功: {}", msg->getMessageId());
         return Result<std::shared_ptr<Message>>::Success(msg);
         
     } catch (const std::exception& e) {
-        LOG_ERROR("发送消息异常: " + std::string(e.what()));
+        logger->error("发送消息异常: {}", e.what());
         return Result<std::shared_ptr<Message>>::Error("发送失败，请稍后重试");
     }
 }
@@ -158,11 +164,11 @@ Result<bool> MessageServiceImpl::reviewMessage(
             }
         );
         
-        LOG_INFO("消息审查完成: " + std::to_string(messageId));
+        logger->info("消息审查完成: {}", messageId);
         return Result<bool>::Success(true);
         
     } catch (const std::exception& e) {
-        LOG_ERROR("审查消息异常: " + std::string(e.what()));
+        logger->error("审查消息异常: {}", e.what());
         return Result<bool>::Error("审查失败");
     }
 }
@@ -192,7 +198,7 @@ Result<std::vector<std::shared_ptr<Message>>> MessageServiceImpl::getUserMessage
         
         for (const auto& row : result) {
             auto msg = std::make_shared<Message>();
-            msg->setId(std::stoll(row["id"]));
+            msg->setMessageId(std::stoll(row["id"]));
             msg->setUserId(std::stoll(row["user_id"]));
             msg->setOriginalMessage(row["original_message"]);
             msg->setReviewStatus(static_cast<ReviewStatus>(std::stoi(row["review_status"])));
@@ -202,7 +208,7 @@ Result<std::vector<std::shared_ptr<Message>>> MessageServiceImpl::getUserMessage
         return Result<std::vector<std::shared_ptr<Message>>>::Success(messages);
         
     } catch (const std::exception& e) {
-        LOG_ERROR("获取用户消息异常: " + std::string(e.what()));
+        logger->error("获取用户消息异常: {}", e.what());
         return Result<std::vector<std::shared_ptr<Message>>>::Error("获取失败");
     }
 }
@@ -230,7 +236,7 @@ Result<std::vector<std::shared_ptr<Message>>> MessageServiceImpl::getPendingMess
         
         for (const auto& row : result) {
             auto msg = std::make_shared<Message>();
-            msg->setId(std::stoll(row["id"]));
+            msg->setMessageId(std::stoll(row["id"]));
             msg->setUserId(std::stoll(row["user_id"]));
             msg->setOriginalMessage(row["original_message"]);
             messages.push_back(msg);
@@ -239,7 +245,7 @@ Result<std::vector<std::shared_ptr<Message>>> MessageServiceImpl::getPendingMess
         return Result<std::vector<std::shared_ptr<Message>>>::Success(messages);
         
     } catch (const std::exception& e) {
-        LOG_ERROR("获取待审查消息异常: " + std::string(e.what()));
+        logger->error("获取待审查消息异常: {}", e.what());
         return Result<std::vector<std::shared_ptr<Message>>>::Error("获取失败");
     }
 }
@@ -267,7 +273,7 @@ Result<std::vector<std::shared_ptr<Message>>> MessageServiceImpl::getHighRiskMes
         
         for (const auto& row : result) {
             auto msg = std::make_shared<Message>();
-            msg->setId(std::stoll(row["id"]));
+            msg->setMessageId(std::stoll(row["id"]));
             msg->setUserId(std::stoll(row["user_id"]));
             msg->setOriginalMessage(row["original_message"]);
             messages.push_back(msg);
@@ -276,7 +282,7 @@ Result<std::vector<std::shared_ptr<Message>>> MessageServiceImpl::getHighRiskMes
         return Result<std::vector<std::shared_ptr<Message>>>::Success(messages);
         
     } catch (const std::exception& e) {
-        LOG_ERROR("获取高风险消息异常: " + std::string(e.what()));
+        logger->error("获取高风险消息异常: {}", e.what());
         return Result<std::vector<std::shared_ptr<Message>>>::Error("获取失败");
     }
 }
@@ -309,7 +315,7 @@ Result<json> MessageServiceImpl::getStatistics() {
         return Result<json>::Success(stats);
         
     } catch (const std::exception& e) {
-        LOG_ERROR("获取统计信息异常: " + std::string(e.what()));
+        logger->error("获取统计信息异常: {}", e.what());
         return Result<json>::Error("获取失败");
     }
 }
@@ -333,7 +339,7 @@ Result<bool> MessageServiceImpl::hideMessage(
         return Result<bool>::Success(true);
         
     } catch (const std::exception& e) {
-        LOG_ERROR("隐藏消息异常: " + std::string(e.what()));
+        logger->error("隐藏消息异常: {}", e.what());
         return Result<bool>::Error("操作失败");
     }
 }
@@ -342,16 +348,19 @@ Result<bool> MessageServiceImpl::hideMessage(
 
 Result<bool> MessageServiceImpl::checkRateLimit(int64_t userId, const std::string& userIp) {
     try {
+        using RedisUtil = Yachiyo::Utils::RedisUtil;
         std::string key = "rate_limit:" + std::to_string(userId);
-        auto count = redisUtil->incr(key);
-        if (count == 1) {
-            redisUtil->expire(key, 60);
-        }
+        // 使用 getCache/setCache 模拟计数器
+        auto cached = RedisUtil::getCache(key);
+        int count = cached.empty() ? 0 : std::stoi(cached);
+        count++;
+        RedisUtil::setCache(key, std::to_string(count), 60); // 60秒TTL
         if (count > MAX_MESSAGES_PER_MINUTE) {
             return Result<bool>::Error("消息过于频繁，请稍后再试");
         }
         return Result<bool>::Success(true);
     } catch (...) {
+        // Redis不可用时放行
         return Result<bool>::Success(true);
     }
 }
@@ -402,7 +411,7 @@ Result<std::pair<bool, double>> MessageServiceImpl::checkBlockedKeywords(const s
         return Result<std::pair<bool, double>>::Success({foundKeyword, maxScore});
         
     } catch (const std::exception& e) {
-        LOG_ERROR("敏感词检查异常: " + std::string(e.what()));
+        logger->error("敏感词检查异常: {}", e.what());
         return Result<std::pair<bool, double>>::Success({false, 0.0});
     }
 }
@@ -460,26 +469,26 @@ Result<std::pair<bool, double>> MessageServiceImpl::aiContentReview(const std::s
         return Result<std::pair<bool, double>>::Success({isAbusive, riskScore});
         
     } catch (const std::exception& e) {
-        LOG_ERROR("AI内容审查异常: " + std::string(e.what()));
+        logger->error("AI内容审查异常: {}", e.what());
         return Result<std::pair<bool, double>>::Success({false, 0.0});
     }
 }
 
 Result<bool> MessageServiceImpl::behaviorAnalysis(int64_t userId, const std::string& userIp) {
     try {
+        using RedisUtil = Yachiyo::Utils::RedisUtil;
         bool hasAbnormalBehavior = false;
         
         // 行为分析1: 短时间内大量消息 (基于Redis缓存)
         std::string userKey = "user_activity:" + std::to_string(userId);
         try {
-            auto messageCount = redisUtil->incr(userKey);
-            if (messageCount == 1) {
-                redisUtil->expire(userKey, 300); // 5分钟窗口
-            }
+            auto cached = RedisUtil::getCache(userKey);
+            int messageCount = cached.empty() ? 0 : std::stoi(cached);
+            messageCount++;
+            RedisUtil::setCache(userKey, std::to_string(messageCount), 300); // 5分钟窗口
             if (messageCount > 20) {
                 hasAbnormalBehavior = true;
-                LOG_WARN("用户异常行为检测: " + std::to_string(userId) + 
-                         " 5分钟内消息数:" + std::to_string(messageCount));
+                logger->warn("用户异常行为检测: {} 5分钟内消息数:{}", userId, messageCount);
             }
         } catch (...) {}
         
@@ -493,8 +502,7 @@ Result<bool> MessageServiceImpl::behaviorAnalysis(int64_t userId, const std::str
         
         if (result.size() > 5) {
             hasAbnormalBehavior = true;
-            LOG_WARN("用户异常行为检测: " + std::to_string(userId) + 
-                     " 24小时内从" + std::to_string(result.size()) + "个不同IP发送消息");
+            logger->warn("用户异常行为检测: {} 24小时内从{}个不同IP发送消息", userId, result.size());
         }
         
         // 行为分析3: 检查该IP的其他用户是否大量发送被拒消息
@@ -509,7 +517,7 @@ Result<bool> MessageServiceImpl::behaviorAnalysis(int64_t userId, const std::str
             int rejectedCount = std::stoi(ipSpamResult[0]["rejected_count"]);
             if (rejectedCount > 10) {
                 hasAbnormalBehavior = true;
-                LOG_WARN("IP异常行为检测: " + userIp + " 1小时内被拒消息数:" + std::to_string(rejectedCount));
+                logger->warn("IP异常行为检测: {} 1小时内被拒消息数:{}", userIp, rejectedCount);
             }
         }
         
@@ -520,7 +528,7 @@ Result<bool> MessageServiceImpl::behaviorAnalysis(int64_t userId, const std::str
         return Result<bool>::Success(true);
         
     } catch (const std::exception& e) {
-        LOG_ERROR("行为分析异常: " + std::string(e.what()));
+        logger->error("行为分析异常: {}", e.what());
         return Result<bool>::Success(true);
     }
 }

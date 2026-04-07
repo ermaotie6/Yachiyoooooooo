@@ -8,6 +8,18 @@ namespace Yachiyo {
 namespace Utils {
 
 /**
+ * @brief 错误信息结构体 (用于 getError() 返回)
+ */
+struct ErrorInfo {
+    std::string code;
+    std::string message;
+    
+    ErrorInfo() = default;
+    ErrorInfo(const std::string& code, const std::string& message) 
+        : code(code), message(message) {}
+};
+
+/**
  * @brief 统一响应结果模板类
  */
 template<typename T>
@@ -28,16 +40,71 @@ public:
         return Result(true, "200", message);
     }
 
+    // 成功响应 (别名)
+    static Result<T> Success(const T& data, const std::string& message = "操作成功") {
+        return successResult(data, message);
+    }
+
+    static Result<T> Success(const std::string& message = "操作成功") {
+        return successResult(message);
+    }
+
+    // 成功响应 (小写别名 - 兼容 TranslationService 等)
+    static Result<T> success(const T& data, const std::string& message = "操作成功") {
+        return successResult(data, message);
+    }
+
     // 错误响应
     static Result<T> errorResult(const std::string& code, const std::string& message) {
         return Result(false, code, message);
+    }
+
+    // 错误响应 (别名 - 单参数版本, 大写)
+    static Result<T> Error(const std::string& message) {
+        return Result(false, "500", message);
+    }
+
+    // 错误响应 (别名 - 单参数版本, 小写)
+    static Result<T> error(const std::string& message) {
+        return Result(false, "500", message);
+    }
+
+    // 错误响应 (别名 - 双参数版本)
+    static Result<T> error(const std::string& code, const std::string& message) {
+        return errorResult(code, message);
+    }
+
+    // 失败响应 (带默认值 - 兼容 AvatarResponseService)
+    static Result<T> fail(int errorCode, const std::string& message, const T& defaultData) {
+        Result r(false, std::to_string(errorCode), message, defaultData);
+        return r;
+    }
+
+    static Result<T> fail(int errorCode, const std::string& message) {
+        return Result(false, std::to_string(errorCode), message);
     }
 
     // Getters
     bool isSuccess() const { return success; }
     const std::string& getCode() const { return code; }
     const std::string& getMessage() const { return message; }
+    const std::string& getErrorMsg() const { return message; }
+    
+    // getError() 返回 ErrorInfo 结构体 (支持 .message 访问模式)
+    ErrorInfo getError() const { return ErrorInfo(code, message); }
+    
     const std::optional<T>& getData() const { return data; }
+
+    // 便捷方法: 获取值，如果没有则抛异常
+    const T& value() const {
+        if (!data.has_value()) {
+            throw std::runtime_error("Result has no value: " + message);
+        }
+        return data.value();
+    }
+
+    // getValue() 别名
+    const T& getValue() const { return value(); }
 
     // Setters
     void setSuccess(bool value) { success = value; }
@@ -83,15 +150,39 @@ public:
         return Result(true, "200", message);
     }
 
+    // 成功响应 (别名)
+    static Result<void> Success(const std::string& message = "操作成功") {
+        return successResult(message);
+    }
+
     // 错误响应
     static Result<void> errorResult(const std::string& code, const std::string& message) {
         return Result(false, code, message);
+    }
+
+    // 错误响应 (别名 - 单参数版本, 大写)
+    static Result<void> Error(const std::string& message) {
+        return Result(false, "500", message);
+    }
+
+    // 错误响应 (别名 - 单参数版本, 小写)
+    static Result<void> error(const std::string& message) {
+        return Result(false, "500", message);
+    }
+
+    // 错误响应 (别名 - 双参数版本)
+    static Result<void> error(const std::string& code, const std::string& message) {
+        return errorResult(code, message);
     }
 
     // Getters
     bool isSuccess() const { return success; }
     const std::string& getCode() const { return code; }
     const std::string& getMessage() const { return message; }
+    const std::string& getErrorMsg() const { return message; }
+    
+    // getError() 返回 ErrorInfo 结构体
+    ErrorInfo getError() const { return ErrorInfo(code, message); }
 
     // Setters
     void setSuccess(bool value) { success = value; }
@@ -120,3 +211,9 @@ private:
 
 } // namespace Utils
 } // namespace Yachiyo
+
+// 向后兼容别名
+namespace yachiyo::utils {
+    template<typename T>
+    using Result = Yachiyo::Utils::Result<T>;
+}

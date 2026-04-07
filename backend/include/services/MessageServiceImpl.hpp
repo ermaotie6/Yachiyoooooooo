@@ -12,8 +12,7 @@ namespace yachiyo::services {
  */
 class MessageServiceImpl : public IMessageService {
 private:
-    std::shared_ptr<Utils::DatabaseUtil> dbUtil;
-    std::shared_ptr<Utils::RedisUtil> redisUtil;
+    std::shared_ptr<Yachiyo::Utils::DatabaseUtil> dbUtil;
     std::shared_ptr<IAuthService> authService;
     
     // 配置参数
@@ -24,10 +23,9 @@ private:
     
 public:
     MessageServiceImpl(
-        std::shared_ptr<Utils::DatabaseUtil> db,
-        std::shared_ptr<Utils::RedisUtil> redis,
-        std::shared_ptr<IAuthService> auth
-    ) : dbUtil(db), redisUtil(redis), authService(auth) {}
+        std::shared_ptr<Yachiyo::Utils::DatabaseUtil> db = nullptr,
+        std::shared_ptr<IAuthService> auth = nullptr
+    ) : dbUtil(db), authService(auth) {}
     
     // ==================== 实现接口 ====================
     

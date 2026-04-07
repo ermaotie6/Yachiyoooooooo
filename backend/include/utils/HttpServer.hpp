@@ -6,268 +6,120 @@
 #include <memory>
 #include <thread>
 #include <vector>
-#include "controllers/BaseController.hpp"
+#include <mutex>
+#include <crow.h>
+#include "../controllers/BaseController.hpp"
 
-namespace Yachiyo {
-namespace Utils {
-
-// HTTP 服务器配置
-struct HttpServerConfig {
-    std::string host = "0.0.0.0";
-    int port = 8080;
-    int threads = 4;
-    int maxConnections = 1000;
-    int timeoutSeconds = 30;
-    bool enableSSL = false;
-    std::string sslCertPath;
-    std::string sslKeyPath;
-    bool enableCORS = true;
-    std::string corsOrigins = "*";
-    int maxRequestSizeMB = 10;
-    bool enableCompression = true;
-    bool enableLogging = true;
-    std::string logPath = "logs/http_server.log";
-};
-
-// HTTP 请求处理器
-using HttpRequestHandler = std::function<Controllers::HttpResponse(const Controllers::HttpRequest&)>;
-
-/**
- * @brief HTTP服务器接口
- */
-class HttpServer {
-public:
-    virtual ~HttpServer() = default;
-
-    /**
-     * @brief 启动服务器
-     * @return 是否启动成功
-     */
-    virtual bool start() = 0;
-
-    /**
-     * @brief 停止服务器
-     */
-    virtual void stop() = 0;
-
-    /**
-     * @brief 服务器是否运行中
-     * @return 运行状态
-     */
-    virtual bool isRunning() const = 0;
-
-    /**
-     * @brief 注册路由
-     * @param method HTTP方法
-     * @param path 路由路径
-     * @param handler 请求处理器
-     */
-    virtual void registerRoute(Controllers::HttpMethod method, 
-                              const std::string& path, 
-                              HttpRequestHandler handler) = 0;
-
-    /**
-     * @brief 注册控制器
-     * @param controller 控制器
-     */
-    virtual void registerController(std::shared_ptr<Controllers::BaseController> controller) = 0;
-
-    /**
-     * @brief 获取服务器配置
-     * @return 服务器配置
-     */
-    virtual HttpServerConfig getConfig() const = 0;
-
-    /**
-     * @brief 更新服务器配置
-     * @param config 新配置
-     */
-    virtual void updateConfig(const HttpServerConfig& config) = 0;
-
-    /**
-     * @brief 获取服务器统计信息
-     * @return 统计信息
-     */
-    virtual std::map<std::string, int64_t> getStatistics() const = 0;
-};
+namespace yachiyo::utils {
 
 /**
  * @brief 基于Crow的HTTP服务器实现
+ * 
+ * 提供 Application.cpp 使用的接口:
+ * - setHost/setPort/setWorkers
+ * - enableSSL/enableCORS/enableCompression/enableRateLimit
+ * - registerController(path, controller)
+ * - start/stop/wait
  */
-class CrowHttpServer : public HttpServer {
+class CrowHttpServer {
 public:
-    CrowHttpServer(const HttpServerConfig& config = HttpServerConfig());
+    CrowHttpServer();
     ~CrowHttpServer();
 
-    // 实现接口方法
-    bool start() override;
-    void stop() override;
-    bool isRunning() const override;
-    void registerRoute(Controllers::HttpMethod method, 
-                      const std::string& path, 
-                      HttpRequestHandler handler) override;
-    void registerController(std::shared_ptr<Controllers::BaseController> controller) override;
-    HttpServerConfig getConfig() const override;
-    void updateConfig(const HttpServerConfig& config) override;
-    std::map<std::string, int64_t> getStatistics() const override;
+    // ===== 配置接口 =====
+    void setHost(const std::string& host) { host_ = host; }
+    void setPort(int port) { port_ = port; }
+    void setWorkers(int workers) { workers_ = workers; }
+    
+    std::string getHost() const { return host_; }
+    int getPort() const { return port_; }
+    
+    // SSL 配置
+    void enableSSL(const std::string& certPath, const std::string& keyPath) {
+        sslEnabled_ = true;
+        sslCertPath_ = certPath;
+        sslKeyPath_ = keyPath;
+    }
+    
+    // CORS 配置
+    void enableCORS(const std::string& origin, const std::string& methods,
+                    const std::string& headers, bool credentials) {
+        corsEnabled_ = true;
+        corsOrigin_ = origin;
+        corsMethods_ = methods;
+        corsHeaders_ = headers;
+        corsCredentials_ = credentials;
+    }
+    
+    // 压缩配置
+    void enableCompression(int level) {
+        compressionEnabled_ = true;
+        compressionLevel_ = level;
+    }
+    
+    // 速率限制配置
+    void enableRateLimit(int maxRequests, int windowSeconds) {
+        rateLimitEnabled_ = true;
+        rateLimitMaxRequests_ = maxRequests;
+        rateLimitWindowSeconds_ = windowSeconds;
+    }
 
+    // ===== 路由注册 =====
+    
     /**
-     * @brief 设置静态文件目录
-     * @param path 静态文件目录路径
+     * @brief 注册控制器到指定路径
+     * @param basePath 基础路径 (如 "/api/v1/auth")
+     * @param controller 控制器实例
      */
-    void setStaticFileDirectory(const std::string& path);
+    void registerController(const std::string& basePath, 
+                           std::shared_ptr<controllers::BaseController> controller);
 
-    /**
-     * @brief 启用WebSocket支持
-     * @param path WebSocket路径
-     */
-    void enableWebSocket(const std::string& path = "/ws");
-
-    /**
-     * @brief 添加中间件
-     * @param middleware 中间件函数
-     */
-    void addMiddleware(std::function<void(Controllers::HttpRequest&)> middleware);
+    // ===== 服务器控制 =====
+    bool start();
+    void stop();
+    void wait();
+    bool isRunning() const { return running_; }
 
 private:
-    /**
-     * @brief 初始化服务器
-     * @return 是否初始化成功
-     */
-    bool initialize();
-
-    /**
-     * @brief 清理资源
-     */
-    void cleanup();
-
-    /**
-     * @brief 处理HTTP请求
-     * @param request 原始请求
-     * @return HTTP响应
-     */
-    Controllers::HttpResponse handleRequest(const Controllers::HttpRequest& request);
-
-    /**
-     * @brief 记录访问日志
-     * @param request 请求信息
-     * @param response 响应信息
-     * @param durationMs 处理时长（毫秒）
-     */
-    void logAccess(const Controllers::HttpRequest& request, 
-                  const Controllers::HttpResponse& response, 
-                  int64_t durationMs);
-
-    /**
-     * @brief 验证请求大小
-     * @param request 请求信息
-     * @return 是否有效
-     */
-    bool validateRequestSize(const Controllers::HttpRequest& request) const;
-
-    /**
-     * @brief 应用CORS头
-     * @param response 响应信息
-     */
-    void applyCORSHeaders(Controllers::HttpResponse& response) const;
-
-    /**
-     * @brief 转换HTTP方法
-     * @param method HTTP方法枚举
-     * @return 方法字符串
-     */
-    std::string methodToString(Controllers::HttpMethod method) const;
-
-    /**
-     * @brief 解析HTTP方法
-     * @param method 方法字符串
-     * @return HTTP方法枚举
-     */
-    Controllers::HttpMethod parseMethod(const std::string& method) const;
-
-    // 服务器配置
-    HttpServerConfig config;
+    crow::SimpleApp app_;
     
-    // 服务器状态
-    bool running;
+    std::string host_ = "0.0.0.0";
+    int port_ = 8080;
+    int workers_ = 4;
+    bool running_ = false;
     
-    // 路由表
-    std::map<std::string, HttpRequestHandler> routes;
+    // SSL
+    bool sslEnabled_ = false;
+    std::string sslCertPath_;
+    std::string sslKeyPath_;
+    
+    // CORS
+    bool corsEnabled_ = true;
+    std::string corsOrigin_ = "*";
+    std::string corsMethods_ = "GET,POST,PUT,DELETE,OPTIONS";
+    std::string corsHeaders_ = "Content-Type,Authorization";
+    bool corsCredentials_ = true;
+    
+    // 压缩
+    bool compressionEnabled_ = true;
+    int compressionLevel_ = 6;
+    
+    // 速率限制
+    bool rateLimitEnabled_ = false;
+    int rateLimitMaxRequests_ = 100;
+    int rateLimitWindowSeconds_ = 60;
     
     // 控制器列表
-    std::vector<std::shared_ptr<Controllers::BaseController>> controllers;
+    std::vector<std::pair<std::string, std::shared_ptr<controllers::BaseController>>> controllers_;
     
-    // 中间件列表
-    std::vector<std::function<void(Controllers::HttpRequest&)>> middlewares;
-    
-    // 线程池
-    std::vector<std::thread> workerThreads;
-    
-    // 统计信息
-    struct Statistics {
-        int64_t totalRequests = 0;
-        int64_t successfulRequests = 0;
-        int64_t failedRequests = 0;
-        int64_t totalBytesSent = 0;
-        int64_t totalBytesReceived = 0;
-        std::map<int, int64_t> statusCodeCounts;
-        std::map<std::string, int64_t> endpointCounts;
-    } statistics;
-    
-    // 线程安全
-    mutable std::mutex mutex;
+    // 服务器线程
+    std::thread serverThread_;
+    mutable std::mutex mutex_;
 };
 
-/**
- * @brief HTTP服务器管理器
- */
-class HttpServerManager {
-public:
-    static HttpServerManager& getInstance();
+} // namespace yachiyo::utils
 
-    /**
-     * @brief 创建HTTP服务器
-     * @param config 服务器配置
-     * @return HTTP服务器实例
-     */
-    std::shared_ptr<HttpServer> createServer(const HttpServerConfig& config = HttpServerConfig());
-
-    /**
-     * @brief 获取默认HTTP服务器
-     * @return HTTP服务器实例
-     */
-    std::shared_ptr<HttpServer> getDefaultServer();
-
-    /**
-     * @brief 设置默认HTTP服务器
-     * @param server HTTP服务器实例
-     */
-    void setDefaultServer(std::shared_ptr<HttpServer> server);
-
-    /**
-     * @brief 停止所有服务器
-     */
-    void stopAllServers();
-
-    /**
-     * @brief 获取所有服务器
-     * @return 服务器列表
-     */
-    std::vector<std::shared_ptr<HttpServer>> getAllServers() const;
-
-private:
-    HttpServerManager() = default;
-    ~HttpServerManager();
-
-    // 服务器列表
-    std::vector<std::shared_ptr<HttpServer>> servers;
-    
-    // 默认服务器
-    std::shared_ptr<HttpServer> defaultServer;
-    
-    // 线程安全
-    mutable std::mutex mutex;
-};
-
-} // namespace Utils
-} // namespace Yachiyo
+// 向后兼容别名
+namespace Yachiyo::Utils {
+    using CrowHttpServer = yachiyo::utils::CrowHttpServer;
+}

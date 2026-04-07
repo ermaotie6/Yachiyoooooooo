@@ -1,11 +1,15 @@
-#include "../../include/controllers/AIController.hpp"
-#include "../../include/services/AIService.hpp"
-#include "../../include/utils/JsonUtils.hpp"
-#include "../../include/utils/LogUtils.hpp"
+#include "controllers/AIController.hpp"
+#include "services/AIService.hpp"
+#include "utils/JsonUtils.hpp"
+#include "utils/LogUtils.hpp"
 #include <crow.h>
 #include <sstream>
 
 namespace yachiyo::controllers {
+
+using yachiyo::utils::LogUtils;
+namespace services = Yachiyo::Services;
+namespace utils = yachiyo::utils;
 
 AIController::AIController() {
     logger = LogUtils::getLogger("AIController");

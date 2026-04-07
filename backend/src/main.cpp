@@ -1,10 +1,11 @@
-#include "../include/Application.hpp"
-#include "../include/utils/LogUtils.hpp"
+#include "Application.hpp"
+#include "utils/LogUtils.hpp"
 #include <iostream>
 #include <csignal>
 #include <cstdlib>
 
 using namespace yachiyo;
+using LogUtils = yachiyo::utils::LogUtils;
 
 /**
  * @brief 主函数

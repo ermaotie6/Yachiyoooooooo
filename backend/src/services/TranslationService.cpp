@@ -262,7 +262,7 @@ Utils::Result<dto::TranslationResponse> TranslationService::translateViaBaidu(
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseBody);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, config.timeout);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, static_cast<long>(config.timeoutSeconds));
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 3L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
     
@@ -363,7 +363,7 @@ Utils::Result<dto::TranslationResponse> TranslationService::translateViaDeepSeek
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseBody);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, config.timeout);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, static_cast<long>(config.timeoutSeconds));
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
     

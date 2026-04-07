@@ -4,7 +4,7 @@
 #include <chrono>
 #include <ctime>
 
-namespace Yachiyo {
+namespace yachiyo {
 namespace controllers {
 
 HealthController::HealthController() {
@@ -236,4 +236,4 @@ std::string HealthController::getName() const {
 }
 
 } // namespace controllers
-} // namespace Yachiyo
+} // namespace yachiyo

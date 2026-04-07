@@ -48,3 +48,8 @@ private:
 
 } // namespace DTO
 } // namespace Yachiyo
+
+// 后向兼容别名
+namespace yachiyo::dto {
+    using Yachiyo::DTO::ChatRequest;
+}

@@ -1,8 +1,6 @@
-add_library(filters
-    # 过滤器实现
-)
+add_library(filters INTERFACE)
 
 target_include_directories(filters
-    PUBLIC
+    INTERFACE
         ${CMAKE_SOURCE_DIR}/include
 )

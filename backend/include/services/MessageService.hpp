@@ -11,8 +11,9 @@ using json = nlohmann::json;
 
 namespace yachiyo::services {
 
-using Models::Message, Models::ReviewStatus;
-using Utils::Result;
+using yachiyo::models::Message;
+using yachiyo::models::ReviewStatus;
+using Yachiyo::Utils::Result;
 
 /**
  * @brief 消息服务接口 (Phase 2 - 6层安全审查系统)

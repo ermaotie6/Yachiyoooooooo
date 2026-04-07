@@ -24,8 +24,22 @@ export const useAuthStore = defineStore('auth', () => {
 
   const login = async (username: string, password: string) => {
     const response = await api.post('/auth/login', { username, password })
-    const { accessToken: access, refreshToken: refresh, user: userData } = response.data.data
+    const data = response.data.data
+    // 后端返回格式: { token, refreshToken, userId, username }
+    // 或: { accessToken, refreshToken, user }
+    const access = data.accessToken || data.token || ''
+    const refresh = data.refreshToken || ''
     setTokens(access, refresh)
+    
+    // 构建用户对象
+    const userData: User = data.user || {
+      userId: data.userId || data.user_id || 0,
+      username: data.username || username,
+      email: data.email || '',
+      displayName: data.nickname || data.username || username,
+      role: (data.role || 'user').toLowerCase() as 'user' | 'admin',
+      createdAt: data.createdAt || new Date().toISOString()
+    }
     setUser(userData)
     return response.data
   }
@@ -45,8 +59,10 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   const refreshAccessToken = async () => {
-    const response = await api.post('/auth/refresh', { refreshToken: refreshToken.value })
-    const { accessToken: access, refreshToken: refresh } = response.data.data
+    const response = await api.post('/auth/refresh', { refresh_token: refreshToken.value })
+    const data = response.data.data
+    const access = data.accessToken || data.token || ''
+    const refresh = data.refreshToken || data.refresh_token || ''
     setTokens(access, refresh)
     return access
   }

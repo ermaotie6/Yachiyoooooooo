@@ -10,8 +10,10 @@ using json = nlohmann::json;
 
 namespace yachiyo::services {
 
-using Models::User, Models::UserRole, Models::UserStatus;
-using Utils::Result;
+using yachiyo::models::User;
+using yachiyo::models::UserRole;
+using yachiyo::models::UserStatus;
+using Yachiyo::Utils::Result;
 
 /**
  * @brief 认证服务接口 (v2.0 - 虚拟主播直播平台)

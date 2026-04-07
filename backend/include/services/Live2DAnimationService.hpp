@@ -2,9 +2,12 @@
 
 #include <string>
 #include <vector>
+#include <map>
+#include <mutex>
 #include <memory>
 #include <nlohmann/json.hpp>
 #include "utils/Result.hpp"
+#include "utils/Compat.hpp"
 #include "dto/Live2DDTO.hpp"
 
 using json = nlohmann::json;

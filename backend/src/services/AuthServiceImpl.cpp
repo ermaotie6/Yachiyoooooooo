@@ -1,5 +1,5 @@
-#include "../include/services/AuthServiceImpl.hpp"
-#include "../include/utils/Logger.hpp"
+#include "services/AuthServiceImpl.hpp"
+#include "utils/Logger.hpp"
 #include <regex>
 #include <ctime>
 
@@ -358,7 +358,7 @@ Result<bool> AuthServiceImpl::canUserSendMessage(int64_t userId) {
             return Result<bool>::Error("用户不存在");
         }
         
-        auto user = userResult.getData();
+        auto user = userResult.value();
         
         if (!user->canSendMessages()) {
             if (user->getIsBanned()) {

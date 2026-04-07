@@ -1,36 +1,43 @@
 #pragma once
 
-#include "controllers/BaseController.hpp"
-#include "services/ChatService.hpp"
-#include "dto/AIChatRequest.hpp"
-#include "dto/AIChatResponse.hpp"
+#include "BaseController.hpp"
+#include "../services/AIService.hpp"
+#include "../services/ChatService.hpp"
+#include "../utils/LogUtils.hpp"
 #include <crow.h>
 #include <memory>
+#include <spdlog/spdlog.h>
 
-namespace Yachiyo {
-namespace controllers {
+namespace yachiyo::controllers {
 
 class AIController : public BaseController {
 public:
-    explicit AIController(std::shared_ptr<services::ChatService> chatService = nullptr);
+    AIController();
     
-    void registerRoutes(crow::SimpleApp& app) override;
+    void registerRoutes(crow::SimpleApp& app);
     
 private:
-    std::shared_ptr<services::ChatService> chatService;
+    std::shared_ptr<Yachiyo::Services::AIServiceImpl> aiService;
+    std::shared_ptr<spdlog::logger> logger;
     
-    // AI聊天端点
+    // AI 聊天
     crow::response chat(const crow::request& req);
-    
-    // 获取聊天历史
-    crow::response getChatHistory(const crow::request& req);
-    
-    // 删除聊天会话
-    crow::response deleteChatSession(const crow::request& req);
-    
-    // 流式聊天（SSE）
     crow::response chatStream(const crow::request& req);
+    
+    // 语音
+    crow::response textToSpeech(const crow::request& req);
+    crow::response speechToText(const crow::request& req);
+    
+    // 图像
+    crow::response generateImage(const crow::request& req);
+    crow::response analyzeImage(const crow::request& req);
+    
+    // 模型管理
+    crow::response getModels(const crow::request& req);
+    
+    // 聊天历史
+    crow::response getChatHistory(const crow::request& req);
+    crow::response deleteChatHistory(const crow::request& req, const std::string& chatId);
 };
 
-} // namespace controllers
-} // namespace Yachiyo
+} // namespace yachiyo::controllers

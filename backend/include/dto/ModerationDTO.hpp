@@ -6,6 +6,9 @@
 
 using json = nlohmann::json;
 
+namespace Yachiyo {
+namespace DTO {
+
 /**
  * 内容审查请求 DTO
  */
@@ -132,3 +135,13 @@ struct ModerationResponse {
         return resp;
     }
 };
+
+} // namespace DTO
+} // namespace Yachiyo
+
+// 后向兼容别名
+namespace yachiyo::dto {
+    using Yachiyo::DTO::ModerationRequest;
+    using Yachiyo::DTO::ModerationResult;
+    using Yachiyo::DTO::ModerationResponse;
+}

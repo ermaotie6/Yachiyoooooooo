@@ -1,570 +1,299 @@
-# 🔧 Yachiyo 后端 - AI 虚拟形象直播平台服务
+﻿# Yachiyo 后端  AI 虚拟形象直播平台服务
 
-**Yachiyo AI 虚拟形象直播平台的后端服务，基于 C++20 和 Crow 框架，为 OpenClaw 虚拟助理提供 RESTful API 和实时通信支持。**
+**基于 C++20 和 Crow 框架的 AI 虚拟形象直播平台后端，为 OpenClaw 虚拟助理提供 RESTful API 和 WebSocket 实时通信支持。**
 
-![Version](https://img.shields.io/badge/version-1.0.0-brightgreen)
 ![Language](https://img.shields.io/badge/language-C%2B%2B20-red)
-![Status](https://img.shields.io/badge/status-Production%20Ready-success)
-![Coverage](https://img.shields.io/badge/coverage-85%25-brightgreen)
+![Build](https://img.shields.io/badge/build-CMake%203.20+-blue)
+![Platform](https://img.shields.io/badge/platform-Arch%20Linux-1793d1)
 
 ---
 
-## 🎯 快速导航
+## 目录
 
-- **🚀 [快速开始](#-快速开始)** - 5 分钟启动应用
-- **📡 [API 端点](#-api-端点)** - 12 个 REST 端点完整指南
-- **🧪 [测试运行](#-测试运行)** - 50+ 单元/集成/性能测试
-- **📖 [完整文档](docs/)** - API、架构、部署、测试指南
-- **🎓 [项目完成](MILESTONE_COMPLETION.md)** - v2.0 里程碑成果
-
----
-
-## 📊 关键成就
-
-| 指标 | 数值 | 状态 |
-| :--- | :--- | :--- |
-| **源代码** | 4,200+ 行 | ✅ |
-| **测试代码** | 1,500+ 行 | ✅ |
-| **API 端点** | 12 个 | ✅ |
-| **测试用例** | 50+ 个 | ✅ |
-| **代码覆盖率** | 85-95% | ✅ |
-| **响应时间** | <1s | ✅ |
-| **吞吐量** | 50+ msg/sec | ✅ |
+- [技术栈](#技术栈)
+- [项目结构](#项目结构)
+- [快速开始](#快速开始)
+- [API 端点](#api-端点)
+- [配置说明](#配置说明)
+- [Docker 部署](#docker-部署)
 
 ---
 
-## 🎬 Yachiyo v2.0 核心功能
-
-### 🔐 认证与授权系统 (6 个端点)
-
-| 方法 | 端点 | 说明 |
-| :--- | :--- | :--- |
-| POST | `/auth/register` | 用户注册 |
-| POST | `/auth/login` | 用户登录 |
-| POST | `/auth/verify` | 验证 Token |
-| POST | `/auth/refresh` | 刷新 Token |
-| POST | `/auth/logout` | 用户登出 |
-| GET | `/users/profile` | 获取个人信息 |
-
-### 📝 消息管理系统 (6 个端点)
-
-| 方法 | 端点 | 说明 |
-| :--- | :--- | :--- |
-| POST | `/messages/send` | 发送消息 |
-| GET | `/messages` | 查询消息列表 |
-| GET | `/messages/{id}` | 获取消息详情 |
-| POST | `/admin/messages/review` | 审查消息 (管理员) |
-| GET | `/admin/messages/pending` | 待审查消息 (管理员) |
-| GET | `/admin/statistics` | 统计信息 (管理员) |
-
-### 🚀 6 层内容审查系统
-
-```
-Layer 1 → 速率限制 (Redis)
-  ↓ (限制: 100 msg/分钟)
-Layer 2 → IP 黑名单 (PostgreSQL)
-  ↓ (自动封禁)
-Layer 3 → 敏感词过滤 (内存)
-  ↓ (5 级严重程度)
-Layer 4 → AI 审查 (Openclaw)
-  ↓ (自动降级策略)
-Layer 5 → 行为异常检测 (Redis + DB)
-  ↓ (异常模式识别)
-Layer 6 → 人工审查标记 (多因素)
-  ↓
-✅ 已批准 / ⏳ 待审查 / ❌ 已拒绝
-```
-
----
-
-## 💻 技术栈
+## 技术栈
 
 | 技术 | 版本 | 用途 |
 | :--- | :--- | :--- |
-| **C++** | 20 | 编程语言 |
-| **Crow** | Latest | Web 框架 |
-| **PostgreSQL** | 12+ | 数据库 |
-| **Redis** | 6+ | 缓存和频率限制 |
-| **libcurl** | 7.5+ | HTTP 客户端 |
-| **OpenSSL** | 1.1+ | 加密和密钥 |
-| **Google Test** | 1.12+ | 单元测试 |
-| **CMake** | 3.20+ | 构建系统 |
-| **Docker** | Latest | 容器化 |
+| C++ | 20 | 编程语言 |
+| Crow | Latest | HTTP 框架 |
+| PostgreSQL | 15+ | 关系型数据库 |
+| libpqxx | 7+ | PostgreSQL C++ 客户端 |
+| Redis | 7+ | 缓存 & 会话 |
+| hiredis | Latest | Redis C 客户端 |
+| libcurl | 7.5+ | HTTP 客户端 (AI/TTS/翻译 API) |
+| OpenSSL | 1.1+ | JWT 签名 & 密码哈希 |
+| nlohmann/json | 3.11+ | JSON 序列化 |
+| yaml-cpp | 0.7+ | YAML 配置解析 |
+| spdlog | 1.12+ | 日志系统 |
+| libuuid | Latest | UUID 生成 |
+| CMake | 3.20+ | 构建系统 |
+| Docker | Latest | 容器化部署 |
 
 ---
 
-## ✨ 核心特性
-
-- ✅ **企业级安全** - 6 层内容审查，多维度防护
-- ✅ **高性能** - 50+ msg/sec，<1s 响应时间
-- ✅ **AI 集成** - Openclaw 框架支持，自动降级
-- ✅ **灵活权限** - RBAC（2 种角色），3 种用户状态
-- ✅ **完整测试** - 50+ 单元/集成/性能测试用例
-- ✅ **生产就绪** - Docker 支持，完整文档，监控指标
-
----
-
-## 🚀 快速开始
-
-### 1️⃣ 环境要求
-
-```bash
-# 安装依赖 (Ubuntu/Debian)
-sudo apt-get install postgresql redis-server libcurl4-openssl-dev libssl-dev
-
-# 或使用 Docker
-docker-compose up -d
-```
-
-### 2️⃣ 克隆和编译
-
-```bash
-# 克隆项目
-git clone https://github.com/yourusername/Yachiyo.git
-cd Yachiyo/YachiyoCPP
-
-# 创建构建目录
-mkdir build && cd build
-
-# 配置和编译
-cmake .. && make -j$(nproc)
-```
-
-### 3️⃣ 初始化数据库
-
-```bash
-# 导入初始化脚本
-psql yachiyo_dev < ../config/init_database.sql
-
-# 启动 Redis
-redis-server &
-
-# 启动应用
-./src/Application
-```
-
-### 4️⃣ 验证服务
-
-```bash
-# 健康检查
-curl http://localhost:8000/health
-
-# 预期响应: {"code": 0, "data": {"status": "healthy"}}
-```
-
-详见 👉 **[完整快速开始指南](#-快速开始-完整版)**
-
----
-
-## 📡 API 端点
-
-### 认证示例
-
-```bash
-# 用户注册
-curl -X POST http://localhost:8000/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "broadcaster",
-    "email": "user@example.com",
-    "password": "SecurePass123"
-  }'
-
-# 用户登录
-curl -X POST http://localhost:8000/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "broadcaster",
-    "password": "SecurePass123"
-  }'
-```
-
-### 消息发送示例
-
-```bash
-# 发送消息 (包含 6 层审查)
-curl -X POST http://localhost:8000/messages/send \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "content": "Hello, Yachiyo!",
-    "type": "text"
-  }'
-
-# 预期响应
-{
-  "code": 0,
-  "data": {
-    "message_id": 123,
-    "status": "pending",
-    "review_score": 0.92,
-    "layers_passed": ["rate_limit", "ip_check", "keyword_filter"]
-  }
-}
-```
-
-📖 **[完整 API 文档](#-api-端点-完整版)**
-
----
-
-## 🧪 测试运行
-
-### 单元测试 (35+ 用例)
-
-```bash
-cd build
-make AuthServiceTest MessageServiceTest
-ctest --verbose
-```
-
-### 集成测试 (30+ 用例)
-
-```bash
-cd build
-make IntegrationTest
-./tests/IntegrationTest
-```
-
-### 性能测试 (25+ 用例)
-
-```bash
-cd build
-make PerformanceTest
-./tests/PerformanceTest
-```
-
-📊 **[完整测试指南](docs/TESTING_GUIDE.md)**
-
----
-
-## 🏗️ 项目结构
+## 项目结构
 
 ```
-YachiyoCPP/
-├── include/                    # 头文件
-│   ├── models/
-│   │   ├── User.hpp           # 用户模型
-│   │   ├── Message.hpp        # 消息模型
-│   │   └── BaseModel.hpp
-│   ├── services/
-│   │   ├── AuthService.hpp    # 认证服务
-│   │   ├── MessageService.hpp # 消息服务
-│   │   └── ...
-│   ├── controllers/
-│   │   ├── AuthController.hpp
-│   │   ├── MessageController.hpp
-│   │   └── ...
-│   └── utils/
-│       ├── JwtUtil.hpp        # JWT 工具
-│       ├── OpencalwClient.hpp # AI 客户端
-│       └── ...
-├── src/                        # 源文件实现
-├── tests/
-│   ├── AuthServiceTest.cpp    # (15+ 测试)
-│   ├── MessageServiceTest.cpp # (20+ 测试)
-│   ├── IntegrationTest.cpp    # (30+ 测试)
-│   ├── PerformanceTest.cpp    # (25+ 测试)
-│   └── CMakeLists.txt
-├── config/
-│   ├── config.yaml            # 配置文件
-│   └── init_database.sql      # 数据库初始化
-├── docs/                       # 文档
-│   ├── API_REFERENCE.md
-│   ├── TESTING_GUIDE.md
-│   ├── DEPLOYMENT_GUIDE.md
-│   └── ...
-├── CMakeLists.txt
-├── docker-compose.yml
-├── Dockerfile
-└── README.md
+backend/
+ CMakeLists.txt                 # 根 CMake 配置
+ Dockerfile                     # Docker 镜像
+ .env.example                   # 环境变量模板
+ config/                        # 配置文件
+    config.yaml                # 主配置 (YAML)
+    init_database.sql          # 数据库初始化脚本
+    prometheus.yml             # Prometheus 监控配置
+ include/                       # 头文件
+    Application.hpp            # 应用程序主类
+    config/
+       ConfigManager.hpp      # 配置管理器 (YAML)
+    controllers/               # 路由控制器
+       BaseController.hpp     # 控制器基类
+       AuthController.hpp     # 认证控制器
+       AIController.hpp       # AI 对话控制器
+       HealthController.hpp   # 健康检查
+       UserController.hpp     # 用户管理
+       MessageController.hpp  # 消息管理
+       WebSocketController.hpp# WebSocket 控制器
+    dto/                       # 数据传输对象
+       AuthDTO.hpp            # 认证 DTO
+       CommonDTO.hpp          # 通用 DTO
+       ChatRequest.hpp        # 聊天请求
+       ChatMessageDTO.hpp     # 聊天消息
+       UserDTO.hpp            # 用户 DTO
+       OpenClawDTO.hpp        # OpenClaw 对接
+       ModerationDTO.hpp      # 内容审查
+       TranslationDTO.hpp     # 翻译
+       TTSServiceDTO.hpp      # 语音合成
+       Live2DDTO.hpp          # Live2D 动画
+    models/                    # 数据模型
+       BaseModel.hpp          # 模型基类
+       DatabaseModels.hpp     # 数据库模型集合
+       User.hpp               # 用户模型
+       Message.hpp            # 消息模型
+    services/                  # 业务服务
+       AuthService.hpp        # 认证服务接口
+       AuthServiceImpl.hpp    # 认证服务实现
+       AIService.hpp          # AI 服务接口
+       ChatService.hpp        # AI 聊天服务
+       MessageService.hpp     # 消息服务接口
+       MessageServiceImpl.hpp # 消息服务实现
+       UserService.hpp        # 用户服务
+       DatabaseService.hpp    # 数据库连接池
+       WebSocketService.hpp   # WebSocket 服务
+       AvatarResponseService.hpp  # 虚拟形象响应编排
+       OpenClawGateway.hpp    # OpenClaw 网关
+       DeepSeekModerationService.hpp # 内容审查
+       TranslationService.hpp # 翻译服务
+       GPTSoVITSService.hpp   # TTS 语音合成
+       Live2DAnimationService.hpp # Live2D 动画控制
+    utils/                     # 工具类
+        HttpServer.hpp         # Crow HTTP 服务器封装
+        DatabaseUtil.hpp       # 数据库工具
+        RedisUtil.hpp          # Redis 工具
+        JwtUtil.hpp            # JWT 签发/验证
+        HashUtil.hpp           # 密码哈希
+        JsonUtils.hpp          # JSON 工具
+        ConfigParser.hpp       # 配置解析
+        Logger.hpp             # 日志封装
+        LogUtils.hpp           # 日志工具
+        Result.hpp             # 通用 Result<T>
+        ValidationUtils.hpp    # 输入验证
+        OpencalwClient.hpp     # OpenClaw HTTP 客户端
+        EmailService.hpp       # 邮件服务 (预留)
+        Compat.hpp             # 命名空间兼容层
+ src/                           # 源文件实现
+    main.cpp                   # 程序入口
+    Application.cpp            # 应用初始化与生命周期
+    CMakeLists.txt             # 主可执行文件 CMake
+    controllers/               # 控制器实现
+    services/                  # 服务实现
+    dto/                       # DTO 实现
+    utils/                     # 工具实现
+ scripts/
+    build.sh                   # 构建脚本
+ test/                          # 单元测试 (预留)
 ```
 
 ---
 
-## 📈 性能指标
+## 快速开始
 
-| 操作 | 响应时间 | P95 | P99 |
-| :--- | :--- | :--- | :--- |
-| 用户注册 | ~50ms | <200ms | <250ms |
-| 用户登录 | ~30ms | <150ms | <200ms |
-| 发送消息 (6层) | ~800ms | <1100ms | <1200ms |
-| 查询消息 | ~100ms | <500ms | <550ms |
-| 审查消息 | ~20ms | <50ms | <100ms |
+### 环境要求
 
----
+- Arch Linux (推荐) / Ubuntu / Debian
+- CMake 3.20+, GCC 12+ 或 Clang 15+ (C++20)
+- PostgreSQL 15+, Redis 7+
 
-## 🔄 快速开始 (完整版)
-
-### 编译与构建
+### 安装依赖 (Arch Linux)
 
 ```bash
-# 进入项目
-cd Yachiyo/YachiyoCPP
+sudo pacman -S postgresql redis hiredis openssl cmake crow spdlog yaml-cpp \
+    nlohmann-json libpqxx curl util-linux-libs
+```
 
-# 创建构建目录
-mkdir build && cd build
+### 编译
 
-# 使用 CMake 配置
-cmake -DCMAKE_BUILD_TYPE=Release -DWITH_TESTS=ON ..
+```bash
+cd backend
 
-# 编译
+# 使用构建脚本
+bash scripts/build.sh --build
+
+# 或手动构建
+mkdir -p build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j$(nproc)
-
-# 安装
-make install
 ```
 
-### 运行应用
+### 运行
 
 ```bash
-# 前置: 启动数据库和缓存
-sudo systemctl start postgresql
-redis-server &
+# 确保 PostgreSQL 和 Redis 已启动
+sudo systemctl start postgresql redis
 
 # 初始化数据库
-psql yachiyo_dev < config/init_database.sql
+psql -U postgres -d yachiyo -f config/init_database.sql
 
-# 启动应用
-./src/Application
-```
+# 启动
+./build/yachiyo_cpp --config-dir config --env dev --port 8080
 
-### 验证安装
-
-```bash
-# 健康检查
-curl http://localhost:8000/health
-
-# 查看日志
-tail -f logs/yachiyo.log
-
-# 测试用户注册
-curl -X POST http://localhost:8000/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "test_user",
-    "email": "test@example.com",
-    "password": "TestPass123"
-  }'
+# 验证
+curl http://localhost:8080/api/v1/health
 ```
 
 ---
 
-## 📡 API 端点 (完整版)
+## API 端点
 
-### 1️⃣ 用户注册
+### 认证
 
-```http
-POST /auth/register
-Content-Type: application/json
+| 方法 | 路径 | 说明 | 认证 |
+|------|------|------|------|
+| POST | `/api/v1/auth/register` | 用户注册 |  |
+| POST | `/api/v1/auth/login` | 用户登录 |  |
+| POST | `/api/v1/auth/verify` | Token 验证 |  |
+| POST | `/api/v1/auth/refresh` | 刷新 Token |  |
+| POST | `/api/v1/auth/logout` | 用户登出 |  |
 
-{
-  "username": "broadcaster",
-  "email": "user@example.com",
-  "password": "SecurePass123"
-}
-```
+### 用户
 
-**响应** (201 Created):
+| 方法 | 路径 | 说明 | 认证 |
+|------|------|------|------|
+| GET | `/api/v1/users` | 用户列表 |  |
+| GET | `/api/v1/users/:id` | 用户详情 |  |
 
-```json
-{
-  "code": 0,
-  "data": {
-    "user_id": 1,
-    "username": "broadcaster",
-    "email": "user@example.com",
-    "created_at": "2026-04-01T12:00:00Z"
-  }
-}
-```
+### AI 对话
 
-### 2️⃣ 用户登录
+| 方法 | 路径 | 说明 | 认证 |
+|------|------|------|------|
+| POST | `/api/v2/ai/chat` | AI 对话 |  |
 
-```http
-POST /auth/login
-Content-Type: application/json
+### 消息
 
-{
-  "username": "broadcaster",
-  "password": "SecurePass123"
-}
-```
+| 方法 | 路径 | 说明 | 认证 |
+|------|------|------|------|
+| POST | `/api/v1/messages/send` | 发送消息 (含审查) |  |
+| GET | `/api/v1/messages` | 消息列表 |  |
+| GET | `/api/v1/messages/:id` | 消息详情 |  |
 
-**响应** (200 OK):
+### WebSocket
 
-```json
-{
-  "code": 0,
-  "data": {
-    "token": "eyJhbGciOiJIUzI1NiIs...",
-    "user_id": 1,
-    "expires_in": 3600
-  }
-}
-```
+| 协议 | 地址 | 说明 |
+|------|------|------|
+| WS | `ws://host:9001` | 实时弹幕/AI 回复推送 |
 
-### 3️⃣ 发送消息
+### 健康检查
 
-```http
-POST /messages/send
-Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
-Content-Type: application/json
-
-{
-  "content": "Hello, Yachiyo!",
-  "type": "text"
-}
-```
-
-**响应** (201 Created):
-
-```json
-{
-  "code": 0,
-  "data": {
-    "message_id": 123,
-    "status": "pending",
-    "review_score": 0.92,
-    "layers_passed": ["rate_limit", "ip_check", "keyword_filter", "ai_review"]
-  }
-}
-```
-
-### 4️⃣ 查询消息
-
-```http
-GET /messages?page=1&limit=20
-Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
-```
-
-**响应** (200 OK):
-
-```json
-{
-  "code": 0,
-  "data": {
-    "messages": [
-      {
-        "message_id": 123,
-        "content": "Hello, Yachiyo!",
-        "status": "approved",
-        "created_at": "2026-04-01T12:00:00Z"
-      }
-    ],
-    "total": 42,
-    "page": 1,
-    "limit": 20
-  }
-}
-```
-
-更多端点详见 👉 **[完整 API 参考文档](docs/API_REFERENCE.md)**
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v1/health` | 服务状态检查 |
 
 ---
 
-## ⚙️ 配置说明
+## 配置说明
 
-### 配置文件 (config/config.yaml)
+### 配置文件 (`config/config.yaml`)
 
 ```yaml
-app:
-  name: "Yachiyo v2.0"
-  port: 8000
-  environment: "development"
+server:
+  host: "0.0.0.0"
+  port: 8080
+  workers: 4
+  cors:
+    enabled: true
+    origin: "*"
 
 database:
   host: "localhost"
   port: 5432
-  name: "yachiyo_dev"
-  pool_size: 20
+  name: "yachiyo"
+  user: "postgres"
+  password: ""
+  poolSize: 10
+
+websocket:
+  host: "0.0.0.0"
+  port: 9001
 
 redis:
+  enabled: true
   host: "localhost"
   port: 6379
-  pool_size: 10
 
 jwt:
-  secret: "${JWT_SECRET}"
-  expiration: 3600
+  secret: "${JWT_SECRET_KEY}"
+  expiresIn: 86400
 
-content_review:
-  rate_limit: 100  # 消息/分钟
-  max_message_length: 5000
+ai:
+  provider: "deepseek"
+  model: "deepseek-chat"
+
+openclaw:
+  bridge_endpoint: "http://localhost:8765"
 ```
 
-### 环境变量
+### 关键环境变量
+
+| 变量 | 说明 | 必填 |
+|------|------|------|
+| `JWT_SECRET_KEY` | JWT 签名密钥 |  |
+| `DEEPSEEK_API_KEY` | DeepSeek API Key |  |
+| `BAIDU_TRANSLATE_APPID` | 百度翻译 APPID |  |
+| `BAIDU_TRANSLATE_API_KEY` | 百度翻译密钥 |  |
+| `DATABASE_HOST` | PostgreSQL 地址 |  |
+| `REDIS_URL` | Redis 连接地址 |  |
+
+---
+
+## Docker 部署
 
 ```bash
-export DB_PASSWORD="your_password"
-export JWT_SECRET="your_secret_key_32_chars_min"
-export OPENCLAW_API_KEY="your_api_key"
+# 使用项目根目录 docker-compose
+cd ..
+docker-compose up -d backend
+
+# 或独立构建
+docker build -t yachiyo-backend .
+docker run -d -p 8080:8080 -p 9001:9001 \
+  -e JWT_SECRET_KEY=your-secret \
+  yachiyo-backend
 ```
 
 ---
 
-## 🐳 Docker 部署
+## 相关文档
 
-### 快速启动
-
-```bash
-docker-compose up -d
-
-# 验证
-docker-compose ps
-docker-compose logs -f app
-```
-
-### 手动构建
-
-```bash
-docker build -t yachiyo:2.0 .
-docker run -d --name yachiyo -p 8000:8000 yachiyo:2.0
-```
-
----
-
-## 📚 完整文档
-
-| 文档 | 说明 |
-| :--- | :--- |
-| 📖 [API 参考](docs/API_REFERENCE.md) | 12 个端点的完整文档 |
-| 🏗️ [项目架构](docs/PROJECT_ARCHITECTURE.md) | 系统设计和架构 |
-| 🧪 [测试指南](docs/TESTING_GUIDE.md) | 50+ 测试用例指南 |
-| 🚀 [部署指南](docs/DEPLOYMENT_GUIDE.md) | 生产部署步骤 |
-| 🔐 [安全指南](docs/SECURITY_GUIDE.md) | 安全最佳实践 |
-| 🎯 [里程碑报告](MILESTONE_COMPLETION.md) | v2.0 完成成果 |
-
----
-
-## 🤝 贡献指南
-
-欢迎提交 Issue 和 Pull Request！
-
-```bash
-# Fork 项目
-# Clone 到本地
-git clone https://github.com/yourusername/Yachiyo.git
-
-# 创建特性分支
-git checkout -b feature/amazing-feature
-
-# 提交更改
-git commit -m "feat: Add amazing feature"
-
-# 推送分支
-git push origin feature/amazing-feature
-
-# 提交 Pull Request
-```
-
----
-
-## 📄 许可证
-
-本项目采用 **MIT 许可证** - 详见 [LICENSE](LICENSE)
-
----
-
-**版本**: 1.0.0 | **状态**: ✅ 完成 | **质量**: ⭐⭐⭐⭐⭐
-
-欢迎使用 Yachiyo CPP！祝您使用愉快！🎉
+- [项目 README](../README.md)  全局架构与部署
+- [前端 README](../frontend/README.md)  Vue 3 前端
+- [GPT-SoVITS 部署指南](../docs/GPT-SoVITS部署指南.md)
+- [OpenClaw 对接说明](../docs/OpenClaw对接说明.md)
+- [待实现功能清单](../docs/待实现功能清单.md)

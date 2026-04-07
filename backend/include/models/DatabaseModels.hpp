@@ -103,4 +103,15 @@ struct Result {
     static Result Error(const std::string& msg) { return Result(msg); }
 };
 
+// Result<void> 特化 — 用于不返回数据的操作 (delete, update等)
+template<>
+struct Result<void> {
+    bool success;
+    std::string error_message;
+
+    Result() : success(true) {}
+    Result(const std::string& error) : success(false), error_message(error) {}
+    static Result Error(const std::string& msg) { return Result(msg); }
+};
+
 } // namespace Yachiyo::Models

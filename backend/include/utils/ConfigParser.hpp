@@ -5,11 +5,31 @@
 #include <vector>
 #include <memory>
 #include <yaml-cpp/yaml.h>
-#include "utils/HttpServer.hpp"
-#include "utils/RedisUtil.hpp"
+#include "HttpServer.hpp"
+#include "RedisUtil.hpp"
 
 namespace Yachiyo {
 namespace Utils {
+
+// HTTP 服务器配置结构体
+struct HttpServerConfig {
+    std::string host = "0.0.0.0";
+    int port = 8080;
+    int workers = 4;
+    bool enableSSL = false;
+    std::string sslCertPath;
+    std::string sslKeyPath;
+    bool enableCORS = true;
+    std::string corsOrigin = "*";
+    std::string corsMethods = "GET,POST,PUT,DELETE,OPTIONS";
+    std::string corsHeaders = "Content-Type,Authorization";
+    bool corsCredentials = true;
+    bool enableCompression = true;
+    int compressionLevel = 6;
+    bool enableRateLimit = true;
+    int rateLimitMaxRequests = 100;
+    int rateLimitWindowSeconds = 60;
+};
 
 // 应用配置
 struct AppConfig {
@@ -18,11 +38,11 @@ struct AppConfig {
     
     // 数据库配置
     struct DatabaseConfig {
-        std::string type = "mysql";
+        std::string type = "postgresql";
         std::string host = "localhost";
-        int port = 3306;
-        std::string name = "yachiyo_cpp";
-        std::string username = "root";
+        int port = 5432;
+        std::string name = "yachiyo";
+        std::string username = "postgres";
         std::string password;
         int maxConnections = 20;
         int connectionTimeout = 10;

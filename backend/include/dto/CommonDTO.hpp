@@ -5,7 +5,8 @@
 
 using json = nlohmann::json;
 
-namespace yachiyo::dto {
+namespace Yachiyo {
+namespace DTO {
 
 /**
  * @brief 通用响应DTO
@@ -90,4 +91,11 @@ struct PageResponseDTO {
     }
 };
 
-} // namespace yachiyo::dto
+} // namespace DTO
+} // namespace Yachiyo
+
+// 向后兼容别名
+namespace yachiyo::dto {
+    using Yachiyo::DTO::ResponseDTO;
+    using Yachiyo::DTO::PaginationDTO;
+}

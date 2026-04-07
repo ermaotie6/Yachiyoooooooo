@@ -1,4 +1,4 @@
-﻿# 🌸 Yachiyo — AI 虚拟形象直播平台
+﻿# Yachiyo — AI 虚拟形象直播平台
 
 <p align="center">
   <img src="docs/assets/logo.png" alt="Yachiyo Logo" width="200" />
@@ -19,7 +19,7 @@
 
 ---
 
-## 📖 目录
+## 目录
 
 - [项目简介](#-项目简介)
 - [系统架构](#-系统架构)
@@ -34,11 +34,11 @@
 
 ---
 
-## 🎯 项目简介
+## 项目简介
 
 Yachiyo 是一个 AI 虚拟形象直播互动平台，用户可以通过弹幕与 AI 驱动的 Live2D 虚拟形象进行实时交互。
 
-**核心定位**：本项目 **不负责对话生成**。对话/AI 推理由外部服务 **OpenClaw** 完成。本项目的职责是：
+**核心定位**：对话/AI 推理由外部服务 **OpenClaw** 完成。本项目的职责是：
 
 1. 接收用户弹幕 → 6 层内容审核
 2. 将审核通过的弹幕打包为 JSON → 通过桥接服务发给 OpenClaw
@@ -50,18 +50,18 @@ Yachiyo 是一个 AI 虚拟形象直播互动平台，用户可以通过弹幕�
 
 | 功能模块 | 说明 |
 |---------|------|
-| 📝 弹幕审核 | 6 层内容安全审核（DeepSeek API + 规则引擎），审核通过后转发 |
-| 🔗 OpenClaw 对接 | 将审核后的弹幕 JSON 发给 OpenClaw，接收回答文本 + 情感 + 动作 |
-| 🌐 翻译服务 | 百度翻译 API + DeepSeek 备选，将回答翻译为日语 |
-| 🔊 TTS 语音合成 | GPT-SoVITS 将日语文本转为八千代声线语音 |
-| 🎭 Live2D 驱动 | 根据情感标签实时切换虚拟形象表情与动作，口型同步 |
-| 💬 WebSocket 实时推送 | 文本、音频、Live2D 指令全链路实时传输到前端 |
-| 🔐 JWT 认证 | 用户注册/登录，Token 鉴权 |
-| 📊 监控系统 | Prometheus + Grafana 指标采集与可视化 |
+| 弹幕审核 | 6 层内容安全审核（DeepSeek API + 规则引擎），审核通过后转发 |
+| OpenClaw 对接 | 将审核后的弹幕 JSON 发给 OpenClaw，接收回答文本 + 情感 + 动作 |
+| 翻译服务 | 百度翻译 API + DeepSeek 备选，将回答翻译为日语 |
+| TTS 语音合成 | GPT-SoVITS 将日语文本转为八千代声线语音 |
+| Live2D 驱动 | 根据情感标签实时切换虚拟形象表情与动作，口型同步 |
+| WebSocket 实时推送 | 文本、音频、Live2D 指令全链路实时传输到前端 |
+| JWT 认证 | 用户注册/登录，Token 鉴权 |
+| 监控系统 | Prometheus + Grafana 指标采集与可视化 |
 
 ---
 
-## 🏗 系统架构
+## 系统架构
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -123,7 +123,7 @@ Yachiyo 是一个 AI 虚拟形象直播互动平台，用户可以通过弹幕�
 
 ---
 
-## ⚙ 运行逻辑
+## 运行逻辑
 
 ### 1. 后端启动流程
 
@@ -190,7 +190,6 @@ initialize()
           ├── /api/v1/auth     ← AuthController (JWT)
           ├── /api/v2/ai       ← AIController
           ├── /api/v1/users    ← UserController
-          ├── /api/v1/posts    ← PostController
           └── /api/v1/messages ← MessageController
               (仅当 Database + WebSocket 均初始化成功时注册)
 ```
@@ -278,7 +277,7 @@ start()
 
 ---
 
-## 🛠 技术栈
+## 技术栈
 
 ### 后端 (C++20)
 
@@ -326,11 +325,11 @@ start()
 | 数据库 | PostgreSQL 15 |
 | 缓存 | Redis 7 |
 | 监控 | Prometheus + Grafana |
-| AI 编排 | OpenClaw |
+| 对话处理 | OpenClaw |
 
 ---
 
-## 📁 项目结构
+## 项目结构
 
 ```
 Yachiyo/
@@ -343,7 +342,6 @@ Yachiyo/
 │   │   ├── config/                  # 配置管理
 │   │   ├── controllers/             # 路由控制器
 │   │   ├── dto/                     # 数据传输对象
-│   │   ├── mappers/                 # 数据映射
 │   │   ├── models/                  # 数据模型
 │   │   ├── services/                # 业务服务
 │   │   └── utils/                   # 工具类
@@ -352,9 +350,10 @@ Yachiyo/
 │   │   ├── Application.cpp          # 应用程序实现
 │   │   ├── controllers/             # 控制器实现
 │   │   ├── services/                # 服务实现
+│   │   ├── dto/                     # DTO 实现
 │   │   └── utils/                   # 工具实现
-│   ├── sql/                         # 数据库迁移脚本
-│   └── test/                        # 单元测试
+│   ├── scripts/                     # 构建脚本
+│   └── test/                        # 单元测试 (预留)
 ├── frontend/                        # Vue 3 前端
 │   ├── Dockerfile                   # 前端容器镜像
 │   ├── package.json                 # npm 依赖
@@ -371,17 +370,15 @@ Yachiyo/
 │   └── config/                      # 资源配置
 ├── database/                        # 数据库初始化脚本
 ├── config/                          # 全局配置
-├── devops/                          # 部署脚本
+├── scripts/                         # 部署脚本
 ├── docs/                            # 项目文档
 ├── nginx.conf                       # Nginx 配置
-├── docker-compose.yml               # Docker Compose 编排
-├── build.sh                         # 构建脚本 (Linux)
-└── build.ps1                        # 构建脚本 (Windows)
+└── docker-compose.yml               # Docker Compose 编排
 ```
 
 ---
 
-## 🚀 快速开始
+## 快速开始
 
 ### 前置要求
 
@@ -424,7 +421,7 @@ docker-compose logs -f bridge
 ```bash
 # 后端
 cd backend
-mkdir build && cd build
+mkdir -p build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Debug
 make -j$(nproc)
 ./yachiyo_cpp --config-dir ../config --env dev --port 8080
@@ -442,7 +439,7 @@ node src/index.js
 
 ---
 
-## 📡 API 端点
+## API 端点
 
 | 方法 | 路径 | 说明 | 认证 |
 |------|------|------|------|
@@ -451,15 +448,13 @@ node src/index.js
 | POST | `/api/v1/auth/login` | 用户登录 | ❌ |
 | GET | `/api/v1/users` | 用户列表 | ✅ |
 | GET | `/api/v1/users/:id` | 用户详情 | ✅ |
-| GET | `/api/v1/posts` | 帖子列表 | ❌ |
-| POST | `/api/v1/posts` | 发布帖子 | ✅ |
 | POST | `/api/v2/ai/chat` | AI 对话 | ✅ |
 | WS | `ws://host:9001` | WebSocket 实时通信 | ✅ |
 | GET | `/api/v1/messages` | 消息记录 | ✅ |
 
 ---
 
-## 🐳 Docker 服务一览
+## Docker 服务一览
 
 | 服务 | 容器名 | 端口 | 说明 |
 |------|--------|------|------|
@@ -476,7 +471,7 @@ node src/index.js
 
 ---
 
-## ⚙ 配置说明
+## 配置说明
 
 ### 后端核心配置 (`backend/config/config.yaml`)
 
@@ -532,7 +527,3 @@ openclaw:
 | `REDIS_URL` | Redis 连接地址 | `redis://redis:6379` |
 
 ---
-
-## 📄 许可证
-
-[MIT License](LICENSE) © Yachiyo Project

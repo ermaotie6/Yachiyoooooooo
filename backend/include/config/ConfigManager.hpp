@@ -3,6 +3,8 @@
 #include <string>
 #include <memory>
 #include <unordered_map>
+#include <vector>
+#include <sstream>
 #include <yaml-cpp/yaml.h>
 #include <nlohmann/json.hpp>
 #include "../utils/JsonUtils.hpp"

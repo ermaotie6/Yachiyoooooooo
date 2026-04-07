@@ -12,8 +12,19 @@ add_compile_options(-Wall -Wextra -Wpedantic -O2)
 # 查找依赖
 find_package(Threads REQUIRED)
 find_package(GTest QUIET)
-find_package(PostgreSQL REQUIRED)
+find_package(Crow REQUIRED)
+find_package(spdlog REQUIRED)
+find_package(yaml-cpp REQUIRED)
 find_package(nlohmann_json 3.2.0 QUIET)
+
+# PostgreSQL C++ wrapper (pqxx)
+find_package(libpqxx QUIET)
+if(NOT libpqxx_FOUND)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(PQXX QUIET libpqxx)
+    endif()
+endif()
 
 # 如果 nlohmann_json 未安装，使用 header-only 版本
 if(NOT nlohmann_json_FOUND)
@@ -24,7 +35,6 @@ endif()
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/third_party
-    ${PostgreSQL_INCLUDE_DIRS}
 )
 
 # 子目录 - 按照依赖顺序添加
@@ -63,8 +73,18 @@ target_link_libraries(yachiyo_cpp
     mappers
     config
     Threads::Threads
-    PostgreSQL::PostgreSQL
+    Crow::Crow
+    spdlog::spdlog
+    yaml-cpp::yaml-cpp
 )
+
+# 链接 pqxx
+if(libpqxx_FOUND)
+    target_link_libraries(yachiyo_cpp PRIVATE pqxx)
+elseif(PQXX_FOUND)
+    target_include_directories(yachiyo_cpp PRIVATE ${PQXX_INCLUDE_DIRS})
+    target_link_libraries(yachiyo_cpp PRIVATE ${PQXX_LIBRARIES})
+endif()
 
 # 如果 nlohmann_json 安装了，链接它
 if(nlohmann_json_FOUND)

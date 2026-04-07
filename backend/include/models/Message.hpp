@@ -28,7 +28,7 @@ enum class ReviewStatus : int16_t {
  */
 class Message : public BaseModel {
 private:
-    int64_t id = 0;
+    int64_t messageId = 0;
     int64_t userId = 0;
     std::string originalMessage;
     int32_t messageLength = 0;
@@ -56,7 +56,7 @@ public:
     Message() = default;
     
     // ==================== Getters ====================
-    int64_t getId() const { return id; }
+    int64_t getMessageId() const { return messageId; }
     int64_t getUserId() const { return userId; }
     const std::string& getOriginalMessage() const { return originalMessage; }
     int32_t getMessageLength() const { return messageLength; }
@@ -78,7 +78,7 @@ public:
     time_t getCreatedAt() const { return createdAt; }
     
     // ==================== Setters ====================
-    void setId(int64_t id_) { id = id_; }
+    void setMessageId(int64_t id_) { messageId = id_; }
     void setUserId(int64_t userId_) { userId = userId_; }
     void setOriginalMessage(const std::string& msg) { originalMessage = msg; messageLength = msg.length(); }
     
@@ -116,7 +116,7 @@ public:
             case ReviewStatus::PENDING: statusStr = "pending"; break;
         }
         
-        j["id"] = id;
+        j["messageId"] = messageId;
         j["userId"] = userId;
         j["originalMessage"] = originalMessage;
         j["messageLength"] = messageLength;
@@ -136,7 +136,7 @@ public:
     void fromJson(const json& j) override {
         BaseModel::fromJson(j);
         
-        if (j.contains("id")) id = j["id"].get<int64_t>();
+        if (j.contains("messageId")) messageId = j["messageId"].get<int64_t>();
         if (j.contains("userId")) userId = j["userId"].get<int64_t>();
         if (j.contains("originalMessage")) originalMessage = j["originalMessage"].get<std::string>();
         if (j.contains("messageLength")) messageLength = j["messageLength"].get<int32_t>();

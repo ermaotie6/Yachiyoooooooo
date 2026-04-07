@@ -6,6 +6,9 @@
 
 using json = nlohmann::json;
 
+namespace Yachiyo {
+namespace DTO {
+
 /**
  * 翻译请求 DTO
  */
@@ -107,3 +110,12 @@ struct TranslationResponse {
         return resp;
     }
 };
+
+} // namespace DTO
+} // namespace Yachiyo
+
+// 后向兼容别名
+namespace yachiyo::dto {
+    using Yachiyo::DTO::TranslationRequest;
+    using Yachiyo::DTO::TranslationResponse;
+}

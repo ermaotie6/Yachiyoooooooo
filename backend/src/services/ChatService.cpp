@@ -1,15 +1,21 @@
-#include "../../include/services/ChatService.hpp"
-#include "../../include/services/DatabaseService.hpp"
-#include "../../include/utils/LogUtils.hpp"
-#include "../../include/utils/JsonUtils.hpp"
+#include "services/ChatService.hpp"
+#include "services/DatabaseService.hpp"
+#include "utils/LogUtils.hpp"
+#include "utils/JsonUtils.hpp"
 #include <crow.h>
 #include <chrono>
 #include <algorithm>
 
-namespace yachiyo::services {
-
-// 全局数据库服务引用 — 声明在 Application.cpp
+// 全局数据库服务引用 — 定义在 Application.cpp (全局命名空间)
 extern std::shared_ptr<Yachiyo::Services::DatabaseService> g_databaseService;
+
+namespace Yachiyo::Services {
+
+// DTO 别名
+namespace dto = Yachiyo::DTO;
+
+// 引入 LogUtils
+using yachiyo::utils::LogUtils;
 
 ChatServiceImpl::ChatServiceImpl() {
     logger = LogUtils::getLogger("ChatServiceImpl");
@@ -41,7 +47,7 @@ std::vector<dto::ChatMessageDTO> ChatServiceImpl::getChatHistory(const std::stri
         auto result = g_databaseService->messageDAO().getByUserId(uid, limit, offset);
 
         if (!result.success) {
-            logger->warn("查询消息失败: {}", result.error);
+            logger->warn("查询消息失败: {}", result.error_message);
             return messages;
         }
 
@@ -103,7 +109,7 @@ dto::ChatMessageDTO ChatServiceImpl::sendMessage(const dto::ChatMessageDTO& mess
         if (result.success) {
             savedMessage.id = std::to_string(result.data.value());
         } else {
-            logger->error("消息保存失败: {}", result.error);
+            logger->error("消息保存失败: {}", result.error_message);
             savedMessage.id = "msg_unsaved_" + std::to_string(
                 std::chrono::system_clock::now().time_since_epoch().count());
         }
@@ -148,7 +154,7 @@ bool ChatServiceImpl::deleteMessage(const std::string& messageId, const std::str
         auto result = g_databaseService->messageDAO().delete_(mid);
 
         if (!result.success) {
-            logger->error("删除消息失败: {}", result.error);
+            logger->error("删除消息失败: {}", result.error_message);
             return false;
         }
 
@@ -341,4 +347,4 @@ bool ChatServiceImpl::clearChatHistory(const std::string& userId, const std::str
     }
 }
 
-} // namespace yachiyo::services
+} // namespace Yachiyo::Services

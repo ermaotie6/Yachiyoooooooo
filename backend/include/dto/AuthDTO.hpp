@@ -6,7 +6,8 @@
 
 using json = nlohmann::json;
 
-namespace yachiyo::dto {
+namespace Yachiyo {
+namespace DTO {
 
 /**
  * @brief 注册请求DTO
@@ -147,4 +148,13 @@ struct RefreshTokenRequestDTO {
     }
 };
 
-} // namespace yachiyo::dto
+} // namespace DTO
+} // namespace Yachiyo
+
+// 后向兼容别名
+namespace yachiyo::dto {
+    using Yachiyo::DTO::RegisterRequestDTO;
+    using Yachiyo::DTO::LoginRequestDTO;
+    using Yachiyo::DTO::TokenResponseDTO;
+    using Yachiyo::DTO::RefreshTokenRequestDTO;
+}

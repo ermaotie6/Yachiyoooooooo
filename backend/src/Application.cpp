@@ -1,31 +1,45 @@
-#include "../include/Application.hpp"
-#include "../include/config/ConfigManager.hpp"
-#include "../include/utils/HttpServer.hpp"
-#include "../include/utils/LogUtils.hpp"
-#include "../include/controllers/BaseController.hpp"
-#include "../include/controllers/MessageController.hpp"
-#include "../include/services/DatabaseService.hpp"
-#include "../include/services/WebSocketService.hpp"
-#include "../include/services/MessageService.hpp"
-#include "../include/services/AuthService.hpp"
-#include "../include/utils/JwtUtil.hpp"
+#include "Application.hpp"
+#include "config/ConfigManager.hpp"
+#include "utils/HttpServer.hpp"
+#include "utils/LogUtils.hpp"
+#include "controllers/BaseController.hpp"
+#include "controllers/HealthController.hpp"
+#include "controllers/AuthController.hpp"
+#include "controllers/AIController.hpp"
+#include "controllers/UserController.hpp"
+#include "controllers/MessageController.hpp"
+#include "services/DatabaseService.hpp"
+#include "services/WebSocketService.hpp"
+#include "services/MessageService.hpp"
+#include "services/AuthService.hpp"
+#include "services/AuthServiceImpl.hpp"
+#include "services/MessageServiceImpl.hpp"
+#include "utils/JwtUtil.hpp"
+#include "utils/HashUtil.hpp"
+#include "utils/DatabaseUtil.hpp"
+#include "utils/RedisUtil.hpp"
 #include <memory>
 #include <thread>
 #include <csignal>
 
+// 全局服务实例 (放在全局命名空间，供所有 .cpp extern 引用)
+std::shared_ptr<Yachiyo::Services::DatabaseService> g_databaseService = nullptr;
+std::shared_ptr<Yachiyo::Services::WebSocketService> g_webSocketService = nullptr;
+
 namespace yachiyo {
+
+using utils::LogUtils;
+using Services = Yachiyo::Services;
+using Utils = Yachiyo::Utils;
 
 // 全局应用程序实例
 std::shared_ptr<Application> Application::instance = nullptr;
 
-// 全局服务实例
-std::shared_ptr<Yachiyo::Services::DatabaseService> g_databaseService = nullptr;
-std::shared_ptr<Yachiyo::Services::WebSocketService> g_webSocketService = nullptr;
-
 Application::Application() 
     : configManager(nullptr), 
       httpServer(nullptr), 
-      running(false) {
+      running(false),
+      startTime(std::chrono::system_clock::now()) {
     logger = LogUtils::getLogger("Application");
 }
 
@@ -59,8 +73,7 @@ bool Application::initialize(int argc, char* argv[]) {
         
         // 初始化日志系统
         LogUtils::initialize(configManager->getString("logging.level", "info"),
-                           configManager->getString("logging.file", "logs/yachiyo.log"),
-                           configManager->getBool("logging.console", true));
+                           configManager->getString("logging.file", "logs/yachiyo.log"));
         
         // 初始化HTTP服务器
         initializeHttpServer(appConfig);
@@ -182,7 +195,14 @@ void Application::initializeControllers() {
     httpServer->registerController("/api/v1/health", healthController);
     
     // 注册认证控制器
-    auto authController = std::make_shared<controllers::AuthController>();
+    auto dbUtil = std::make_shared<Utils::DatabaseUtil>();
+    auto hashUtil = std::make_shared<Utils::HashUtil>();
+    auto jwtUtil = std::make_shared<Utils::JwtUtil>(
+        configManager->getString("jwt.secret", "yachiyo-default-secret-change-in-production"),
+        configManager->getInt("jwt.expiresIn", 86400)
+    );
+    auto authService = std::make_shared<yachiyo::services::AuthServiceImpl>(dbUtil, jwtUtil, hashUtil);
+    auto authController = std::make_shared<controllers::AuthController>(authService, jwtUtil);
     httpServer->registerController("/api/v1/auth", authController);
     
     // 注册AI控制器
@@ -193,22 +213,19 @@ void Application::initializeControllers() {
     auto userController = std::make_shared<controllers::UserController>();
     httpServer->registerController("/api/v1/users", userController);
     
-    // 注册帖子控制器
-    auto postController = std::make_shared<controllers::PostController>();
-    httpServer->registerController("/api/v1/posts", postController);
-    
     // 注册消息控制器（需要数据库和WebSocket服务）
     if (g_databaseService && g_webSocketService) {
-        auto messageService = std::make_shared<Services::MessageServiceImpl>();
-        auto authService = std::make_shared<Services::AuthServiceImpl>();
-        auto jwtUtil = std::make_shared<Utils::JwtUtil>(
-            configManager->getString("jwt.secret", "your-secret-key"),
-            configManager->getInt("jwt.expiresIn", 86400)
+        // 创建 MessageServiceImpl
+        auto messageService = std::make_shared<yachiyo::services::MessageServiceImpl>(
+            dbUtil,
+            std::static_pointer_cast<yachiyo::services::IAuthService>(authService)
         );
-        auto logger = Utils::LogUtils::getLogger("MessageController");
         
         auto messageController = std::make_shared<controllers::MessageController>(
-            messageService, authService, g_databaseService, g_webSocketService, jwtUtil, logger
+            messageService,
+            std::static_pointer_cast<yachiyo::services::IAuthService>(authService),
+            g_databaseService, g_webSocketService, jwtUtil,
+            Yachiyo::Utils::Logger::getLogger("MessageController")
         );
         httpServer->registerController("/api/v1/messages", messageController);
         
@@ -242,15 +259,19 @@ void Application::initializeDatabase() {
             connectionString += " password=" + dbPassword;
         }
         
-        // 初始化全局数据库服务实例
-        g_databaseService = std::make_shared<Yachiyo::Services::DatabaseService>();
+        // 获取数据库服务单例
+        auto& dbService = Yachiyo::Services::DatabaseService::getInstance();
         
-        // 初始化连接池
-        auto poolResult = g_databaseService->initializePool(connectionString, dbPoolSize);
-        if (!poolResult.isSuccess()) {
-            logger->error("数据库连接池初始化失败: {}", poolResult.getError());
+        // 初始化连接
+        if (!dbService.initialize(connectionString)) {
+            logger->error("数据库连接池初始化失败");
             return;
         }
+        
+        // 将单例地址包装为 shared_ptr（不释放，因为是 static 对象）
+        g_databaseService = std::shared_ptr<Yachiyo::Services::DatabaseService>(
+            &dbService, [](Yachiyo::Services::DatabaseService*){} // no-op deleter
+        );
         
         logger->info("数据库连接初始化完成: {}@{}:{}/{} (pool size: {})", 
                     dbUser, dbHost, dbPort, dbName, dbPoolSize);

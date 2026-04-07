@@ -7,9 +7,6 @@
 
 namespace yachiyo::controllers {
 
-using Services::IAuthService;
-using Utils::JwtUtil, Utils::Result;
-
 /**
  * @brief 认证控制器 (v2.0)
  * 
@@ -22,13 +19,13 @@ using Utils::JwtUtil, Utils::Result;
  */
 class AuthController : public BaseController {
 private:
-    std::shared_ptr<IAuthService> authService;
-    std::shared_ptr<JwtUtil> jwtUtil;
+    std::shared_ptr<services::IAuthService> authService;
+    std::shared_ptr<Yachiyo::Utils::JwtUtil> jwtUtil;
     
 public:
     AuthController(
-        std::shared_ptr<IAuthService> auth,
-        std::shared_ptr<JwtUtil> jwt
+        std::shared_ptr<services::IAuthService> auth,
+        std::shared_ptr<Yachiyo::Utils::JwtUtil> jwt
     ) : authService(auth), jwtUtil(jwt) {}
     
     // ==================== 认证端点 ====================

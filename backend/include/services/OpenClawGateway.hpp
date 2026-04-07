@@ -9,6 +9,7 @@
 #include <atomic>
 #include <condition_variable>
 #include "utils/Result.hpp"
+#include "utils/Compat.hpp"
 #include "dto/OpenClawDTO.hpp"
 
 using json = nlohmann::json;

@@ -77,3 +77,55 @@ api.interceptors.response.use(
 )
 
 export { api }
+
+// API v2 instance (for AI endpoints)
+const apiV2 = axios.create({
+  baseURL: '/api/v2',
+  timeout: 30000, // AI requests may take longer
+  headers: {
+    'Content-Type': 'application/json'
+  }
+})
+
+// v2 也需要请求拦截器
+apiV2.interceptors.request.use(
+  config => {
+    const authStore = useAuthStore()
+    if (authStore.accessToken) {
+      config.headers.Authorization = `Bearer ${authStore.accessToken}`
+    }
+    return config
+  },
+  error => Promise.reject(error)
+)
+
+// v2 也使用相同的响应拦截器逻辑
+apiV2.interceptors.response.use(
+  response => response,
+  async error => {
+    const authStore = useAuthStore()
+    const originalRequest = error.config
+    
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true
+      if (authStore.refreshToken) {
+        try {
+          const newToken = await authStore.refreshAccessToken()
+          originalRequest.headers.Authorization = `Bearer ${newToken}`
+          return apiV2.request(originalRequest)
+        } catch (refreshError) {
+          authStore.logout()
+          ElMessage.error('登录已过期，请重新登录')
+          window.location.href = '/'
+        }
+      }
+    }
+    
+    if (error.response?.status !== 401) {
+      ElMessage.error(error.response?.data?.message || '请求失败')
+    }
+    return Promise.reject(error)
+  }
+)
+
+export { apiV2 }

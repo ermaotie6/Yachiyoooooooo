@@ -13,15 +13,15 @@ namespace yachiyo::services {
  */
 class AuthServiceImpl : public IAuthService {
 private:
-    std::shared_ptr<Utils::DatabaseUtil> dbUtil;
-    std::shared_ptr<Utils::JwtUtil> jwtUtil;
-    std::shared_ptr<Utils::HashUtil> hashUtil;
+    std::shared_ptr<Yachiyo::Utils::DatabaseUtil> dbUtil;
+    std::shared_ptr<Yachiyo::Utils::JwtUtil> jwtUtil;
+    std::shared_ptr<Yachiyo::Utils::HashUtil> hashUtil;
     
 public:
     explicit AuthServiceImpl(
-        std::shared_ptr<Utils::DatabaseUtil> db,
-        std::shared_ptr<Utils::JwtUtil> jwt,
-        std::shared_ptr<Utils::HashUtil> hash
+        std::shared_ptr<Yachiyo::Utils::DatabaseUtil> db,
+        std::shared_ptr<Yachiyo::Utils::JwtUtil> jwt,
+        std::shared_ptr<Yachiyo::Utils::HashUtil> hash
     ) : dbUtil(db), jwtUtil(jwt), hashUtil(hash) {}
     
     // ==================== 实现接口 ====================

@@ -1,8 +1,6 @@
-add_library(mappers
-    # 数据访问层实现
-)
+add_library(mappers INTERFACE)
 
 target_include_directories(mappers
-    PUBLIC
+    INTERFACE
         ${CMAKE_SOURCE_DIR}/include
 )

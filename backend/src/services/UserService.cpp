@@ -1,18 +1,23 @@
-#include "../../include/services/UserService.hpp"
-#include "../../include/services/DatabaseService.hpp"
-#include "../../include/utils/LogUtils.hpp"
-#include "../../include/utils/JsonUtils.hpp"
-#include "../../include/utils/ValidationUtils.hpp"
-#include "../../include/utils/HashUtil.hpp"
+#include "services/UserService.hpp"
+#include "services/DatabaseService.hpp"
+#include "utils/LogUtils.hpp"
+#include "utils/JsonUtils.hpp"
+#include "utils/ValidationUtils.hpp"
+#include "utils/HashUtil.hpp"
 #include <crow.h>
 #include <chrono>
 #include <algorithm>
 #include <regex>
 
-namespace yachiyo::services {
-
-// 全局数据库服务引用 — 声明在 Application.cpp
+// 全局数据库服务引用 — 定义在 Application.cpp (全局命名空间)
 extern std::shared_ptr<Yachiyo::Services::DatabaseService> g_databaseService;
+
+namespace Yachiyo::services {
+
+using yachiyo::utils::LogUtils;
+using yachiyo::utils::ValidationUtils;
+using Yachiyo::Utils::HashUtil;
+namespace dto = Yachiyo::dto;
 
 UserServiceImpl::UserServiceImpl() {
     logger = LogUtils::getLogger("UserServiceImpl");
@@ -419,4 +424,4 @@ bool UserServiceImpl::updateUserPreferences(const std::string& userId,
     }
 }
 
-} // namespace yachiyo::services
+} // namespace Yachiyo::services

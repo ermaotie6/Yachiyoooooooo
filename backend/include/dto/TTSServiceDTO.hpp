@@ -5,6 +5,9 @@
 
 using json = nlohmann::json;
 
+namespace Yachiyo {
+namespace DTO {
+
 /**
  * 语音合成请求 DTO
  */
@@ -129,3 +132,12 @@ struct TTSResponse {
         return resp;
     }
 };
+
+} // namespace DTO
+} // namespace Yachiyo
+
+// 后向兼容别名
+namespace yachiyo::dto {
+    using Yachiyo::DTO::TTSRequest;
+    using Yachiyo::DTO::TTSResponse;
+}

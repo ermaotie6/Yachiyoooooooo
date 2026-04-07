@@ -64,6 +64,7 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '@/api/client'
+import { apiV2 } from '@/api/client'
 import type { ChatMessage, ChatSession } from '@/types'
 
 const messages = ref<Array<ChatMessage & { type: 'user' | 'ai' }>>([])
@@ -94,7 +95,7 @@ const sendMessage = async () => {
       processingTime: 0
     })
 
-    const response = await api.post('/ai/chat', {
+    const response = await apiV2.post('/ai/chat', {
       message,
       sessionId: currentSessionId.value
     })
@@ -128,7 +129,7 @@ const startNewSession = () => {
 const switchSession = async (sessionId: string) => {
   currentSessionId.value = sessionId
   try {
-    const response = await api.get(`/chat/history?sessionId=${sessionId}`)
+    const response = await apiV2.get(`/ai/chat/history?sessionId=${sessionId}`)
     messages.value = response.data.data.map((msg: ChatMessage) => ({
       ...msg,
       type: 'ai' as const
@@ -149,7 +150,7 @@ const formatDate = (date: string) => {
 onMounted(async () => {
   startNewSession()
   try {
-    const response = await api.get('/ai/chat/sessions')
+    const response = await apiV2.get('/ai/chat/sessions')
     if (response.data?.data) {
       sessions.value = response.data.data
     }

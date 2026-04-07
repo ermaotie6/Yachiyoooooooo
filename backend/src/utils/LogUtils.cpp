@@ -1,4 +1,4 @@
-#include "../../include/utils/LogUtils.hpp"
+#include "utils/LogUtils.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
