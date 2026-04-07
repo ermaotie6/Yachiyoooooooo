@@ -1,5 +1,19 @@
 #pragma once
 
+/**
+ * @file DatabaseUtil.hpp
+ * 
+ * @note 架构待改进项:
+ * - P1-1: 项目中存在两套数据库访问机制 (DatabaseUtil 参数化查询 vs DatabaseService DAO)。
+ *         建议统一为一套，或明确分层: DatabaseUtil 供底层工具使用，DatabaseService 供业务服务使用。
+ * - P1-3: 项目中存在两套 Redis API (RedisUtil 静态方法 vs DatabaseUtil 实例方法)。
+ *         建议统一为 RedisUtil 一套，DatabaseUtil 中的 Redis 方法仅作为兼容层委托给 RedisUtil。
+ * - P2-3: DatabasePool 名义上是连接池，但底层实现依赖 pqxx::connection_pool，
+ *         实际池大小取决于配置。名称无误，但需确保 config.poolSize > 1。
+ * - P1-7: 密码哈希使用 SHA-256+随机盐，安全性低于 bcrypt/argon2。
+ *         建议引入 libsodium 或 bcrypt 库替换 HashUtil 的密码哈希实现。
+ */
+
 #include <string>
 #include <vector>
 #include <memory>

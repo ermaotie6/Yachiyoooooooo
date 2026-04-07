@@ -155,8 +155,15 @@ Result<json> AuthServiceImpl::login(
         std::string username_val = row["username"];
         std::string role_val = row["role"];
         
+        // access_token: 使用默认过期时间 (由 JwtUtil 构造时设定, 通常 24 小时)
         auto accessToken = jwtUtil->generateToken(userId, username_val, role_val);
-        auto refreshToken = jwtUtil->generateToken(userId, username_val, role_val);
+        // refresh_token: 使用 7 天有效期 (604800 秒)
+        nlohmann::json refreshPayload;
+        refreshPayload["user_id"] = userId;
+        refreshPayload["username"] = username_val;
+        refreshPayload["role"] = role_val;
+        refreshPayload["token_type"] = "refresh";
+        auto refreshToken = jwtUtil->generateToken(refreshPayload, 604800);
         
         // 5. 更新最后登录时间
         dbUtil->execute(
@@ -349,6 +356,55 @@ Result<std::shared_ptr<User>> AuthServiceImpl::getUserByUsername(
     } catch (const std::exception& e) {
         LOG_ERROR("获取用户异常: " + std::string(e.what()));
         return Result<std::shared_ptr<User>>::Error("获取用户失败");
+    }
+}
+
+// ==================== 更新用户资料 ====================
+
+Result<bool> AuthServiceImpl::updateProfile(
+    int64_t userId,
+    const std::string& nickname,
+    const std::string& bio
+) {
+    try {
+        std::vector<std::string> setClauses;
+        std::vector<std::string> params;
+        int paramIdx = 1;
+        
+        if (!nickname.empty()) {
+            setClauses.push_back("nickname = $" + std::to_string(paramIdx++));
+            params.push_back(nickname);
+        }
+        if (!bio.empty()) {
+            setClauses.push_back("bio = $" + std::to_string(paramIdx++));
+            params.push_back(bio);
+        }
+        
+        if (setClauses.empty()) {
+            return Result<bool>::Error("至少需要提供一个更新字段");
+        }
+        
+        setClauses.push_back("updated_at = NOW()");
+        
+        std::string sql = "UPDATE users SET ";
+        for (size_t i = 0; i < setClauses.size(); ++i) {
+            if (i > 0) sql += ", ";
+            sql += setClauses[i];
+        }
+        sql += " WHERE id = $" + std::to_string(paramIdx);
+        params.push_back(std::to_string(userId));
+        
+        int affected = dbUtil->execute(sql, params);
+        if (affected <= 0) {
+            return Result<bool>::Error("更新失败，用户可能不存在");
+        }
+        
+        LOG_INFO("用户资料更新成功: userId=" + std::to_string(userId));
+        return Result<bool>::Success(true);
+        
+    } catch (const std::exception& e) {
+        LOG_ERROR("更新用户资料异常: " + std::string(e.what()));
+        return Result<bool>::Error("更新用户资料失败");
     }
 }
 

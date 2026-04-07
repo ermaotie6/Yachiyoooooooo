@@ -131,14 +131,19 @@ bool DatabaseUtil::isRedisConnected() const {
 }
 
 pqxx::connection DatabaseUtil::getConnection() {
-    std::lock_guard<std::mutex> lock(mutex);
+    // 仅在检查 connectionPool 时短暂持锁，acquire 本身是线程安全的
+    std::shared_ptr<pqxx::connection_pool> pool;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        pool = connectionPool;
+    }
     
-    if (!connectionPool) {
+    if (!pool) {
         throw std::runtime_error("Database not connected");
     }
     
     try {
-        return connectionPool->acquire();
+        return pool->acquire();
     } catch (const std::exception& e) {
         throw std::runtime_error("Failed to acquire connection: " + std::string(e.what()));
     }

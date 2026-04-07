@@ -1,5 +1,21 @@
 #pragma once
 
+/**
+ * @file ChatService.hpp
+ * 
+ * @note 架构待改进项 (P2-10):
+ *       项目中存在两套独立的聊天系统:
+ *       1. REST API 聊天 (ChatService — 本文件，存储到数据库)
+ *       2. WebSocket 实时聊天 (WebSocketService/WebSocketController，走 Avatar 管线)
+ *       这两套系统目前不共享会话/消息存储。如需统一，建议:
+ *       - WebSocket 收到的消息也持久化到 ChatService
+ *       - 或将 ChatService 定位为纯历史记录服务，WebSocket 负责实时通信
+ *
+ * @note 架构待改进项 (P1-7):
+ *       密码哈希使用 SHA-256+随机盐，安全性低于 bcrypt/argon2。
+ *       建议引入 libsodium 或 bcrypt 库替换 HashUtil 的密码哈希实现。
+ */
+
 #include <string>
 #include <memory>
 #include <vector>

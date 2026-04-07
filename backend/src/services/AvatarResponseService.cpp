@@ -206,8 +206,10 @@ Utils::Result<AvatarResponse> AvatarResponseService::processUserMessage(
             response.audioDurationMs
         );
         
-        // 合并到动画命令
-        // response.animationCommands 已包含表情和动作，现在添加嘴部同步
+        // 合并嘴部同步命令到动画命令列表
+        for (const auto& cmd : mouthCommands) {
+            response.animationCommands.push_back(cmd);
+        }
         LOG_DEBUG("添加嘴部同步命令数: {}", mouthCommands.size());
     }
     

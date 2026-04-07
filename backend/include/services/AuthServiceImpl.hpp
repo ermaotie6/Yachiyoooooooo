@@ -61,6 +61,12 @@ public:
         const std::string& username
     ) override;
     
+    Result<bool> updateProfile(
+        int64_t userId,
+        const std::string& nickname,
+        const std::string& bio
+    ) override;
+    
     Result<bool> canUserSendMessage(int64_t userId) override;
 
 private:

@@ -3,7 +3,9 @@
 #include "utils/JsonUtils.hpp"
 #include "utils/LogUtils.hpp"
 #include "utils/JwtUtil.hpp"
+#include "utils/HashUtil.hpp"
 #include "config/ConfigManager.hpp"
+#include "services/DatabaseService.hpp"
 #include <crow.h>
 
 namespace yachiyo::controllers {
@@ -26,26 +28,33 @@ std::string UserController::extractToken(const crow::request& req) {
     return authHeader.substr(7);
 }
 
-std::string UserController::resolveUserId(const std::string& token) {
-    try {
+// 缓存 JwtUtil 实例，避免每次请求重新创建
+static std::shared_ptr<Yachiyo::Utils::JwtUtil> getJwtUtilCached() {
+    static std::shared_ptr<Yachiyo::Utils::JwtUtil> instance;
+    static std::once_flag flag;
+    std::call_once(flag, []() {
         auto cfg = config::ConfigManager::getInstance();
         std::string secret = cfg->getString("jwt.secret", "yachiyo-default-secret-change-in-production");
         int exp = cfg->getInt("jwt.expiresIn", 24);
-        Yachiyo::Utils::JwtUtil jwt(secret, exp);
-        auto [ok, msg] = jwt.verifyToken(token);
+        instance = std::make_shared<Yachiyo::Utils::JwtUtil>(secret, exp);
+    });
+    return instance;
+}
+
+std::string UserController::resolveUserId(const std::string& token) {
+    try {
+        auto jwt = getJwtUtilCached();
+        auto [ok, msg] = jwt->verifyToken(token);
         if (!ok) return "";
-        int64_t uid = jwt.getUserIdFromToken(token);
+        int64_t uid = jwt->getUserIdFromToken(token);
         return uid > 0 ? std::to_string(uid) : "";
     } catch (...) { return ""; }
 }
 
 bool UserController::isAdmin(const std::string& token) {
     try {
-        auto cfg = config::ConfigManager::getInstance();
-        std::string secret = cfg->getString("jwt.secret", "yachiyo-default-secret-change-in-production");
-        int exp = cfg->getInt("jwt.expiresIn", 24);
-        Yachiyo::Utils::JwtUtil jwt(secret, exp);
-        std::string role = jwt.getRoleFromToken(token);
+        auto jwt = getJwtUtilCached();
+        std::string role = jwt->getRoleFromToken(token);
         return role == "admin" || role == "ADMIN";
     } catch (...) { return false; }
 }
@@ -225,9 +234,34 @@ crow::response UserController::createUser(const crow::request& req) {
         if (role != "user" && role != "admin" && role != "moderator")
             return badRequestResponse("无效的用户角色");
 
-        // 目前 UserServiceImpl 没有 createUser，走低层 DAO
-        // TODO: 在 UserServiceImpl 中封装 createUser 方法
-        return badRequestResponse("创建用户功能尚未实现 (待 DAO 扩展)");
+        // 直接通过 SQL 创建用户
+        try {
+            std::string hashedPassword = Yachiyo::Utils::HashUtil::hashPasswordCombined(password);
+            auto conn = Yachiyo::Services::DatabasePool::getInstance().getConnection();
+            if (!conn || !conn->is_open()) {
+                return internalServerErrorResponse("数据库连接失败");
+            }
+            pqxx::work txn(*conn);
+            auto result = txn.exec_params(
+                "INSERT INTO users (username, email, password_hash, role, avatar_url, bio, is_active, is_verified) "
+                "VALUES ($1, $2, $3, $4, $5, $6, true, false) RETURNING id, username, email, role",
+                username, email, hashedPassword, role, avatar, bio
+            );
+            txn.commit();
+
+            if (result.empty()) {
+                return internalServerErrorResponse("创建用户失败");
+            }
+
+            return successResponse("创建用户成功", {
+                {"id", result[0]["id"].as<int64_t>()},
+                {"username", result[0]["username"].as<std::string>()},
+                {"email", result[0]["email"].as<std::string>()},
+                {"role", result[0]["role"].as<std::string>()}
+            });
+        } catch (const pqxx::unique_violation& e) {
+            return badRequestResponse("用户名或邮箱已存在");
+        }
 
     } catch (const std::exception& e) {
         logger->error("创建用户失败: {}", e.what());

@@ -378,9 +378,22 @@ Utils::Result<json> WebSocketController::parseMessage(const std::string& message
     try {
         auto msg = json::parse(messageData);
         
-        // 验证必要字段
-        if (!msg.contains("type") || !msg.contains("payload")) {
-            return Utils::Result<json>::fail(4000, "消息格式不完整");
+        // 验证必要字段 —— 兼容前端格式 (type + data) 和控制器格式 (type + payload)
+        if (!msg.contains("type")) {
+            return Utils::Result<json>::fail(4000, "消息格式不完整: 缺少 type");
+        }
+        
+        // 统一: 如果前端发送的是 'data'，映射为 'payload'
+        if (!msg.contains("payload") && msg.contains("data")) {
+            msg["payload"] = msg["data"];
+        }
+        if (!msg.contains("payload")) {
+            msg["payload"] = json::object();
+        }
+        
+        // 统一: 如果 payload 中有 'content' 但没有 'text'，映射为 'text'
+        if (msg["payload"].contains("content") && !msg["payload"].contains("text")) {
+            msg["payload"]["text"] = msg["payload"]["content"];
         }
         
         return Utils::Result<json>::success(msg);

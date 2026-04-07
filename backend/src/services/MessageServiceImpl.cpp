@@ -39,13 +39,16 @@ Result<std::shared_ptr<Message>> MessageServiceImpl::sendMessage(
         
         // ==================== 6层安全审查 ====================
         
+        // 跟踪是否已被拒绝 (早期拒绝不被后续层覆盖)
+        bool alreadyRejected = false;
+        
         // 第1层: 速率限制
         auto rateLimitResult = checkRateLimit(userId, userIp);
         if (!rateLimitResult.isSuccess()) {
             msg->setRateLimitViolated(true);
             msg->setReviewStatus(ReviewStatus::REJECTED);
             msg->setReviewReason("触发速率限制");
-            // 不直接返回，继续保存消息记录以便审计
+            alreadyRejected = true;
         }
         
         // 第2层: IP黑名单
@@ -53,18 +56,20 @@ Result<std::shared_ptr<Message>> MessageServiceImpl::sendMessage(
         if (!ipCheckResult.isSuccess()) {
             msg->setReviewStatus(ReviewStatus::REJECTED);
             msg->setReviewReason("来自黑名单IP");
-            // 不直接返回，继续保存消息记录以便审计
+            alreadyRejected = true;
         }
         
-        // 第3层: 敏感词检查
+        // 第3层: 敏感词检查 (仅在未被拒绝时才考虑降级为人工审查)
         auto keywordResult = checkBlockedKeywords(message);
         if (keywordResult.isSuccess()) {
             auto [foundKeyword, keywordScore] = keywordResult.value();
             if (foundKeyword) {
                 msg->setIsBlockedKeyword(true);
                 msg->setSpamScore(keywordScore);
-                msg->setReviewStatus(ReviewStatus::MANUAL_REVIEW);
-                msg->setReviewReason("包含敏感词");
+                if (!alreadyRejected) {
+                    msg->setReviewStatus(ReviewStatus::MANUAL_REVIEW);
+                    msg->setReviewReason("包含敏感词");
+                }
             }
         }
         
@@ -75,11 +80,14 @@ Result<std::shared_ptr<Message>> MessageServiceImpl::sendMessage(
             if (isAbusive) {
                 msg->setIsAbusive(true);
                 msg->setSpamScore(std::max(msg->getSpamScore(), aiScore));
-                if (aiScore > 0.9) {
-                    msg->setReviewStatus(ReviewStatus::REJECTED);
-                    msg->setReviewReason("AI审查不通过");
-                } else {
-                    msg->setReviewStatus(ReviewStatus::MANUAL_REVIEW);
+                if (!alreadyRejected) {
+                    if (aiScore > 0.9) {
+                        msg->setReviewStatus(ReviewStatus::REJECTED);
+                        msg->setReviewReason("AI审查不通过");
+                        alreadyRejected = true;
+                    } else {
+                        msg->setReviewStatus(ReviewStatus::MANUAL_REVIEW);
+                    }
                 }
             }
         }
@@ -88,17 +96,19 @@ Result<std::shared_ptr<Message>> MessageServiceImpl::sendMessage(
         auto behaviorResult = behaviorAnalysis(userId, userIp);
         if (!behaviorResult.isSuccess()) {
             msg->setIsSpam(true);
-            msg->setReviewStatus(ReviewStatus::MANUAL_REVIEW);
-            msg->setReviewReason("异常行为检测");
+            if (!alreadyRejected) {
+                msg->setReviewStatus(ReviewStatus::MANUAL_REVIEW);
+                msg->setReviewReason("异常行为检测");
+            }
         }
         
-        // 如果没有被标记为拒绝，默认通过
-        if (msg->getReviewStatus() == ReviewStatus::PENDING) {
+        // 如果没有被标记为拒绝或人工审查，默认通过
+        if (!alreadyRejected && msg->getReviewStatus() == ReviewStatus::PENDING) {
             msg->setReviewStatus(ReviewStatus::APPROVED);
         }
         
-        // 第6层: 检查是否需要人工审查
-        if (needsManualReview(msg)) {
+        // 第6层: 检查是否需要人工审查 (仅在未被拒绝时)
+        if (!alreadyRejected && needsManualReview(msg)) {
             msg->setReviewStatus(ReviewStatus::MANUAL_REVIEW);
         }
         

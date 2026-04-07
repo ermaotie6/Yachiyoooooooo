@@ -115,6 +115,19 @@ public:
     ) = 0;
     
     /**
+     * @brief 更新用户资料
+     * @param userId 用户ID
+     * @param nickname 昵称 (空字符串表示不更新)
+     * @param bio 个人简介 (空字符串表示不更新)
+     * @return Result<bool> 操作是否成功
+     */
+    virtual Result<bool> updateProfile(
+        int64_t userId,
+        const std::string& nickname,
+        const std::string& bio
+    ) = 0;
+    
+    /**
      * @brief 验证用户是否可以发送消息
      * @param userId 用户ID
      * @return Result<bool> 是否可以发送

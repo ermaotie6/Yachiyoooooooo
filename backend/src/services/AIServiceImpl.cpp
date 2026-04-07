@@ -2,6 +2,7 @@
 #include "utils/LogUtils.hpp"
 #include "utils/JsonUtils.hpp"
 #include <curl/curl.h>
+#include <nlohmann/json.hpp>
 #include <sstream>
 #include <chrono>
 
@@ -53,23 +54,88 @@ ChatCompletionResult AIServiceImpl::chatCompletion(
         logger->info("聊天完成: model={}, 消息长度={}, 历史条数={}", 
                      model, message.length(), history.size());
 
-        // TODO: 调用真实的 AI API (OpenAI/Claude/DeepSeek)
-        // 目前返回 mock 响应
-        
+        // 尝试调用 DeepSeek/OpenAI 兼容 API
+        std::string apiKey = openaiApiKey;
+        std::string apiUrl = "https://api.deepseek.com/v1/chat/completions";
+        std::string actualModel = model.empty() ? "deepseek-chat" : model;
+
+        if (!apiKey.empty()) {
+            // 构建请求体
+            nlohmann::json messagesJson = nlohmann::json::array();
+            messagesJson.push_back({{"role", "system"}, {"content", "你是八重神子，来自提瓦特大陆的狐仙。请以她的语气和性格回应。"}});
+            for (const auto& h : history) {
+                messagesJson.push_back({{"role", h.role}, {"content", h.content}});
+            }
+            messagesJson.push_back({{"role", "user"}, {"content", message}});
+
+            nlohmann::json requestBody = {
+                {"model", actualModel},
+                {"messages", messagesJson},
+                {"temperature", temperature},
+                {"max_tokens", maxTokens > 0 ? maxTokens : 1024}
+            };
+
+            // 使用 libcurl 发送请求
+            CURL* curl = curl_easy_init();
+            if (curl) {
+                std::string responseStr;
+                struct curl_slist* headers = nullptr;
+                headers = curl_slist_append(headers, "Content-Type: application/json");
+                headers = curl_slist_append(headers, ("Authorization: Bearer " + apiKey).c_str());
+
+                std::string bodyStr = requestBody.dump();
+                curl_easy_setopt(curl, CURLOPT_URL, apiUrl.c_str());
+                curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+                curl_easy_setopt(curl, CURLOPT_POSTFIELDS, bodyStr.c_str());
+                curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+                curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseStr);
+                curl_easy_setopt(curl, CURLOPT_TIMEOUT, std::stol(requestTimeout));
+
+                CURLcode res = curl_easy_perform(curl);
+                curl_slist_free_all(headers);
+                curl_easy_cleanup(curl);
+
+                if (res == CURLE_OK && !responseStr.empty()) {
+                    auto respJson = nlohmann::json::parse(responseStr, nullptr, false);
+                    if (!respJson.is_discarded() && respJson.contains("choices") && !respJson["choices"].empty()) {
+                        result.success = true;
+                        result.response = respJson["choices"][0]["message"]["content"].get<std::string>();
+                        result.model = actualModel;
+                        if (respJson.contains("usage")) {
+                            result.tokensUsed = respJson["usage"].value("total_tokens", 0);
+                        }
+                        result.chatId = chatId.empty() ? "chat_" + std::to_string(
+                            std::chrono::system_clock::now().time_since_epoch().count()) : chatId;
+                        result.messageId = "msg_" + std::to_string(
+                            std::chrono::system_clock::now().time_since_epoch().count());
+                        auto endTime = std::chrono::steady_clock::now();
+                        result.responseTime = std::chrono::duration<double>(endTime - startTime).count();
+                        result.message = "聊天完成";
+                        logger->info("AI API 调用成功: chatId={}, tokens={}", result.chatId, result.tokensUsed);
+                        return result;
+                    } else {
+                        logger->warn("AI API 返回异常: {}", responseStr.substr(0, 200));
+                    }
+                } else {
+                    logger->warn("AI API 调用失败: curl_code={}", static_cast<int>(res));
+                }
+            }
+        }
+
+        // API 调用失败或未配置 API Key，返回 fallback 响应
+        logger->warn("AI API 未配置或调用失败，返回 fallback 响应");
         result.success = true;
-        result.response = "这是一个 mock AI 响应。消息: " + message;
+        result.response = "抱歉，AI 服务暂时不可用，请稍后再试。";
         result.chatId = chatId.empty() ? "chat_" + std::to_string(
             std::chrono::system_clock::now().time_since_epoch().count()) : chatId;
         result.messageId = "msg_" + std::to_string(
             std::chrono::system_clock::now().time_since_epoch().count());
-        result.model = model;
-        result.tokensUsed = static_cast<int>(message.length() / 4 + result.response.length() / 4);
+        result.model = actualModel;
+        result.tokensUsed = 0;
         
         auto endTime = std::chrono::steady_clock::now();
         result.responseTime = std::chrono::duration<double>(endTime - startTime).count();
-        result.message = "聊天完成";
-        
-        logger->info("聊天完成: chatId={}, tokens={}", result.chatId, result.tokensUsed);
+        result.message = "聊天完成 (fallback)";
         
     } catch (const std::exception& e) {
         logger->error("聊天完成失败: {}", e.what());
@@ -86,9 +152,14 @@ Utils::Result<dto::ChatRequest> AIServiceImpl::chat(const dto::ChatRequest& requ
     try {
         logger->info("AI聊天(DTO): 消息长度={}", request.getMessage().length());
 
-        // TODO: 集成 OpenAI GPT-4, Claude, 本地 LLaMA 等
+        // 通过 chatCompletion 统一调用 AI API
+        ChatCompletionResult aiResult = chatCompletion(
+            "", request.getMessage(), "deepseek-chat",
+            request.getConversationId(), {}, 0.7, 1024
+        );
+
         dto::ChatRequest response;
-        response.setMessage("这是一个 mock AI 响应。实际应集成 OpenAI ChatGPT 或其他大模型。");
+        response.setMessage(aiResult.success ? aiResult.response : "AI 服务暂时不可用，请稍后再试。");
         response.setConversationId(request.getConversationId());
         
         logger->info("聊天响应完成");

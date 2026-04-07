@@ -174,7 +174,32 @@ bool UserServiceImpl::updatePassword(const std::string& userId,
             throw std::runtime_error("新密码强度不足");
         }
 
-        // TODO: UserDAO 增加 updatePasswordHash 方法后替换
+        if (!g_databaseService || !g_databaseService->isInitialized()) {
+            throw std::runtime_error("数据库服务未初始化");
+        }
+
+        // 生成新的密码哈希 (salt:hash 格式)
+        std::string newHash = HashUtil::hashPasswordCombined(newPassword);
+        
+        int64_t uid = std::stoll(userId);
+        auto result = g_databaseService->userDAO().getById(uid);
+        if (!result.success) {
+            throw std::runtime_error("用户不存在");
+        }
+
+        // 通过 profile_data 或直接 SQL 更新 password_hash
+        // 由于 UserDAO 可能没有专门的 updatePasswordHash 方法，
+        // 使用 DatabasePool 直接执行 SQL
+        auto conn = Yachiyo::Services::DatabasePool::getInstance().getConnection();
+        if (conn && conn->is_open()) {
+            pqxx::work txn(*conn);
+            txn.exec_params(
+                "UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2",
+                newHash, uid
+            );
+            txn.commit();
+        }
+
         logger->info("密码更新成功: userId={}", userId);
         return true;
     } catch (const std::exception& e) {
@@ -191,7 +216,8 @@ bool UserServiceImpl::validatePassword(const std::string& userId, const std::str
         auto result = g_databaseService->userDAO().getById(uid);
         if (!result.success) return false;
 
-        return HashUtil::hashPassword(password) == result.data.value().password_hash;
+        // 使用 verifyPassword 而不是 hashPassword，因为 hashPassword 每次生成随机盐值
+        return HashUtil::verifyPassword(password, result.data.value().password_hash);
     } catch (const std::exception& e) {
         logger->error("验证密码失败: {}", e.what());
         return false;

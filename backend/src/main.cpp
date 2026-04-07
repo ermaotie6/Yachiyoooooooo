@@ -99,26 +99,27 @@ void setupSignalHandlers() {
     std::signal(SIGSEGV, signalHandler);
     std::signal(SIGABRT, signalHandler);
     
-    // 忽略某些信号
+    // 忽略 SIGPIPE (仅 POSIX 系统)
+#ifdef SIGPIPE
     std::signal(SIGPIPE, SIG_IGN);
+#endif
 }
 
-// 全局初始化
-__attribute__((constructor))
-void globalInit() {
-    // 设置全局异常处理器
-    setupGlobalExceptionHandler();
-    
-    // 设置信号处理器
-    setupSignalHandlers();
-    
-    // 初始化随机数种子
-    std::srand(static_cast<unsigned int>(std::time(nullptr)));
-}
-
-// 全局清理
-__attribute__((destructor))
-void globalCleanup() {
-    auto logger = LogUtils::getLogger("Main");
-    logger->info("应用程序正在退出...");
-}
+// 跨平台全局初始化 (使用静态对象的构造/析构代替 GCC __attribute__)
+struct GlobalInitializer {
+    GlobalInitializer() {
+        // 设置全局异常处理器
+        setupGlobalExceptionHandler();
+        
+        // 设置信号处理器
+        setupSignalHandlers();
+        
+        // 初始化随机数种子
+        std::srand(static_cast<unsigned int>(std::time(nullptr)));
+    }
+    ~GlobalInitializer() {
+        auto logger = LogUtils::getLogger("Main");
+        logger->info("应用程序正在退出...");
+    }
+};
+static GlobalInitializer g_initializer;

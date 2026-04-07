@@ -165,7 +165,7 @@ onMounted(async () => {
 
   // 加载用户统计数据
   try {
-    const statsRes = await api.get(`/users/${user.value.userId}/stats`)
+    const statsRes = await api.get(`/admin/users/stats`)
     if (statsRes.data?.data) {
       stats.value = statsRes.data.data
     }
@@ -175,8 +175,10 @@ onMounted(async () => {
 
   // 加载用户发布的内容
   try {
-    const postsRes = await api.get(`/users/${user.value.userId}/posts`)
-    if (postsRes.data?.data) {
+    const postsRes = await api.get('/posts', { params: { page: 1, pageSize: 10 } })
+    if (postsRes.data?.data?.posts) {
+      userPosts.value = postsRes.data.data.posts
+    } else if (postsRes.data?.data) {
       userPosts.value = postsRes.data.data
     }
   } catch (error) {

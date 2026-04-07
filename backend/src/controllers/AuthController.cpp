@@ -358,31 +358,18 @@ void AuthController::updateProfile(const crow::request& req, crow::response& res
             return;
         }
         
-        // 构建更新SQL
-        std::vector<std::string> setClauses;
-        std::vector<std::string> params;
-        int paramIdx = 1;
-        
-        if (!nickname.empty()) {
-            setClauses.push_back("nickname = $" + std::to_string(paramIdx++));
-            params.push_back(nickname);
+        // 调用 authService 的 updateProfile 方法执行实际更新
+        auto updateResult = authService->updateProfile(userId, nickname, bio);
+        if (!updateResult.isSuccess()) {
+            res.code = 400;
+            res.body = json({
+                {"code", 400},
+                {"msg", updateResult.getMessage()}
+            }).dump();
+            return;
         }
-        if (!bio.empty()) {
-            setClauses.push_back("bio = $" + std::to_string(paramIdx++));
-            params.push_back(bio);
-        }
-        setClauses.push_back("updated_at = NOW()");
         
-        std::string sql = "UPDATE users SET ";
-        for (size_t i = 0; i < setClauses.size(); ++i) {
-            if (i > 0) sql += ", ";
-            sql += setClauses[i];
-        }
-        sql += " WHERE id = $" + std::to_string(paramIdx);
-        params.push_back(std::to_string(userId));
-        
-        // 通过 authService 获取 dbUtil 执行更新
-        // 由于 AuthController 没有直接持有 dbUtil，这里通过获取用户来验证更新
+        // 获取更新后的用户资料返回
         auto userResult = authService->getUserById(userId);
         if (!userResult.isSuccess()) {
             res.code = 404;
@@ -393,15 +380,12 @@ void AuthController::updateProfile(const crow::request& req, crow::response& res
             return;
         }
         
+        auto user = userResult.value();
         res.code = 200;
         res.body = json({
             {"code", 200},
             {"msg", "更新成功"},
-            {"data", {
-                {"user_id", userId},
-                {"nickname", nickname},
-                {"bio", bio}
-            }}
+            {"data", user->toJson()}
         }).dump();
         LOG_INFO("用户资料更新: " + std::to_string(userId));
         

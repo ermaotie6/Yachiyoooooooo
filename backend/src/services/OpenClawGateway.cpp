@@ -83,8 +83,8 @@ Utils::Result<dto::OpenClawResponse> OpenClawGateway::processMessage(
 ) {
     auto startTime = std::chrono::steady_clock::now();
     
-    // 检查缓存
-    std::string cacheKey = generateCacheKey(text);
+    // 检查缓存 (包含 userId 以区分不同用户的上下文)
+    std::string cacheKey = generateCacheKey(userId + ":" + text);
     {
         std::lock_guard<std::mutex> lock(cache_mutex_);
         auto it = cache_.find(cacheKey);

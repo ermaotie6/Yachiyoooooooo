@@ -194,26 +194,30 @@ void WebSocketService::handleMessage(crow::websocket::connection& conn,
 
 void WebSocketService::handleClose(crow::websocket::connection& conn,
                                    const std::string& reason) {
-    std::lock_guard<std::mutex> lock(clients_mutex_);
-
-    auto it = conn_to_client_.find(&conn);
-    if (it == conn_to_client_.end()) return;
-
-    int64_t client_id = it->second;
+    int64_t client_id = -1;
     std::string user_id;
+    
+    {
+        std::lock_guard<std::mutex> lock(clients_mutex_);
 
-    auto cit = clients_.find(client_id);
-    if (cit != clients_.end()) {
-        user_id = cit->second.user_id;
-        clients_.erase(cit);
+        auto it = conn_to_client_.find(&conn);
+        if (it == conn_to_client_.end()) return;
+
+        client_id = it->second;
+
+        auto cit = clients_.find(client_id);
+        if (cit != clients_.end()) {
+            user_id = cit->second.user_id;
+            clients_.erase(cit);
+        }
+
+        conn_to_client_.erase(it);
     }
-
-    conn_to_client_.erase(it);
+    // 锁外调用回调，避免死锁
 
     std::cout << "[WebSocketService] Client " << client_id
               << " (user: " << user_id << ") disconnected: " << reason << std::endl;
 
-    // 触发断开回调（注意：在锁内调用，回调中不应再获取 clients_mutex_）
     if (on_client_disconnect_) {
         on_client_disconnect_(client_id, reason);
     }

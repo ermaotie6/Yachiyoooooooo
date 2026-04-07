@@ -33,7 +33,7 @@ export const useAuthStore = defineStore('auth', () => {
     // 构建用户对象 — 后端 user 子对象用 id (不是 userId)，role 可能是数字字符串
     const backendUser = data.user || {}
     const roleRaw = String(backendUser.role ?? data.role ?? 'user').toLowerCase()
-    const normalizedRole: 'user' | 'admin' = (roleRaw === '99' || roleRaw === 'admin') ? 'admin' : 'user'
+    const normalizedRole: 'user' | 'admin' = roleRaw === 'admin' ? 'admin' : 'user'
     
     const userData: User = {
       userId: backendUser.id ?? data.userId ?? data.user_id ?? 0,

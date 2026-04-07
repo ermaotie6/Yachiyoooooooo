@@ -151,57 +151,22 @@ namespace {
         return result;
     }
 
-    // JSON简单反序列化
-    std::map<std::string, std::string> json_decode(const std::string& json) {
+    // JSON反序列化 — 使用 nlohmann::json 正确处理转义字符
+    std::map<std::string, std::string> json_decode(const std::string& jsonStr) {
         std::map<std::string, std::string> result;
         
-        // 简单的JSON解析
-        size_t pos = 0;
-        while ((pos = json.find("\"", pos)) != std::string::npos) {
-            // 查找键
-            size_t key_start = pos + 1;
-            size_t key_end = json.find("\"", key_start);
-            if (key_end == std::string::npos) break;
-            
-            std::string key = json.substr(key_start, key_end - key_start);
-            
-            // 查找冒号
-            size_t colon_pos = json.find(":", key_end);
-            if (colon_pos == std::string::npos) break;
-            
-            // 查找值
-            size_t value_start = colon_pos + 1;
-            while (value_start < json.size() && isspace(json[value_start])) {
-                value_start++;
-            }
-            
-            std::string value;
-            if (json[value_start] == '"') {
-                // 字符串值
-                size_t value_end = json.find("\"", value_start + 1);
-                if (value_end != std::string::npos) {
-                    value = json.substr(value_start + 1, value_end - value_start - 1);
-                    pos = value_end + 1;
+        try {
+            auto j = nlohmann::json::parse(jsonStr);
+            for (auto it = j.begin(); it != j.end(); ++it) {
+                if (it.value().is_string()) {
+                    result[it.key()] = it.value().get<std::string>();
                 } else {
-                    break;
-                }
-            } else {
-                // 数字、布尔值或null
-                size_t value_end = value_start;
-                while (value_end < json.size() && 
-                       json[value_end] != ',' && json[value_end] != '}') {
-                    value_end++;
-                }
-                value = json.substr(value_start, value_end - value_start);
-                pos = value_end;
-                
-                // 移除末尾空格
-                while (!value.empty() && isspace(value.back())) {
-                    value.pop_back();
+                    // 数字、布尔值等转为字符串
+                    result[it.key()] = it.value().dump();
                 }
             }
-            
-            result[key] = value;
+        } catch (const std::exception&) {
+            // 解析失败返回空 map
         }
         
         return result;
