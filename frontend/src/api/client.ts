@@ -99,7 +99,7 @@ apiV2.interceptors.request.use(
   error => Promise.reject(error)
 )
 
-// v2 也使用相同的响应拦截器逻辑
+// v2 也使用相同的响应拦截器逻辑（含并发刷新锁）
 apiV2.interceptors.response.use(
   response => response,
   async error => {
@@ -107,16 +107,31 @@ apiV2.interceptors.response.use(
     const originalRequest = error.config
     
     if (error.response?.status === 401 && !originalRequest._retry) {
+      if (isRefreshing) {
+        // 已在刷新中，排队等待
+        return new Promise(resolve => {
+          pendingRequests.push((token: string) => {
+            originalRequest.headers.Authorization = `Bearer ${token}`
+            resolve(apiV2.request(originalRequest))
+          })
+        })
+      }
+
       originalRequest._retry = true
       if (authStore.refreshToken) {
+        isRefreshing = true
         try {
           const newToken = await authStore.refreshAccessToken()
+          processQueue(newToken)
           originalRequest.headers.Authorization = `Bearer ${newToken}`
           return apiV2.request(originalRequest)
         } catch (refreshError) {
           authStore.logout()
+          pendingRequests = []
           ElMessage.error('登录已过期，请重新登录')
           window.location.href = '/'
+        } finally {
+          isRefreshing = false
         }
       }
     }

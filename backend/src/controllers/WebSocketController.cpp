@@ -235,7 +235,7 @@ void WebSocketController::broadcastResponse(
         {"text", response.text},
         {"audioUrl", response.audioUrl},
         {"emotions", response.emotions},
-        {"actions", response.suggestedActions},
+        {"actions", response.actions},
         {"processingTimeMs", response.processingTimeMs}
     };
     

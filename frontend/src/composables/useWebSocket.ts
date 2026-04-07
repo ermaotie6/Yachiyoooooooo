@@ -1,4 +1,4 @@
-import { ref, reactive } from 'vue'
+import { ref } from 'vue'
 
 interface Message {
   type: string
@@ -64,6 +64,7 @@ export function useWebSocket() {
 
       isConnecting.value = true
       connectionError.value = null
+      intentionalDisconnect = false
 
       // 获取 WebSocket URL
       const wsUrl = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:9001'
@@ -124,8 +125,10 @@ export function useWebSocket() {
             onConnectionChanged(false)
           }
 
-          // 尝试重连
-          attemptReconnect(userId)
+          // 只有在非主动断开时才尝试重连
+          if (!intentionalDisconnect) {
+            attemptReconnect(userId)
+          }
 
           if (!settled) { settled = true; reject(new Error('WebSocket closed')) }
         }
@@ -140,11 +143,15 @@ export function useWebSocket() {
     })
   }
 
+  // 是否主动断开（避免触发重连）
+  let intentionalDisconnect = false
+
   /**
    * 断开连接
    */
   const disconnect = (): Promise<void> => {
     return new Promise((resolve) => {
+      intentionalDisconnect = true
       if (ws) {
         ws.close()
         ws = null

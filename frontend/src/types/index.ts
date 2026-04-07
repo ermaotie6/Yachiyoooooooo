@@ -31,6 +31,9 @@ export interface ChatMessage {
   aiResponse: string
   timestamp: string
   processingTime: number
+  // 前端扩展字段（用于渲染）
+  type?: 'user' | 'ai'
+  content?: string
 }
 
 export interface ChatSession {

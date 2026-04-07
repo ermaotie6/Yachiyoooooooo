@@ -63,7 +63,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { api } from '@/api/client'
 import { apiV2 } from '@/api/client'
 import type { ChatMessage, ChatSession } from '@/types'
 
@@ -130,10 +129,18 @@ const switchSession = async (sessionId: string) => {
   currentSessionId.value = sessionId
   try {
     const response = await apiV2.get(`/ai/chat/history?sessionId=${sessionId}`)
-    messages.value = response.data.data.map((msg: ChatMessage) => ({
-      ...msg,
-      type: 'ai' as const
-    }))
+    // 每条 ChatMessage 包含 userMessage 和 aiResponse，拆分为两条显示消息
+    const rawMessages: ChatMessage[] = response.data.data || []
+    const expandedMessages: Array<ChatMessage & { type: 'user' | 'ai'; content: string }> = []
+    for (const msg of rawMessages) {
+      if (msg.userMessage) {
+        expandedMessages.push({ ...msg, type: 'user', content: msg.userMessage })
+      }
+      if (msg.aiResponse) {
+        expandedMessages.push({ ...msg, id: msg.id + 0.5, type: 'ai', content: msg.aiResponse })
+      }
+    }
+    messages.value = expandedMessages
   } catch (error) {
     ElMessage.error('加载会话失败')
   }

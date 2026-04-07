@@ -27,8 +27,8 @@ struct DatabaseConfig {
     int retryDelay; // 毫秒
     
     DatabaseConfig() 
-        : type("mysql"), host("localhost"), port(3306), 
-          database("yachiyo_cpp"), username("root"), password("password"),
+        : type("postgresql"), host("localhost"), port(5432), 
+          database("yachiyo"), username("postgres"), password(""),
           poolSize(10), connectionTimeout(30), maxRetries(3), retryDelay(1000) {}
 };
 
@@ -117,6 +117,42 @@ public:
      * @return 是否成功
      */
     bool executeTransaction(std::function<bool(pqxx::work&)> transactionFunc);
+
+    // ==================== 参数化查询接口 ====================
+    // 这些方法被 AuthServiceImpl / MessageServiceImpl 等服务层调用
+
+    /**
+     * @brief 执行参数化SELECT查询
+     * @param sql SQL语句，参数占位符用 $1 $2 ...
+     * @param params 参数列表
+     * @return 结果行（每行为 map<字段名, 值>），空结果返回空向量
+     */
+    std::vector<std::map<std::string, std::string>> query(
+        const std::string& sql,
+        const std::vector<std::string>& params = {}
+    );
+
+    /**
+     * @brief 执行参数化INSERT并返回结果 (通常配合 RETURNING)
+     * @param sql SQL语句
+     * @param params 参数列表
+     * @return 返回的结果行
+     */
+    std::vector<std::map<std::string, std::string>> insert(
+        const std::string& sql,
+        const std::vector<std::string>& params = {}
+    );
+
+    /**
+     * @brief 执行参数化UPDATE/DELETE (无返回值)
+     * @param sql SQL语句
+     * @param params 参数列表
+     * @return 受影响的行数，失败返回 -1
+     */
+    int execute(
+        const std::string& sql,
+        const std::vector<std::string>& params = {}
+    );
     
     /**
      * @brief 执行预编译语句

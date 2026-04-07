@@ -56,6 +56,7 @@ let resizeObserver: ResizeObserver | null = null
 
 // 嘴部同步
 let mouthSyncRAF: number | null = null
+let audioSyncRAF: number | null = null
 let targetMouthOpenY = 0
 let currentMouthOpenY = 0
 
@@ -311,7 +312,7 @@ const syncMouthFromAudio = (analyserNode: AnalyserNode) => {
     // 映射到嘴部开合 (0~1)
     setSyncMouthOpenY(Math.min(1, rms * 4))
 
-    requestAnimationFrame(update)
+    audioSyncRAF = requestAnimationFrame(update)
   }
   update()
 }
@@ -335,6 +336,12 @@ onUnmounted(() => {
   if (mouthSyncRAF !== null) {
     cancelAnimationFrame(mouthSyncRAF)
     mouthSyncRAF = null
+  }
+
+  // 停止音频同步
+  if (audioSyncRAF !== null) {
+    cancelAnimationFrame(audioSyncRAF)
+    audioSyncRAF = null
   }
 
   // 断开 ResizeObserver

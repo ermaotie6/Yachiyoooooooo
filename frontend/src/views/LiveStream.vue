@@ -441,16 +441,16 @@ const scrollToBottom = () => {
 
 onMounted(async () => {
   try {
-    // 连接到 WebSocket
-    await ws.connect(currentUser.id)
-    isConnected.value = true
-    addSystemMessage('✅ 已连接到服务器')
-
-    // 监听事件
+    // 先注册事件监听器，防止连接成功后立即收到消息而丢失
     ws.onAvatar(handleAvatarResponse)
     ws.onStatus(handleStatusUpdate)
     ws.onErr(handleError)
     ws.onConnectionStatusChange(handleConnectionStatusChange)
+
+    // 再连接到 WebSocket
+    await ws.connect(currentUser.value.id)
+    isConnected.value = true
+    addSystemMessage('✅ 已连接到服务器')
   } catch (error) {
     console.error('连接失败:', error)
     connectionError.value = String(error)

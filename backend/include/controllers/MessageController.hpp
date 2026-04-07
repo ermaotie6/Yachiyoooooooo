@@ -48,6 +48,13 @@ public:
     ) : messageService(msg), authService(auth), databaseService(db),
         webSocketService(ws), jwtUtil(jwt), logger(log) {}
     
+    // ==================== 路由注册 ====================
+    
+    /**
+     * @brief 注册所有消息路由到 Crow 应用
+     */
+    void registerRoutes(crow::SimpleApp& app) override;
+    
     // ==================== 消息端点 ====================
     
     /**

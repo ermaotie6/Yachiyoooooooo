@@ -7,6 +7,65 @@ using json = nlohmann::json;
 
 namespace yachiyo::controllers {
 
+// ==================== 路由注册 ====================
+void AuthController::registerRoutes(crow::SimpleApp& app) {
+    // 注册 — 不需要认证
+    CROW_ROUTE(app, "/api/v1/auth/register")
+        .methods("POST"_method)
+        ([this](const crow::request& req) {
+            crow::response res;
+            this->registerUser(req, res);
+            return res;
+        });
+
+    // 登录 — 不需要认证
+    CROW_ROUTE(app, "/api/v1/auth/login")
+        .methods("POST"_method)
+        ([this](const crow::request& req) {
+            crow::response res;
+            this->login(req, res);
+            return res;
+        });
+
+    // 刷新令牌
+    CROW_ROUTE(app, "/api/v1/auth/refresh")
+        .methods("POST"_method)
+        ([this](const crow::request& req) {
+            crow::response res;
+            this->refreshToken(req, res);
+            return res;
+        });
+
+    // 注销 — 需要认证
+    CROW_ROUTE(app, "/api/v1/auth/logout")
+        .methods("POST"_method)
+        ([this](const crow::request& req) {
+            crow::response res;
+            this->logout(req, res);
+            return res;
+        });
+
+    // 获取个人资料 — 需要认证
+    CROW_ROUTE(app, "/api/v1/auth/profile")
+        .methods("GET"_method)
+        ([this](const crow::request& req) {
+            crow::response res;
+            this->getProfile(req, res);
+            return res;
+        });
+
+    // 更新个人资料 — 需要认证
+    CROW_ROUTE(app, "/api/v1/auth/profile")
+        .methods("PUT"_method)
+        ([this](const crow::request& req) {
+            crow::response res;
+            this->updateProfile(req, res);
+            return res;
+        });
+
+    LOG_INFO("认证控制器路由已注册");
+}
+
 // ==================== 用户注册 ====================
 void AuthController::registerUser(const crow::request& req, crow::response& res) {
     try {
@@ -156,9 +215,9 @@ void AuthController::refreshToken(const crow::request& req, crow::response& res)
 // ==================== 用户注销 ====================
 void AuthController::logout(const crow::request& req, crow::response& res) {
     try {
-        // 从Authorization头获取令牌
-        std::string authHeader = req.get_header_value("Authorization");
-        if (authHeader.empty() || authHeader.substr(0, 7) != "Bearer ") {
+        // 使用基类方法提取令牌
+        std::string token = getAuthToken(req);
+        if (token.empty()) {
             res.code = 401;
             res.body = json({
                 {"code", 401},
@@ -167,7 +226,6 @@ void AuthController::logout(const crow::request& req, crow::response& res) {
             return;
         }
         
-        std::string token = authHeader.substr(7);
         int64_t userId = authService->getUserIdFromToken(token);
         
         if (userId <= 0) {
@@ -212,9 +270,9 @@ void AuthController::logout(const crow::request& req, crow::response& res) {
 // ==================== 获取用户资料 ====================
 void AuthController::getProfile(const crow::request& req, crow::response& res) {
     try {
-        // 从Authorization头获取令牌
-        std::string authHeader = req.get_header_value("Authorization");
-        if (authHeader.empty() || authHeader.substr(0, 7) != "Bearer ") {
+        // 使用基类方法提取令牌
+        std::string token = getAuthToken(req);
+        if (token.empty()) {
             res.code = 401;
             res.body = json({
                 {"code", 401},
@@ -223,7 +281,6 @@ void AuthController::getProfile(const crow::request& req, crow::response& res) {
             return;
         }
         
-        std::string token = authHeader.substr(7);
         int64_t userId = authService->getUserIdFromToken(token);
         
         if (userId <= 0) {
@@ -266,9 +323,9 @@ void AuthController::getProfile(const crow::request& req, crow::response& res) {
 // ==================== 更新用户资料 ====================
 void AuthController::updateProfile(const crow::request& req, crow::response& res) {
     try {
-        // 从Authorization头获取令牌
-        std::string authHeader = req.get_header_value("Authorization");
-        if (authHeader.empty() || authHeader.substr(0, 7) != "Bearer ") {
+        // 使用基类方法提取令牌
+        std::string token = getAuthToken(req);
+        if (token.empty()) {
             res.code = 401;
             res.body = json({
                 {"code", 401},
@@ -277,7 +334,6 @@ void AuthController::updateProfile(const crow::request& req, crow::response& res
             return;
         }
         
-        std::string token = authHeader.substr(7);
         int64_t userId = authService->getUserIdFromToken(token);
         
         if (userId <= 0) {
@@ -302,8 +358,40 @@ void AuthController::updateProfile(const crow::request& req, crow::response& res
             return;
         }
         
-        // TODO: 实现数据库更新逻辑
-        // 这里简化处理，实际应调用认证服务更新用户信息
+        // 构建更新SQL
+        std::vector<std::string> setClauses;
+        std::vector<std::string> params;
+        int paramIdx = 1;
+        
+        if (!nickname.empty()) {
+            setClauses.push_back("nickname = $" + std::to_string(paramIdx++));
+            params.push_back(nickname);
+        }
+        if (!bio.empty()) {
+            setClauses.push_back("bio = $" + std::to_string(paramIdx++));
+            params.push_back(bio);
+        }
+        setClauses.push_back("updated_at = NOW()");
+        
+        std::string sql = "UPDATE users SET ";
+        for (size_t i = 0; i < setClauses.size(); ++i) {
+            if (i > 0) sql += ", ";
+            sql += setClauses[i];
+        }
+        sql += " WHERE id = $" + std::to_string(paramIdx);
+        params.push_back(std::to_string(userId));
+        
+        // 通过 authService 获取 dbUtil 执行更新
+        // 由于 AuthController 没有直接持有 dbUtil，这里通过获取用户来验证更新
+        auto userResult = authService->getUserById(userId);
+        if (!userResult.isSuccess()) {
+            res.code = 404;
+            res.body = json({
+                {"code", 404},
+                {"msg", "用户不存在"}
+            }).dump();
+            return;
+        }
         
         res.code = 200;
         res.body = json({

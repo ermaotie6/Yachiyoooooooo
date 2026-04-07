@@ -187,6 +187,78 @@ bool DatabaseUtil::executeTransaction(std::function<bool(pqxx::work&)> transacti
     }
 }
 
+// ==================== 参数化查询接口 ====================
+
+std::vector<std::map<std::string, std::string>> DatabaseUtil::query(
+    const std::string& sql,
+    const std::vector<std::string>& params
+) {
+    std::vector<std::map<std::string, std::string>> results;
+    try {
+        auto conn = getConnection();
+        pqxx::work txn(*conn);
+
+        pqxx::result res;
+        if (params.empty()) {
+            res = txn.exec(sql);
+        } else {
+            // 使用 pqxx::params 构造参数化查询
+            pqxx::params p;
+            for (const auto& param : params) {
+                p.append(param);
+            }
+            res = txn.exec_params(sql, p);
+        }
+        txn.commit();
+
+        for (const auto& row : res) {
+            std::map<std::string, std::string> rowMap;
+            for (int col = 0; col < row.size(); ++col) {
+                std::string colName = res.column_name(col);
+                rowMap[colName] = row[col].is_null() ? "" : row[col].as<std::string>();
+            }
+            results.push_back(std::move(rowMap));
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Parameterized query failed: " << e.what() << std::endl;
+    }
+    return results;
+}
+
+std::vector<std::map<std::string, std::string>> DatabaseUtil::insert(
+    const std::string& sql,
+    const std::vector<std::string>& params
+) {
+    // INSERT 和 SELECT 的执行方式相同（INSERT ... RETURNING 也返回结果集）
+    return query(sql, params);
+}
+
+int DatabaseUtil::execute(
+    const std::string& sql,
+    const std::vector<std::string>& params
+) {
+    try {
+        auto conn = getConnection();
+        pqxx::work txn(*conn);
+
+        pqxx::result res;
+        if (params.empty()) {
+            res = txn.exec(sql);
+        } else {
+            pqxx::params p;
+            for (const auto& param : params) {
+                p.append(param);
+            }
+            res = txn.exec_params(sql, p);
+        }
+        txn.commit();
+        return static_cast<int>(res.affected_rows());
+    } catch (const std::exception& e) {
+        std::cerr << "Execute failed: " << e.what() << std::endl;
+        return -1;
+    }
+}
+
 bool DatabaseUtil::executePreparedStatement(const std::string& name, 
                                            const std::vector<std::string>& params) {
     try {

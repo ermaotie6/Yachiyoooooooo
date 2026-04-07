@@ -28,6 +28,13 @@ public:
         std::shared_ptr<Yachiyo::Utils::JwtUtil> jwt
     ) : authService(auth), jwtUtil(jwt) {}
     
+    // ==================== 路由注册 ====================
+    
+    /**
+     * @brief 注册所有认证路由到 Crow 应用
+     */
+    void registerRoutes(crow::SimpleApp& app) override;
+    
     // ==================== 认证端点 ====================
     
     /**

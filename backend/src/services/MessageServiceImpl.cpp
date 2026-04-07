@@ -26,8 +26,8 @@ Result<std::shared_ptr<Message>> MessageServiceImpl::sendMessage(
         }
         
         // 验证消息内容
-        if (message.empty() || message.length() > 500) {
-            return Result<std::shared_ptr<Message>>::Error("消息长度必须1-500字符");
+        if (message.empty() || message.length() > 50) {
+            return Result<std::shared_ptr<Message>>::Error("消息长度必须1-50字符");
         }
         
         auto msg = std::make_shared<Message>();

@@ -138,7 +138,7 @@ const formatDate = (date: string) => {
 
 const saveProfile = async () => {
   try {
-    await api.put(`/users/${user.value.userId}`, {
+    await api.put('/auth/profile', {
       displayName: editForm.value.displayName,
       email: editForm.value.email
     })

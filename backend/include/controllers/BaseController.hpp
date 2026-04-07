@@ -78,7 +78,15 @@ public:
     // ==================== Crow 路由注册 ====================
 
     /**
-     * @brief 注册路由到 Crow 应用
+     * @brief 注册路由到 Crow 应用 (子类必须重写)
+     * @param app Crow 应用引用
+     */
+    virtual void registerRoutes(crow::SimpleApp& app) {
+        // 默认空实现，子类应重写以注册自己的路由
+    }
+
+    /**
+     * @brief 注册路由到 Crow 应用 (旧接口，通过 basePath)
      * @param path 基础路径
      * @param app Crow 应用引用
      */

@@ -28,14 +28,12 @@ const router = createRouter({
     {
       path: '/livestream',
       component: () => import('@/views/LiveStream.vue'),
-      meta: { title: '直播间', requiresAuth: true },
-      children: [
-        {
-          path: ':id',
-          component: () => import('@/views/LiveStream.vue'),
-          meta: { title: '直播间' }
-        }
-      ]
+      meta: { title: '直播间', requiresAuth: true }
+    },
+    {
+      path: '/livestream/:id',
+      component: () => import('@/views/LiveStream.vue'),
+      meta: { title: '直播间', requiresAuth: true }
     },
     {
       path: '/profile',

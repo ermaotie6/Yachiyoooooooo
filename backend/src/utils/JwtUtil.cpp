@@ -4,6 +4,8 @@
 #include <ctime>
 #include <chrono>
 #include <regex>
+#include <optional>
+#include <nlohmann/json.hpp>
 #include <openssl/hmac.h>
 #include <openssl/evp.h>
 
@@ -431,6 +433,61 @@ std::map<std::string, std::string> JwtUtil::getClaimsFromToken(const std::string
 
     } catch (...) {
         return {};
+    }
+}
+
+std::string JwtUtil::generateToken(const nlohmann::json& payload, int ttlSeconds) {
+    try {
+        // 从 JSON payload 中提取字段
+        int64_t userId = payload.value("user_id", int64_t(0));
+        std::string username = payload.value("username", std::string(""));
+        std::string role = payload.value("role", std::string(""));
+
+        // 临时覆盖过期时间以使用 ttlSeconds
+        int originalExpHours = pImpl->expirationHours;
+        // ttlSeconds 转换为小时（向上取整）
+        pImpl->expirationHours = (ttlSeconds + 3599) / 3600;
+
+        std::string token = generateToken(userId, username, role);
+
+        // 恢复原始过期时间
+        pImpl->expirationHours = originalExpHours;
+
+        return token;
+    } catch (const std::exception& e) {
+        std::cerr << "[ERROR] JWT令牌生成失败(JSON): " << e.what() << std::endl;
+        return "";
+    }
+}
+
+std::optional<nlohmann::json> JwtUtil::verifyTokenPayload(const std::string& token) {
+    auto [valid, message] = verifyToken(token);
+    if (!valid) {
+        return std::nullopt;
+    }
+
+    try {
+        auto claims = getClaimsFromToken(token);
+        nlohmann::json payload;
+        for (const auto& [key, value] : claims) {
+            // 尝试解析为数字
+            if (key == "sub" || key == "user_id" || key == "exp" || key == "iat") {
+                try {
+                    payload[key] = std::stoll(value);
+                } catch (...) {
+                    payload[key] = value;
+                }
+            } else {
+                payload[key] = value;
+            }
+        }
+        // 确保 user_id 字段存在 (从 sub 映射)
+        if (payload.contains("sub") && !payload.contains("user_id")) {
+            payload["user_id"] = payload["sub"];
+        }
+        return payload;
+    } catch (...) {
+        return std::nullopt;
     }
 }
 

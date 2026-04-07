@@ -96,11 +96,10 @@ const getReviewStatusText = (status: string) => {
 
 const toggleLike = async () => {
   try {
-    await postStore.likePost(postId)
+    const result = await postStore.likePost(postId)
+    // 后端返回最新的点赞状态和计数，直接刷新帖子详情
+    await postStore.fetchPostDetail(postId)
     isLiked.value = !isLiked.value
-    if (postStore.currentPost) {
-      postStore.currentPost.likeCount += isLiked.value ? 1 : -1
-    }
   } catch (error) {
     ElMessage.error('操作失败')
   }

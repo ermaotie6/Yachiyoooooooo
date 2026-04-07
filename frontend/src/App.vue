@@ -52,6 +52,7 @@ import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { api } from '@/api/client'
 import { ArrowDown } from '@element-plus/icons-vue'
 import AuthDialog from '@/components/AuthDialog.vue'
 
@@ -67,7 +68,16 @@ const goToProfile = () => {
   router.push('/profile')
 }
 
-const handleLogout = () => {
+const handleLogout = async () => {
+  try {
+    // 通知后端将 refresh token 加入黑名单
+    if (authStore.refreshToken) {
+      await api.post('/auth/logout', { refresh_token: authStore.refreshToken })
+    }
+  } catch (error) {
+    // 即使后端注销失败，也清理本地状态
+    console.warn('后端注销请求失败:', error)
+  }
   authStore.logout()
   ElMessage.success('已退出登录')
   router.push('/')

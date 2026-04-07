@@ -22,12 +22,18 @@ std::string HashUtil::sha256(const std::string& input) {
     return ss.str();
 }
 
-std::string HashUtil::hashPassword(const std::string& password) {
+std::pair<std::string, std::string> HashUtil::hashPassword(const std::string& password) {
     // 生成随机盐值并与密码拼接后SHA256
     std::string salt = generateSalt(16);
-    std::string salted = sha256(salt + password);
+    std::string hash = sha256(salt + password);
+    // 返回 <hash, salt> 分离存储
+    return {hash, salt};
+}
+
+std::string HashUtil::hashPasswordCombined(const std::string& password) {
+    auto [hash, salt] = hashPassword(password);
     // 存储格式: salt:hash
-    return salt + ":" + salted;
+    return salt + ":" + hash;
 }
 
 bool HashUtil::verifyPassword(const std::string& password, const std::string& hashedPassword) {
@@ -39,6 +45,10 @@ bool HashUtil::verifyPassword(const std::string& password, const std::string& ha
     }
     std::string salt = hashedPassword.substr(0, colonPos);
     std::string hash = hashedPassword.substr(colonPos + 1);
+    return sha256(salt + password) == hash;
+}
+
+bool HashUtil::verifyPassword(const std::string& password, const std::string& hash, const std::string& salt) {
     return sha256(salt + password) == hash;
 }
 

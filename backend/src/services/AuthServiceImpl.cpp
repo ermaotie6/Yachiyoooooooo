@@ -138,10 +138,8 @@ Result<json> AuthServiceImpl::login(
         std::string passwordHash = row["password_hash"];
         std::string salt = row["salt"];
         
-        // passwordHash 格式为 "salt:hash"，verifyPassword 内部会解析
-        // 如果数据库中 salt 和 hash 是分开存储的，需要拼接
-        std::string storedHash = salt + ":" + passwordHash;
-        if (!hashUtil->verifyPassword(password, storedHash)) {
+        // 数据库分开存储 hash 和 salt，直接用分离格式验证
+        if (!Yachiyo::Utils::HashUtil::verifyPassword(password, passwordHash, salt)) {
             return Result<json>::Error("用户名或密码错误");
         }
         
@@ -154,13 +152,11 @@ Result<json> AuthServiceImpl::login(
         int64_t userId = std::stoll(row["id"]);
         
         // 4. 生成令牌
-        json payload;
-        payload["user_id"] = userId;
-        payload["username"] = row["username"];
-        payload["role"] = row["role"];
+        std::string username_val = row["username"];
+        std::string role_val = row["role"];
         
-        auto accessToken = jwtUtil->generateToken(payload, 3600); // 1小时
-        auto refreshToken = jwtUtil->generateToken(payload, 604800); // 7天
+        auto accessToken = jwtUtil->generateToken(userId, username_val, role_val);
+        auto refreshToken = jwtUtil->generateToken(userId, username_val, role_val);
         
         // 5. 更新最后登录时间
         dbUtil->execute(
@@ -194,12 +190,12 @@ Result<std::shared_ptr<User>> AuthServiceImpl::verifyToken(
     const std::string& token
 ) {
     try {
-        auto payload = jwtUtil->verifyToken(token);
+        auto payload = jwtUtil->verifyTokenPayload(token);
         if (!payload) {
             return Result<std::shared_ptr<User>>::Error("令牌无效或已过期");
         }
         
-        int64_t userId = (*payload)["user_id"];
+        int64_t userId = payload->value("user_id", payload->value("sub", int64_t(0)));
         return getUserById(userId);
         
     } catch (const std::exception& e) {
@@ -212,9 +208,7 @@ Result<std::shared_ptr<User>> AuthServiceImpl::verifyToken(
 
 int64_t AuthServiceImpl::getUserIdFromToken(const std::string& token) {
     try {
-        auto payload = jwtUtil->verifyToken(token);
-        if (!payload) return 0;
-        return (*payload)["user_id"];
+        return jwtUtil->getUserIdFromToken(token);
     } catch (...) {
         return 0;
     }
@@ -224,10 +218,11 @@ int64_t AuthServiceImpl::getUserIdFromToken(const std::string& token) {
 
 UserRole AuthServiceImpl::getRoleFromToken(const std::string& token) {
     try {
-        auto payload = jwtUtil->verifyToken(token);
-        if (!payload) return UserRole::USER;
-        int role = (*payload)["role"];
-        return static_cast<UserRole>(role);
+        std::string roleStr = jwtUtil->getRoleFromToken(token);
+        if (roleStr == "ADMIN" || roleStr == "admin" || roleStr == "99") {
+            return UserRole::ADMIN;
+        }
+        return UserRole::USER;
     } catch (...) {
         return UserRole::USER;
     }
@@ -239,13 +234,17 @@ Result<json> AuthServiceImpl::refreshToken(
     const std::string& refreshToken
 ) {
     try {
-        auto payload = jwtUtil->verifyToken(refreshToken);
-        if (!payload) {
-            return Result<json>::Error("刷新令牌无效或已过期");
+        auto [valid, message] = jwtUtil->verifyToken(refreshToken);
+        if (!valid) {
+            return Result<json>::Error("刷新令牌无效或已过期: " + message);
         }
         
-        // 生成新的访问令牌
-        auto newAccessToken = jwtUtil->generateToken(*payload, 3600);
+        // 从旧令牌中提取信息生成新令牌
+        int64_t userId = jwtUtil->getUserIdFromToken(refreshToken);
+        std::string username = jwtUtil->getUsernameFromToken(refreshToken);
+        std::string role = jwtUtil->getRoleFromToken(refreshToken);
+        
+        auto newAccessToken = jwtUtil->generateToken(userId, username, role);
         
         json response;
         response["access_token"] = newAccessToken;
@@ -266,8 +265,12 @@ Result<bool> AuthServiceImpl::logout(
     const std::string& refreshToken
 ) {
     try {
-        // 这里可以将令牌加入黑名单（使用Redis）
-        // 简单实现中就返回成功
+        // 将 refresh token 加入 Redis 黑名单 (TTL 7天)
+        if (!refreshToken.empty()) {
+            std::string blacklistKey = "token_blacklist:" + refreshToken;
+            dbUtil->redisSet(blacklistKey, "1", 604800);  // 7天过期
+        }
+        
         LOG_INFO("用户注销: " + std::to_string(userId));
         return Result<bool>::Success(true);
         

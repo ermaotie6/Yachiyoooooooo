@@ -25,20 +25,23 @@ export const useAuthStore = defineStore('auth', () => {
   const login = async (username: string, password: string) => {
     const response = await api.post('/auth/login', { username, password })
     const data = response.data.data
-    // 后端返回格式: { token, refreshToken, userId, username }
-    // 或: { accessToken, refreshToken, user }
-    const access = data.accessToken || data.token || ''
-    const refresh = data.refreshToken || ''
+    // 后端返回格式: { access_token, refresh_token, user: { id, username, email, role } }
+    const access = data.access_token || data.accessToken || data.token || ''
+    const refresh = data.refresh_token || data.refreshToken || ''
     setTokens(access, refresh)
     
-    // 构建用户对象
-    const userData: User = data.user || {
-      userId: data.userId || data.user_id || 0,
-      username: data.username || username,
-      email: data.email || '',
-      displayName: data.nickname || data.username || username,
-      role: (data.role || 'user').toLowerCase() as 'user' | 'admin',
-      createdAt: data.createdAt || new Date().toISOString()
+    // 构建用户对象 — 后端 user 子对象用 id (不是 userId)，role 可能是数字字符串
+    const backendUser = data.user || {}
+    const roleRaw = String(backendUser.role ?? data.role ?? 'user').toLowerCase()
+    const normalizedRole: 'user' | 'admin' = (roleRaw === '99' || roleRaw === 'admin') ? 'admin' : 'user'
+    
+    const userData: User = {
+      userId: backendUser.id ?? data.userId ?? data.user_id ?? 0,
+      username: backendUser.username ?? data.username ?? username,
+      email: backendUser.email ?? data.email ?? '',
+      displayName: backendUser.nickname ?? backendUser.username ?? data.username ?? username,
+      role: normalizedRole,
+      createdAt: backendUser.created_at ?? data.createdAt ?? new Date().toISOString()
     }
     setUser(userData)
     return response.data
@@ -61,8 +64,8 @@ export const useAuthStore = defineStore('auth', () => {
   const refreshAccessToken = async () => {
     const response = await api.post('/auth/refresh', { refresh_token: refreshToken.value })
     const data = response.data.data
-    const access = data.accessToken || data.token || ''
-    const refresh = data.refreshToken || data.refresh_token || ''
+    const access = data.access_token || data.accessToken || data.token || ''
+    const refresh = data.refresh_token || data.refreshToken || refreshToken.value
     setTokens(access, refresh)
     return access
   }

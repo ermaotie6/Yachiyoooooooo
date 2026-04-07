@@ -12,18 +12,84 @@ namespace yachiyo::controllers {
 using namespace Yachiyo::Services;
 using yachiyo::models::UserRole;
 
-// ==================== 辅助函数 ====================
+// ==================== 路由注册 ====================
+void MessageController::registerRoutes(crow::SimpleApp& app) {
+    CROW_ROUTE(app, "/api/v1/messages/send")
+        .methods("POST"_method)
+        ([this](const crow::request& req) {
+            crow::response res;
+            this->sendMessage(req, res);
+            return res;
+        });
 
-// 从Authorization头提取用户ID，失败返回0
-static int64_t extractUserId(const crow::request& req, const std::shared_ptr<Utils::JwtUtil>& jwtUtil) {
-    std::string authHeader = req.get_header_value("Authorization");
-    if (authHeader.empty() || authHeader.substr(0, 7) != "Bearer ") {
-        return 0;
-    }
-    std::string token = authHeader.substr(7);
-    // 简化处理，实际应使用authService提取
-    return 0; // 占位符
+    CROW_ROUTE(app, "/api/v1/messages/list")
+        .methods("GET"_method)
+        ([this](const crow::request& req) {
+            crow::response res;
+            this->getMessages(req, res);
+            return res;
+        });
+
+    CROW_ROUTE(app, "/api/v1/messages/pending")
+        .methods("GET"_method)
+        ([this](const crow::request& req) {
+            crow::response res;
+            this->getPendingMessages(req, res);
+            return res;
+        });
+
+    CROW_ROUTE(app, "/api/v1/messages/review")
+        .methods("POST"_method)
+        ([this](const crow::request& req) {
+            crow::response res;
+            this->reviewMessage(req, res);
+            return res;
+        });
+
+    CROW_ROUTE(app, "/api/v1/messages/delete")
+        .methods("POST"_method)
+        ([this](const crow::request& req) {
+            crow::response res;
+            this->deleteMessage(req, res);
+            return res;
+        });
+
+    CROW_ROUTE(app, "/api/v1/messages/stats")
+        .methods("GET"_method)
+        ([this](const crow::request& req) {
+            crow::response res;
+            this->getStatistics(req, res);
+            return res;
+        });
+
+    CROW_ROUTE(app, "/api/v1/messages/high-risk")
+        .methods("GET"_method)
+        ([this](const crow::request& req) {
+            crow::response res;
+            this->getHighRiskMessages(req, res);
+            return res;
+        });
+
+    CROW_ROUTE(app, "/api/v1/messages/context")
+        .methods("GET"_method)
+        ([this](const crow::request& req) {
+            crow::response res;
+            this->getConversationContext(req, res);
+            return res;
+        });
+
+    CROW_ROUTE(app, "/api/v1/messages/feedback")
+        .methods("POST"_method)
+        ([this](const crow::request& req) {
+            crow::response res;
+            this->submitFeedback(req, res);
+            return res;
+        });
+
+    logger->info("消息控制器路由已注册");
 }
+
+// ==================== 辅助函数 ====================
 
 // ==================== 发送消息 ====================
 void MessageController::sendMessage(const crow::request& req, crow::response& res) {
