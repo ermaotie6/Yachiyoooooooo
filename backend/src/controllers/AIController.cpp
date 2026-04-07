@@ -73,6 +73,13 @@ void AIController::registerRoutes(crow::SimpleApp& app) {
             return this->deleteChatHistory(req, chatId);
         });
 
+    // 获取所有会话列表 (前端 Chat.vue 用)
+    CROW_ROUTE(app, "/api/v2/ai/sessions")
+        .methods("GET"_method)
+        ([this](const crow::request& req) {
+            return this->getChatHistory(req);
+        });
+
     logger->info("AI控制器路由已注册");
 }
 

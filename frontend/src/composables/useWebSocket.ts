@@ -67,7 +67,20 @@ export function useWebSocket() {
       intentionalDisconnect = false
 
       // 获取 WebSocket URL
-      const wsUrl = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:9001'
+      // 开发环境: Vite 代理 /ws -> ws://localhost:9001
+      // 生产环境: Nginx 代理 /ws -> websocket_server:9001
+      // 也支持直接通过 VITE_WS_BASE_URL 指定完整 URL
+      const envWsUrl = import.meta.env.VITE_WS_BASE_URL || ''
+      let wsUrl: string
+      if (envWsUrl && (envWsUrl.startsWith('ws://') || envWsUrl.startsWith('wss://'))) {
+        // 显式配置了完整 WebSocket URL (如 ws://localhost:9001)
+        wsUrl = envWsUrl
+      } else {
+        // 使用相对路径，由 Vite 代理 (开发) 或 Nginx (生产) 处理
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+        const host = window.location.host
+        wsUrl = `${protocol}//${host}/ws`
+      }
       const url = `${wsUrl}?user_id=${userId}`
 
       console.log('[WebSocket] Connecting to', url)

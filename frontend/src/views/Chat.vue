@@ -96,22 +96,24 @@ const sendMessage = async () => {
 
     const response = await apiV2.post('/ai/chat', {
       message,
-      sessionId: currentSessionId.value
+      chat_id: currentSessionId.value
     })
 
     const data = response.data.data
+    const aiText = data.response || data.aiResponse || ''
+    const chatId = data.chat_id || data.sessionId || currentSessionId.value
     messages.value.push({
       id: Date.now() + 1,
       type: 'ai',
-      content: data.aiResponse,
-      sessionId: currentSessionId.value,
+      content: aiText,
+      sessionId: chatId,
       userMessage: message,
-      aiResponse: data.aiResponse,
+      aiResponse: aiText,
       timestamp: new Date().toISOString(),
-      processingTime: data.processingTime
+      processingTime: data.response_time || data.processingTime || 0
     })
 
-    currentSessionId.value = data.sessionId
+    currentSessionId.value = chatId
   } catch (error: any) {
     ElMessage.error(error.response?.data?.message || '发送失败')
   } finally {
@@ -128,16 +130,23 @@ const startNewSession = () => {
 const switchSession = async (sessionId: string) => {
   currentSessionId.value = sessionId
   try {
-    const response = await apiV2.get(`/ai/chat/history?sessionId=${sessionId}`)
-    // 每条 ChatMessage 包含 userMessage 和 aiResponse，拆分为两条显示消息
-    const rawMessages: ChatMessage[] = response.data.data || []
+    const response = await apiV2.get(`/ai/history?chat_id=${sessionId}`)
+    // 后端返回 { chats: [{ messages: [...] }] }，提取消息并按 role 分类
+    const chats = response.data.data?.chats || []
     const expandedMessages: Array<ChatMessage & { type: 'user' | 'ai'; content: string }> = []
-    for (const msg of rawMessages) {
-      if (msg.userMessage) {
-        expandedMessages.push({ ...msg, type: 'user', content: msg.userMessage })
-      }
-      if (msg.aiResponse) {
-        expandedMessages.push({ ...msg, id: msg.id + 0.5, type: 'ai', content: msg.aiResponse })
+    for (const chat of chats) {
+      const chatMessages = chat.messages || []
+      for (const msg of chatMessages) {
+        expandedMessages.push({
+          id: typeof msg.id === 'number' ? msg.id : Date.now(),
+          sessionId: sessionId,
+          userMessage: msg.role === 'user' ? msg.content : '',
+          aiResponse: msg.role === 'assistant' ? msg.content : '',
+          timestamp: msg.created_at || new Date().toISOString(),
+          processingTime: 0,
+          type: msg.role === 'user' ? 'user' : 'ai',
+          content: msg.content || ''
+        })
       }
     }
     messages.value = expandedMessages
@@ -157,8 +166,17 @@ const formatDate = (date: string) => {
 onMounted(async () => {
   startNewSession()
   try {
-    const response = await apiV2.get('/ai/chat/sessions')
-    if (response.data?.data) {
+    const response = await apiV2.get('/ai/sessions')
+    if (response.data?.data?.chats) {
+      // 后端返回 { chats: [...] }，映射为前端 ChatSession 格式
+      sessions.value = response.data.data.chats.map((chat: any) => ({
+        sessionId: chat.id || chat.chat_id,
+        userId: 0,
+        createdAt: chat.created_at || chat.createdAt || '',
+        updatedAt: chat.updated_at || chat.updatedAt || '',
+        messageCount: chat.message_count || chat.messageCount || 0
+      }))
+    } else if (response.data?.data) {
       sessions.value = response.data.data
     }
   } catch (error) {

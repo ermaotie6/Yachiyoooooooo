@@ -14,7 +14,7 @@ class AIController : public BaseController {
 public:
     AIController();
     
-    void registerRoutes(crow::SimpleApp& app);
+    void registerRoutes(crow::SimpleApp& app) override;
     
 private:
     std::shared_ptr<Yachiyo::Services::AIServiceImpl> aiService;

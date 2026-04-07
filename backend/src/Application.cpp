@@ -14,6 +14,13 @@
 #include "services/AuthService.hpp"
 #include "services/AuthServiceImpl.hpp"
 #include "services/MessageServiceImpl.hpp"
+#include "services/OpenClawGateway.hpp"
+#include "services/TranslationService.hpp"
+#include "services/GPTSoVITSService.hpp"
+#include "services/Live2DAnimationService.hpp"
+#include "services/DeepSeekModerationService.hpp"
+#include "services/AvatarResponseService.hpp"
+#include "controllers/WebSocketController.hpp"
 #include "utils/JwtUtil.hpp"
 #include "utils/HashUtil.hpp"
 #include "utils/DatabaseUtil.hpp"
@@ -335,6 +342,122 @@ void Application::initializeServices() {
         
         // redisPool = std::make_shared<RedisPool>(...);
         logger->info("Redis连接初始化完成: {}:{}", redisHost, redisPort);
+    }
+    
+    // ==================================================================
+    // 初始化 Avatar 响应管线 (OpenClaw → 翻译 → TTS → Live2D 动画)
+    // ==================================================================
+    try {
+        logger->info("正在初始化 Avatar 响应管线...");
+
+        // 1. OpenClaw 网关 — 通过 Node.js 桥接服务与 OpenClaw 通信
+        auto openClawGateway = std::make_shared<yachiyo::services::OpenClawGateway>();
+        std::string bridgeEndpoint = configManager->getString(
+            "openclaw.bridge_endpoint", "http://localhost:8765");
+        int bridgeTimeout = configManager->getInt("openclaw.timeout", 30);
+        if (openClawGateway->initialize(bridgeEndpoint, bridgeTimeout)) {
+            logger->info("OpenClaw 网关初始化完成: {}", bridgeEndpoint);
+        } else {
+            logger->warn("OpenClaw 网关初始化失败 (桥接服务可能未启动), Avatar 管线将降级");
+        }
+
+        // 2. 翻译服务
+        auto translationService = std::make_shared<yachiyo::services::TranslationService>();
+        translationService->initialize();
+        logger->info("翻译服务初始化完成");
+
+        // 3. GPT-SoVITS TTS 服务
+        auto ttsService = std::make_shared<yachiyo::services::GPTSoVITSService>();
+        std::string ttsEndpoint = configManager->getString("tts.endpoint", "");
+        ttsService->initialize(ttsEndpoint);
+        logger->info("GPT-SoVITS TTS 服务初始化完成");
+
+        // 4. Live2D 动画服务
+        auto animationService = std::make_shared<yachiyo::services::Live2DAnimationService>();
+        animationService->initialize();
+        logger->info("Live2D 动画服务初始化完成");
+
+        // 5. 内容审查服务 (可选)
+        std::shared_ptr<yachiyo::services::DeepSeekModerationService> moderationService = nullptr;
+        if (configManager->getBool("moderation.enabled", false)) {
+            moderationService = std::make_shared<yachiyo::services::DeepSeekModerationService>();
+            std::string moderationApiKey = configManager->getString("moderation.apiKey", "");
+            std::string moderationEndpoint = configManager->getString("moderation.endpoint", "");
+            moderationService->initialize(moderationApiKey, moderationEndpoint);
+            logger->info("DeepSeek 内容审查服务初始化完成");
+        }
+
+        // 6. 组装 AvatarResponseService
+        auto avatarService = std::make_shared<yachiyo::services::AvatarResponseService>(
+            openClawGateway, translationService, ttsService, animationService, moderationService);
+        std::string avatarLanguage = configManager->getString("avatar.language", "zh-CN");
+        avatarService->initialize(avatarLanguage);
+        logger->info("AvatarResponseService 初始化完成");
+
+        // 7. 创建 WebSocketController 并注册回调
+        auto wsController = std::make_shared<yachiyo::controllers::WebSocketController>(avatarService);
+        wsController->initialize();
+
+        // 8. 将 WebSocket 消息回调连接到 WebSocketController
+        //    当 WebSocketService 收到 user_message 时，转发给 WebSocketController 处理，
+        //    WebSocketController 调用 AvatarResponseService，然后通过 WebSocketService 推送响应。
+        if (g_webSocketService) {
+            g_webSocketService->onMessageReceived(
+                [wsController, this](int64_t client_id, const json& message) {
+                    try {
+                        std::string clientIdStr = std::to_string(client_id);
+                        std::string userId;
+
+                        // 从消息中提取 user_id
+                        if (message.contains("data") && message["data"].contains("user_id")) {
+                            userId = message["data"]["user_id"].get<std::string>();
+                        }
+                        if (message.contains("data") && message["data"].contains("content")) {
+                            std::string text = message["data"]["content"].get<std::string>();
+                            std::string language = "zh-CN";
+                            if (message["data"].contains("language")) {
+                                language = message["data"]["language"].get<std::string>();
+                            }
+
+                            // 调用 WebSocketController 处理用户消息
+                            auto result = wsController->processUserMessage(
+                                clientIdStr, userId, text, language);
+
+                            if (!result.isSuccess()) {
+                                // 推送错误到客户端
+                                json errorMsg = {
+                                    {"type", "error"},
+                                    {"data", {
+                                        {"message", "处理消息失败"},
+                                        {"code", result.getError().code}
+                                    }}
+                                };
+                                g_webSocketService->sendToClient(client_id, errorMsg);
+                            }
+                            // 注：成功时 WebSocketController::processUserMessage 内部已通过
+                            //     broadcastResponse 构建响应 JSON，但 broadcastResponse 使用的是
+                            //     控制器内部的 session 路由，实际推送仍需通过 WebSocketService。
+                            //     这里额外通过 WebSocketService 推送 avatar_response。
+                            else {
+                                // result 已包含 avatar 响应 JSON
+                                g_webSocketService->sendToClient(client_id, result.getValue());
+                            }
+                        }
+                    } catch (const std::exception& e) {
+                        logger->error("WebSocket 消息处理异常: {}", e.what());
+                        json errorMsg = {
+                            {"type", "error"},
+                            {"data", {{"message", std::string("内部错误: ") + e.what()}}}
+                        };
+                        g_webSocketService->sendToClient(client_id, errorMsg);
+                    }
+                });
+            logger->info("WebSocket 消息回调已连接到 Avatar 管线");
+        }
+
+        logger->info("Avatar 响应管线初始化完成");
+    } catch (const std::exception& e) {
+        logger->error("Avatar 响应管线初始化失败: {} (WebSocket 仍可接受连接，但无法处理 AI 消息)", e.what());
     }
     
     logger->info("其他服务初始化完成");
