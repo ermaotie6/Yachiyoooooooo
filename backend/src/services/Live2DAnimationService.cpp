@@ -74,20 +74,22 @@ dto::ExpressionCommand Live2DAnimationService::mapEmotionToExpression(
 ) {
     dto::ExpressionCommand cmd;
     
-    if (emotion == "开心" || emotion == "happy") {
+    // 注意: 表情名称必须与 yachiyo.model3.json 中 Expressions 配置的 Name 匹配
+    // 可用表情: f_smile, f_sad, f_squint, f_cry
+    if (emotion == "开心" || emotion == "happy" || emotion == "excited") {
         cmd.expressionName = "f_smile";
         cmd.durationMs = 2000;
     } else if (emotion == "伤心" || emotion == "sad") {
         cmd.expressionName = "f_sad";
         cmd.durationMs = 2000;
     } else if (emotion == "生气" || emotion == "angry") {
-        cmd.expressionName = "f_angry";
+        cmd.expressionName = "f_squint";  // 模型无 f_angry，使用 f_squint 代替
         cmd.durationMs = 2000;
     } else if (emotion == "惊讶" || emotion == "surprised") {
-        cmd.expressionName = "f_surprised";
+        cmd.expressionName = "f_cry";     // 模型无 f_surprised，使用 f_cry 代替
         cmd.durationMs = 2000;
     } else {
-        cmd.expressionName = "f_default";
+        cmd.expressionName = "f_smile";   // 默认使用 f_smile（模型无 f_default）
         cmd.durationMs = 1000;
     }
     
@@ -200,11 +202,12 @@ bool Live2DAnimationService::loadModelConfig(Model model) {
 }
 
 void Live2DAnimationService::initializeEmotionMappings() {
-    // 表情映射配置
+    // 表情映射配置 (必须与 yachiyo.model3.json 中 Expressions 的 Name 匹配)
+    // 可用: f_smile, f_sad, f_squint, f_cry
     emotion_mappings_["开心"] = {"f_smile", {{"smile", 0.8f}}};
     emotion_mappings_["伤心"] = {"f_sad", {{"sad", 0.8f}}};
-    emotion_mappings_["生气"] = {"f_angry", {{"anger", 0.9f}}};
-    emotion_mappings_["惊讶"] = {"f_surprised", {{"surprise", 0.8f}}};
+    emotion_mappings_["生气"] = {"f_squint", {{"anger", 0.9f}}};
+    emotion_mappings_["惊讶"] = {"f_cry", {{"surprise", 0.8f}}};
     
     LOG_DEBUG("情感映射表已初始化");
 }

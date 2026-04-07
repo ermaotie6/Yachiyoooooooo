@@ -205,9 +205,16 @@ void Application::initializeControllers() {
     // 注册认证控制器
     auto dbUtil = std::make_shared<Utils::DatabaseUtil>();
     auto hashUtil = std::make_shared<Utils::HashUtil>();
+    std::string jwtSecret = configManager->getString("jwt.secret", "");
+    if (jwtSecret.empty() || jwtSecret == "yachiyo-cpp-secret-key-change-in-production") {
+        logger->warn("⚠️  JWT secret 未配置或使用了默认值！生产环境请务必修改 config.yaml 中的 jwt.secret");
+        if (jwtSecret.empty()) {
+            jwtSecret = "yachiyo-cpp-secret-key-change-in-production";
+        }
+    }
     auto jwtUtil = std::make_shared<Utils::JwtUtil>(
-        configManager->getString("jwt.secret", "yachiyo-default-secret-change-in-production"),
-        configManager->getInt("jwt.expiresIn", 86400)
+        jwtSecret,
+        configManager->getInt("jwt.expiration_hours", 24) * 3600
     );
     auto authService = std::make_shared<yachiyo::services::AuthServiceImpl>(dbUtil, jwtUtil, hashUtil);
     auto authController = std::make_shared<controllers::AuthController>(authService, jwtUtil);
@@ -252,7 +259,7 @@ void Application::initializeDatabase() {
     std::string dbHost = configManager->getString("database.host", "localhost");
     int dbPort = configManager->getInt("database.port", 5432);  // PostgreSQL默认端口
     std::string dbName = configManager->getString("database.name", "yachiyo");
-    std::string dbUser = configManager->getString("database.user", "postgres");
+    std::string dbUser = configManager->getString("database.username", "postgres");
     std::string dbPassword = configManager->getString("database.password", "");
     int dbPoolSize = configManager->getInt("database.poolSize", 10);
     
@@ -363,30 +370,36 @@ void Application::initializeServices() {
         }
 
         // 2. 翻译服务
+        //    配置键名与 config.yaml 中的 ai.translation 保持一致
         auto translationService = std::make_shared<yachiyo::services::TranslationService>();
         translationService->initialize();
         // 注入百度翻译 API 配置 (appid:secret_key 格式)
-        std::string baiduAppId = configManager->getString("translation.services.0.appid", "");
-        std::string baiduApiKey = configManager->getString("translation.services.0.api_key", "");
+        std::string baiduAppId = configManager->getString("ai.translation.engines.0.appid", "");
+        std::string baiduApiKey = configManager->getString("ai.translation.engines.0.api_key", "");
         if (!baiduAppId.empty() && !baiduApiKey.empty()) {
             translationService->configureEngine(
                 yachiyo::services::TranslationService::Engine::BAIDU,
                 baiduAppId + ":" + baiduApiKey);
+            logger->info("百度翻译引擎配置完成 (appid={})", baiduAppId);
+        } else {
+            logger->warn("百度翻译引擎未配置 (ai.translation.engines.0.appid/api_key)");
         }
         // 注入 DeepSeek 翻译 API 配置
-        std::string deepseekTransKey = configManager->getString("translation.services.1.api_key", "");
-        std::string deepseekTransEndpoint = configManager->getString("translation.services.1.endpoint", "");
+        std::string deepseekTransKey = configManager->getString("ai.translation.engines.1.api_key", "");
+        std::string deepseekTransEndpoint = configManager->getString("ai.translation.engines.1.endpoint", "");
         if (!deepseekTransKey.empty()) {
             translationService->configureEngine(
                 yachiyo::services::TranslationService::Engine::DEEPSEEK,
                 deepseekTransKey, deepseekTransEndpoint);
+            logger->info("DeepSeek 翻译引擎配置完成");
         }
         logger->info("翻译服务初始化完成");
 
         // 3. GPT-SoVITS TTS 服务
+        //    配置键名与 config.yaml 中的 ai.gpt_sovits 保持一致
         auto ttsService = std::make_shared<yachiyo::services::GPTSoVITSService>();
-        std::string ttsEndpoint = configManager->getString("gpt_sovits.api_endpoint", "");
-        std::string ttsModeStr = configManager->getString("gpt_sovits.mode", "cpu");
+        std::string ttsEndpoint = configManager->getString("ai.gpt_sovits.endpoint", "http://localhost:5000");
+        std::string ttsModeStr = configManager->getString("ai.gpt_sovits.mode", "cpu");
         auto ttsMode = (ttsModeStr == "gpu")
             ? yachiyo::services::GPTSoVITSService::InferenceMode::GPU
             : yachiyo::services::GPTSoVITSService::InferenceMode::CPU;
@@ -399,13 +412,16 @@ void Application::initializeServices() {
         logger->info("Live2D 动画服务初始化完成");
 
         // 5. 内容审查服务 (可选)
+        //    配置键名与 config.yaml 中的 ai.deepseek_moderation 保持一致
         std::shared_ptr<yachiyo::services::DeepSeekModerationService> moderationService = nullptr;
-        if (configManager->getBool("moderation.enabled", false)) {
+        if (configManager->getBool("ai.deepseek_moderation.enabled", true)) {
             moderationService = std::make_shared<yachiyo::services::DeepSeekModerationService>();
-            std::string moderationApiKey = configManager->getString("moderation.deepseek_api_key", "");
-            std::string moderationEndpoint = configManager->getString("moderation.deepseek_api_endpoint", "https://api.deepseek.com");
+            std::string moderationApiKey = configManager->getString("ai.deepseek_moderation.api_key", "");
+            std::string moderationEndpoint = configManager->getString("ai.deepseek_moderation.endpoint", "https://api.deepseek.com");
             moderationService->initialize(moderationApiKey, moderationEndpoint);
             logger->info("DeepSeek 内容审查服务初始化完成");
+        } else {
+            logger->warn("DeepSeek 内容审查服务已禁用 (ai.deepseek_moderation.enabled=false)");
         }
 
         // 6. 组装 AvatarResponseService
@@ -422,9 +438,18 @@ void Application::initializeServices() {
         // 8. 将 WebSocket 消息回调连接到 WebSocketController
         //    当 WebSocketService 收到 user_message 时，转发给 WebSocketController 处理，
         //    WebSocketController 调用 AvatarResponseService，然后通过 WebSocketService 推送响应。
+        // 创建 authService 引用供 WebSocket 认证使用
+        auto dbUtilForWs = std::make_shared<Utils::DatabaseUtil>();
+        auto hashUtilForWs = std::make_shared<Utils::HashUtil>();
+        std::string jwtSecretForWs = configManager->getString("jwt.secret", "yachiyo-cpp-secret-key-change-in-production");
+        auto jwtUtilForWs = std::make_shared<Utils::JwtUtil>(
+            jwtSecretForWs, configManager->getInt("jwt.expiration_hours", 24) * 3600);
+        auto authServiceForWs = std::make_shared<yachiyo::services::AuthServiceImpl>(
+            dbUtilForWs, jwtUtilForWs, hashUtilForWs);
+
         if (g_webSocketService) {
             g_webSocketService->onMessageReceived(
-                [wsController, this](int64_t client_id, const json& message) {
+                [wsController, authServiceForWs, this](int64_t client_id, const json& message) {
                     try {
                         std::string clientIdStr = std::to_string(client_id);
                         std::string userId;
@@ -433,9 +458,42 @@ void Application::initializeServices() {
                         if (message.contains("data") && message["data"].contains("user_id")) {
                             userId = message["data"]["user_id"].get<std::string>();
                         }
+
+                        // WebSocket 认证验证: 检查 access_token (如果提供)
+                        if (message.contains("data") && message["data"].contains("access_token")) {
+                            std::string token = message["data"]["access_token"].get<std::string>();
+                            int64_t tokenUserId = authServiceForWs->getUserIdFromToken(token);
+                            if (tokenUserId <= 0) {
+                                json errorMsg = {
+                                    {"type", "error"},
+                                    {"data", {{"message", "认证失败：令牌无效或已过期"}, {"code", "AUTH_FAILED"}}}
+                                };
+                                g_webSocketService->sendToClient(client_id, errorMsg);
+                                return;
+                            }
+                            // 使用令牌中的 userId 覆盖客户端自称的 userId，防止伪造
+                            userId = std::to_string(tokenUserId);
+                        }
+
                         if (message.contains("data") && message["data"].contains("content")) {
                             std::string text = message["data"]["content"].get<std::string>();
-                            std::string language = "zh-CN";
+
+                            // 消息长度检查（与前端50字限制一致）
+                            if (text.length() > 200) {  // UTF-8 中文每字最多4字节，50字≈200字节
+                                json errorMsg = {
+                                    {"type", "error"},
+                                    {"data", {{"message", "消息内容超出长度限制"}, {"code", "MSG_TOO_LONG"}}}
+                                };
+                                g_webSocketService->sendToClient(client_id, errorMsg);
+                                return;
+                            }
+
+                            // 空内容检查
+                            if (text.empty()) {
+                                return;
+                            }
+
+                            std::string language = "ja";
                             if (message["data"].contains("language")) {
                                 language = message["data"]["language"].get<std::string>();
                             }

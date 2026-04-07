@@ -66,7 +66,7 @@ public:
         const std::string& clientId,
         const std::string& userId,
         const std::string& text,
-        const std::string& targetLanguage = "zh-CN"
+        const std::string& targetLanguage = "ja"
     );
     
     // 发送响应给客户端

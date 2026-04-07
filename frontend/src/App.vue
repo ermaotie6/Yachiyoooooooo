@@ -52,7 +52,6 @@ import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { api } from '@/api/client'
 import { ArrowDown } from '@element-plus/icons-vue'
 import AuthDialog from '@/components/AuthDialog.vue'
 
@@ -84,6 +83,7 @@ const handleLogout = async () => {
   try {
     // 通知后端将 refresh token 加入黑名单
     if (authStore.refreshToken) {
+      const { api } = await import('@/api/client')
       await api.post('/auth/logout', { refresh_token: authStore.refreshToken })
     }
   } catch (error) {

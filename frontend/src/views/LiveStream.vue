@@ -325,20 +325,32 @@ const playAudioWithAnimations = async (response: any) => {
 
 /**
  * 播放动画序列
+ * 后端发送的动画命令格式: { type: "expression"|"motion"|"parameter", params: {...} }
  */
 const playAnimations = (commands: any[]) => {
   if (!live2dComponent.value) return
 
   for (const cmd of commands) {
-    if (cmd.expression) {
-      live2dComponent.value.setExpression(
-        cmd.expression,
-        cmd.duration_ms || 1000
-      )
+    const cmdType = cmd.type || ''
+    const params = cmd.params || cmd
+
+    if (cmdType === 'expression' || params.expression_name) {
+      // 表情命令: { type: "expression", params: { expression_name: "f_smile", duration_ms: 2000 } }
+      const exprName = params.expression_name || params.expression || ''
+      if (exprName) {
+        live2dComponent.value.setExpression(
+          exprName,
+          params.duration_ms || 1000
+        )
+      }
+    } else if (cmdType === 'motion' || params.group) {
+      // 动作命令: { type: "motion", params: { group: "Tap Body", index: 0, priority: 1 } }
+      const motionGroup = params.group || params.motion || ''
+      if (motionGroup) {
+        live2dComponent.value.playMotion(motionGroup, params.priority || 0)
+      }
     }
-    if (cmd.motion) {
-      live2dComponent.value.playMotion(cmd.motion, cmd.priority || 0)
-    }
+    // parameter 类型 (嘴部同步) 由前端 Web Audio API 实时驱动，此处忽略
   }
 }
 
@@ -473,13 +485,15 @@ onMounted(async () => {
     ws.onBroadcast(handleUserBroadcast)
 
     // 再连接到 WebSocket
+    // 注意: 连接成功/失败的消息由 handleConnectionStatusChange 回调统一处理
     await ws.connect(currentUser.value.id)
-    isConnected.value = true
-    addSystemMessage('✅ 已连接到服务器')
   } catch (error) {
     console.error('连接失败:', error)
     connectionError.value = String(error)
-    addSystemMessage(`❌ 连接失败: ${error}`)
+    // 仅在回调未触发的情况下补充错误消息（如 connect Promise 直接 reject）
+    if (!messages.value.some((m: Message) => m.text.includes('连接失败') || m.text.includes('连接已断开'))) {
+      addSystemMessage(`❌ 连接失败: ${error}`)
+    }
   }
 })
 

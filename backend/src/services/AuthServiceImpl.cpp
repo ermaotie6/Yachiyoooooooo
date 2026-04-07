@@ -1,5 +1,8 @@
 #include "services/AuthServiceImpl.hpp"
 #include "utils/Logger.hpp"
+#include <ctime>
+#include <sstream>
+#include <iomanip>
 #include <regex>
 #include <ctime>
 
@@ -20,7 +23,17 @@ bool AuthServiceImpl::isValidEmail(const std::string& email) const {
 }
 
 bool AuthServiceImpl::isValidPassword(const std::string& password) const {
-    return password.length() >= 8 && password.length() <= 128;
+    if (password.length() < 8 || password.length() > 128) return false;
+    
+    bool hasUpper = false, hasLower = false, hasDigit = false, hasSpecial = false;
+    for (char c : password) {
+        if (std::isupper(c)) hasUpper = true;
+        else if (std::islower(c)) hasLower = true;
+        else if (std::isdigit(c)) hasDigit = true;
+        else hasSpecial = true;
+    }
+    
+    return hasUpper && hasLower && hasDigit && hasSpecial;
 }
 
 bool AuthServiceImpl::isUserBlacklisted(const std::string& identifier) const {
@@ -59,7 +72,7 @@ Result<std::shared_ptr<User>> AuthServiceImpl::registerUser(
         
         if (!isValidPassword(password)) {
             return Result<std::shared_ptr<User>>::Error(
-                "密码无效。必须8-128字符"
+                "密码无效。必须8-128字符，且包含大写字母、小写字母、数字和特殊字符"
             );
         }
         
@@ -70,15 +83,24 @@ Result<std::shared_ptr<User>> AuthServiceImpl::registerUser(
             );
         }
         
-        // 3. 检查用户名/邮箱是否已存在
-        auto existingUser = dbUtil->query(
-            "SELECT 1 FROM users WHERE username = $1 OR email = $2",
-            {username, email}
+        // 3. 分别检查用户名和邮箱是否已存在，给出精确提示
+        auto existingUsername = dbUtil->query(
+            "SELECT 1 FROM users WHERE username = $1",
+            {username}
         );
-        
-        if (!existingUser.empty()) {
+        if (!existingUsername.empty()) {
             return Result<std::shared_ptr<User>>::Error(
-                "用户名或邮箱已被注册"
+                "该用户名已被注册"
+            );
+        }
+        
+        auto existingEmail = dbUtil->query(
+            "SELECT 1 FROM users WHERE email = $1",
+            {email}
+        );
+        if (!existingEmail.empty()) {
+            return Result<std::shared_ptr<User>>::Error(
+                "该邮箱已被注册"
             );
         }
         
@@ -332,8 +354,20 @@ Result<std::shared_ptr<User>> AuthServiceImpl::getUserById(int64_t userId) {
         if (row["is_banned"] == "true") {
             time_t banUntil = 0;
             if (!row["ban_until"].empty()) {
-                // 解析时间戳
-                banUntil = std::stoll(row["ban_until"]);
+                // 解析 PostgreSQL TIMESTAMP 格式 ("YYYY-MM-DD HH:MM:SS")
+                struct tm tm = {};
+                std::istringstream ss(row["ban_until"]);
+                ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
+                if (!ss.fail()) {
+                    banUntil = mktime(&tm);
+                } else {
+                    // 兼容: 如果是纯数字时间戳则回退到 stoll
+                    try {
+                        banUntil = std::stoll(row["ban_until"]);
+                    } catch (...) {
+                        LOG_WARN("无法解析 ban_until: {}", row["ban_until"]);
+                    }
+                }
             }
             user->setBanned(true, row["ban_reason"], banUntil);
         }

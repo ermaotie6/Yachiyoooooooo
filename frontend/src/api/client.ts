@@ -99,7 +99,7 @@ apiV2.interceptors.request.use(
   error => Promise.reject(error)
 )
 
-// v2 也使用相同的响应拦截器逻辑（含并发刷新锁）
+// v2 使用独立的响应拦截器（确保重试请求使用 apiV2 实例而非 api）
 apiV2.interceptors.response.use(
   response => response,
   async error => {
@@ -108,11 +108,13 @@ apiV2.interceptors.response.use(
     
     if (error.response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
-        // 已在刷新中，排队等待
+        // 已在刷新中，排队等待（注意：使用 apiV2 实例重试）
         return new Promise(resolve => {
           pendingRequests.push((token: string) => {
             originalRequest.headers.Authorization = `Bearer ${token}`
-            resolve(apiV2.request(originalRequest))
+            // 根据原始请求的 baseURL 判断应该用哪个实例重试
+            const instance = originalRequest.baseURL?.includes('/v2') ? apiV2 : api
+            resolve(instance.request(originalRequest))
           })
         })
       }

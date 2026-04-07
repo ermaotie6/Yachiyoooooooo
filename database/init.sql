@@ -7,18 +7,39 @@ BEGIN;
 
 CREATE TABLE IF NOT EXISTS users (
     id BIGSERIAL PRIMARY KEY,
-    username VARCHAR(255) UNIQUE NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
+    salt VARCHAR(32) NOT NULL,
+    
+    -- 用户信息
+    nickname VARCHAR(50),
+    avatar_url VARCHAR(255),
+    bio TEXT,
     
     -- 用户个性化数据
     profile_data JSONB,
     preferences JSONB,
     
+    -- 用户角色 (1=普通用户, 99=管理员)
+    role SMALLINT DEFAULT 1 CHECK (role IN (1, 99)),
+    -- 用户状态 (1=活跃, 2=禁用, 3=封禁)
+    status SMALLINT DEFAULT 1 CHECK (status IN (1, 2, 3)),
+    
+    -- 安全统计
+    messages_sent BIGINT DEFAULT 0,
+    messages_approved BIGINT DEFAULT 0,
+    messages_rejected BIGINT DEFAULT 0,
+    warnings_count SMALLINT DEFAULT 0,
+    is_banned BOOLEAN DEFAULT FALSE,
+    ban_reason TEXT,
+    ban_until TIMESTAMP,
+    
     -- 时间戳
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_login TIMESTAMP,
+    last_login_at TIMESTAMP,
+    last_login_ip VARCHAR(45),
     
     -- 状态
     is_active BOOLEAN DEFAULT TRUE
@@ -287,7 +308,7 @@ CREATE OR REPLACE VIEW active_users AS
 SELECT u.id, u.username, u.email, COUNT(m.id) as message_count, MAX(m.created_at) as last_activity
 FROM users u
 LEFT JOIN messages m ON u.id = m.user_id
-WHERE u.is_active = TRUE
+WHERE u.is_active = TRUE AND u.is_banned = FALSE
 GROUP BY u.id, u.username, u.email;
 
 -- 最近消息视图
@@ -309,22 +330,28 @@ CREATE INDEX IF NOT EXISTS idx_websocket_active ON websocket_logs(status) WHERE 
 -- ============ 创建初始数据 ============
 
 -- 创建管理员用户（可选）
-INSERT INTO users (username, email, password_hash, profile_data, is_active)
+INSERT INTO users (username, email, password_hash, salt, nickname, role, status, is_active)
 VALUES (
     'admin',
     'admin@yachiyo.local',
     '$2b$12$placeholder_hash_admin_user',
-    '{"role": "admin", "permissions": ["all"]}'::jsonb,
+    'placeholder_salt',
+    'System Admin',
+    99,
+    1,
     TRUE
 ) ON CONFLICT (username) DO NOTHING;
 
 -- 创建测试用户（可选）
-INSERT INTO users (username, email, password_hash, profile_data, is_active)
+INSERT INTO users (username, email, password_hash, salt, nickname, role, status, is_active)
 VALUES (
     'test_user',
     'test@yachiyo.local',
     '$2b$12$placeholder_hash_test_user',
-    '{"role": "user", "language": "zh"}'::jsonb,
+    'placeholder_salt',
+    'Test User',
+    1,
+    1,
     TRUE
 ) ON CONFLICT (username) DO NOTHING;
 
@@ -339,27 +366,32 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 为各表创建触发器
+-- 为各表创建触发器（先删除再创建，确保幂等执行）
+DROP TRIGGER IF EXISTS users_update_timestamp ON users;
 CREATE TRIGGER users_update_timestamp
 BEFORE UPDATE ON users
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp();
 
+DROP TRIGGER IF EXISTS sessions_update_timestamp ON sessions;
 CREATE TRIGGER sessions_update_timestamp
 BEFORE UPDATE ON sessions
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp();
 
+DROP TRIGGER IF EXISTS messages_update_timestamp ON messages;
 CREATE TRIGGER messages_update_timestamp
 BEFORE UPDATE ON messages
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp();
 
+DROP TRIGGER IF EXISTS contexts_update_timestamp ON conversation_contexts;
 CREATE TRIGGER contexts_update_timestamp
 BEFORE UPDATE ON conversation_contexts
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp();
 
+DROP TRIGGER IF EXISTS stats_update_timestamp ON user_statistics;
 CREATE TRIGGER stats_update_timestamp
 BEFORE UPDATE ON user_statistics
 FOR EACH ROW

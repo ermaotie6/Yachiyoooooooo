@@ -108,15 +108,9 @@ void WebSocketService::stop() {
 // ========================================================================
 
 void WebSocketService::handleOpen(crow::websocket::connection& conn) {
-    // 从 URL 中解析 user_id（前端连接格式：ws://host:port?user_id=xxx）
-    std::string user_id = parseUserId(conn.get_remote_ip()); // fallback
-    // Crow 的 upgrade_request 包含了完整的 URL
-    // 注意：Crow 不直接暴露 query string，但 conn 可以通过 req 获取
-    // 我们通过自定义方式解析
-
-    // 在 Crow 中，WebSocket 连接建立前的 HTTP 升级请求的 URL
-    // 可以通过 conn 获取远程 IP，但 query string 需要其他方式
-    // 暂时使用远程 IP 作为 fallback，通过第一条消息设置 user_id
+    // user_id 将通过客户端发送的 identify 消息设置
+    // Crow WebSocket 不直接暴露 HTTP 升级请求的 query string，
+    // 因此这里不尝试从 URL 解析 user_id，而是等待客户端发送 identify 消息
 
     std::lock_guard<std::mutex> lock(clients_mutex_);
 

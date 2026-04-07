@@ -184,19 +184,9 @@ Utils::Result<AvatarResponse> AvatarResponseService::processUserMessage(
         response.animationCommands = animationSeq.commands;
     }
     
-    // ===== 步骤6: 添加嘴部同步 =====
-    if (!response.audioUrl.empty() && response.audioDurationMs > 0) {
-        auto mouthCommands = animation_service_->generateMouthSyncCommands(
-            response.audioUrl,
-            response.audioDurationMs
-        );
-        
-        // 合并嘴部同步命令到动画命令列表
-        for (const auto& cmd : mouthCommands) {
-            response.animationCommands.push_back(cmd);
-        }
-        LOG_DEBUG("添加嘴部同步命令数: {}", mouthCommands.size());
-    }
+    // ===== 步骤6: 嘴部同步由前端 Web Audio API AnalyserNode 实时驱动 =====
+    // 不再在后端生成 mock 嘴部同步命令，避免与前端实时分析冲突
+    LOG_DEBUG("嘴部同步将由前端实时音频分析驱动");
     
     // ===== 步骤7: 计算处理时间 =====
     auto endTime = std::chrono::system_clock::now();

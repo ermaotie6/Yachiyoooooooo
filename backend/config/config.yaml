@@ -32,6 +32,24 @@ redis:
   max_connections: 10
   timeout: 5
 
+# WebSocket配置
+websocket:
+  port: 9001
+  max_connections: 1000
+  heartbeat_interval_ms: 30000
+  idle_timeout_ms: 300000
+
+# OpenClaw 桥接服务配置
+openclaw:
+  bridge_endpoint: "http://localhost:8765"
+  timeout_seconds: 30
+
+# 虚拟形象配置
+avatar:
+  language: "ja"
+  default_emotion: "neutral"
+  model_path: "resources/live2d"
+
 # JWT配置
 jwt:
   secret: "yachiyo-cpp-secret-key-change-in-production"

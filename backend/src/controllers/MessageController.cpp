@@ -562,4 +562,241 @@ void MessageController::getHighRiskMessages(const crow::request& req, crow::resp
     }
 }
 
+// ==================== 删除消息 ====================
+void MessageController::deleteMessage(const crow::request& req, crow::response& res) {
+    try {
+        // 验证用户认证
+        std::string authHeader = req.get_header_value("Authorization");
+        if (authHeader.empty() || authHeader.substr(0, 7) != "Bearer ") {
+            res.code = 401;
+            res.body = json({
+                {"code", 401},
+                {"msg", "缺少认证令牌"}
+            }).dump();
+            return;
+        }
+        
+        std::string token = authHeader.substr(7);
+        int64_t userId = authService->getUserIdFromToken(token);
+        auto role = authService->getRoleFromToken(token);
+        
+        if (userId <= 0) {
+            res.code = 401;
+            res.body = json({
+                {"code", 401},
+                {"msg", "令牌无效或已过期"}
+            }).dump();
+            return;
+        }
+        
+        // 解析请求体
+        auto body = json::parse(req.body);
+        int64_t messageId = body.value("message_id", 0);
+        std::string reason = body.value("reason", "");
+        
+        if (messageId <= 0) {
+            res.code = 400;
+            res.body = json({
+                {"code", 400},
+                {"msg", "缺少 message_id"}
+            }).dump();
+            return;
+        }
+        
+        // 调用消息服务删除（消息服务内部会检查权限：消息所有者或管理员）
+        auto result = messageService->deleteMessage(messageId, userId, role == UserRole::ADMIN, reason);
+        
+        if (result.isSuccess()) {
+            res.code = 200;
+            res.body = json({
+                {"code", 200},
+                {"msg", "消息已删除"},
+                {"data", {
+                    {"message_id", messageId}
+                }}
+            }).dump();
+            LOG_INFO("消息删除: " + std::to_string(messageId) + " by user " + std::to_string(userId));
+        } else {
+            res.code = 400;
+            res.body = json({
+                {"code", 400},
+                {"msg", result.getErrorMsg()}
+            }).dump();
+        }
+        
+    } catch (const std::exception& e) {
+        LOG_ERROR("删除消息异常: " + std::string(e.what()));
+        res.code = 500;
+        res.body = json({
+            {"code", 500},
+            {"msg", "服务器错误"}
+        }).dump();
+    }
+}
+
+// ==================== 获取对话上下文 ====================
+void MessageController::getConversationContext(const crow::request& req, crow::response& res) {
+    try {
+        // 验证用户认证
+        std::string authHeader = req.get_header_value("Authorization");
+        if (authHeader.empty() || authHeader.substr(0, 7) != "Bearer ") {
+            res.code = 401;
+            res.body = json({
+                {"code", 401},
+                {"msg", "缺少认证令牌"}
+            }).dump();
+            return;
+        }
+        
+        std::string token = authHeader.substr(7);
+        int64_t userId = authService->getUserIdFromToken(token);
+        
+        if (userId <= 0) {
+            res.code = 401;
+            res.body = json({
+                {"code", 401},
+                {"msg", "令牌无效或已过期"}
+            }).dump();
+            return;
+        }
+        
+        // 解析查询参数
+        int32_t depth = 10;
+        auto depth_param = req.url_params.get("depth");
+        if (depth_param) {
+            try {
+                depth = std::stoi(depth_param);
+                if (depth > 50) depth = 50;
+            } catch (...) {}
+        }
+        
+        // 获取用户最近的对话上下文
+        auto result = messageService->getUserMessages(userId, depth, 0);
+        
+        if (result.isSuccess()) {
+            const auto& messages = result.value();
+            json context = json::array();
+            
+            for (const auto& msg : messages) {
+                context.push_back({
+                    {"message_id", msg->getMessageId()},
+                    {"user_id", msg->getUserId()},
+                    {"message", msg->getOriginalMessage()},
+                    {"review_status", static_cast<int>(msg->getReviewStatus())},
+                    {"created_at", msg->getCreatedAt()}
+                });
+            }
+            
+            res.code = 200;
+            res.body = json({
+                {"code", 200},
+                {"msg", "获取成功"},
+                {"data", {
+                    {"context", context},
+                    {"depth", depth},
+                    {"count", static_cast<int>(messages.size())}
+                }}
+            }).dump();
+        } else {
+            res.code = 500;
+            res.body = json({
+                {"code", 500},
+                {"msg", result.getErrorMsg()}
+            }).dump();
+        }
+        
+    } catch (const std::exception& e) {
+        LOG_ERROR("获取对话上下文异常: " + std::string(e.what()));
+        res.code = 500;
+        res.body = json({
+            {"code", 500},
+            {"msg", "服务器错误"}
+        }).dump();
+    }
+}
+
+// ==================== 提交内容反馈 ====================
+void MessageController::submitFeedback(const crow::request& req, crow::response& res) {
+    try {
+        // 验证用户认证
+        std::string authHeader = req.get_header_value("Authorization");
+        if (authHeader.empty() || authHeader.substr(0, 7) != "Bearer ") {
+            res.code = 401;
+            res.body = json({
+                {"code", 401},
+                {"msg", "缺少认证令牌"}
+            }).dump();
+            return;
+        }
+        
+        std::string token = authHeader.substr(7);
+        int64_t userId = authService->getUserIdFromToken(token);
+        
+        if (userId <= 0) {
+            res.code = 401;
+            res.body = json({
+                {"code", 401},
+                {"msg", "令牌无效或已过期"}
+            }).dump();
+            return;
+        }
+        
+        // 解析请求体
+        auto body = json::parse(req.body);
+        int64_t messageId = body.value("message_id", 0);
+        std::string feedbackType = body.value("feedback_type", "");
+        std::string reason = body.value("reason", "");
+        
+        if (messageId <= 0) {
+            res.code = 400;
+            res.body = json({
+                {"code", 400},
+                {"msg", "缺少 message_id"}
+            }).dump();
+            return;
+        }
+        
+        if (feedbackType.empty()) {
+            res.code = 400;
+            res.body = json({
+                {"code", 400},
+                {"msg", "缺少 feedback_type (inappropriate|helpful|harmful)"}
+            }).dump();
+            return;
+        }
+        
+        // 验证 feedback_type 的合法性
+        if (feedbackType != "inappropriate" && feedbackType != "helpful" && feedbackType != "harmful") {
+            res.code = 400;
+            res.body = json({
+                {"code", 400},
+                {"msg", "无效的 feedback_type，可选值: inappropriate, helpful, harmful"}
+            }).dump();
+            return;
+        }
+        
+        // 记录反馈（存入审查日志或反馈表）
+        LOG_INFO("用户反馈: user={}, message={}, type={}, reason={}", 
+                 userId, messageId, feedbackType, reason);
+        
+        res.code = 200;
+        res.body = json({
+            {"code", 200},
+            {"msg", "反馈已提交"},
+            {"data", {
+                {"message_id", messageId},
+                {"feedback_type", feedbackType}
+            }}
+        }).dump();
+        
+    } catch (const std::exception& e) {
+        LOG_ERROR("提交反馈异常: " + std::string(e.what()));
+        res.code = 500;
+        res.body = json({
+            {"code", 500},
+            {"msg", "服务器错误"}
+        }).dump();
+    }
+}
+
 } // namespace yachiyo::controllers

@@ -49,13 +49,14 @@ CREATE TABLE users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_login_at TIMESTAMP,
-    last_login_ip VARCHAR(45),
-    
-    INDEX idx_username (username),
-    INDEX idx_email (email),
-    INDEX idx_status (status),
-    INDEX idx_is_banned (is_banned)
+    last_login_ip VARCHAR(45)
 );
+
+-- 用户表索引 (PostgreSQL 语法)
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
+CREATE INDEX IF NOT EXISTS idx_users_is_banned ON users(is_banned);
 
 -- ============================================
 -- 2. 虚拟主播配置表 (由openclaw控制)
@@ -116,13 +117,14 @@ CREATE TABLE user_messages (
     -- 元数据
     user_ip VARCHAR(45),
     user_agent VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    INDEX idx_user_id (user_id),
-    INDEX idx_review_status (review_status),
-    INDEX idx_created_at (created_at),
-    INDEX idx_is_spam (is_spam)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 用户消息表索引 (PostgreSQL 语法)
+CREATE INDEX IF NOT EXISTS idx_user_messages_user_id ON user_messages(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_messages_review_status ON user_messages(review_status);
+CREATE INDEX IF NOT EXISTS idx_user_messages_created_at ON user_messages(created_at);
+CREATE INDEX IF NOT EXISTS idx_user_messages_is_spam ON user_messages(is_spam);
 
 -- ============================================
 -- 4. 虚拟形象反应表
@@ -147,11 +149,12 @@ CREATE TABLE broadcaster_responses (
     
     -- 元数据
     processing_time_ms INT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    INDEX idx_message_id (message_id),
-    INDEX idx_created_at (created_at)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 虚拟形象反应表索引 (PostgreSQL 语法)
+CREATE INDEX IF NOT EXISTS idx_responses_message_id ON broadcaster_responses(message_id);
+CREATE INDEX IF NOT EXISTS idx_responses_created_at ON broadcaster_responses(created_at);
 
 -- ============================================
 -- 5. 预设动作库
@@ -163,11 +166,12 @@ CREATE TABLE preset_actions (
     animation_params JSONB,
     duration_ms INT,
     is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    INDEX idx_action_name (action_name),
-    INDEX idx_is_active (is_active)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 预设动作表索引 (PostgreSQL 语法)
+CREATE INDEX IF NOT EXISTS idx_preset_actions_name ON preset_actions(action_name);
+CREATE INDEX IF NOT EXISTS idx_preset_actions_active ON preset_actions(is_active);
 
 -- ============================================
 -- 6. 敏感词库
@@ -180,12 +184,13 @@ CREATE TABLE blocked_keywords (
     -- 1=低, 2=中, 3=高
     severity SMALLINT DEFAULT 1,
     is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    INDEX idx_keyword (keyword),
-    INDEX idx_keyword_type (keyword_type),
-    INDEX idx_is_active (is_active)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 敏感词表索引 (PostgreSQL 语法)
+CREATE INDEX IF NOT EXISTS idx_blocked_keywords_keyword ON blocked_keywords(keyword);
+CREATE INDEX IF NOT EXISTS idx_blocked_keywords_type ON blocked_keywords(keyword_type);
+CREATE INDEX IF NOT EXISTS idx_blocked_keywords_active ON blocked_keywords(is_active);
 
 -- ============================================
 -- 7. 用户黑名单 (IP/邮箱)
@@ -198,12 +203,13 @@ CREATE TABLE user_blacklist (
     reason TEXT,
     blocked_by BIGINT REFERENCES users(id),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP,
-    
-    INDEX idx_identifier (identifier),
-    INDEX idx_identifier_type (identifier_type),
-    INDEX idx_expires_at (expires_at)
+    expires_at TIMESTAMP
 );
+
+-- 用户黑名单索引 (PostgreSQL 语法)
+CREATE INDEX IF NOT EXISTS idx_blacklist_identifier ON user_blacklist(identifier);
+CREATE INDEX IF NOT EXISTS idx_blacklist_type ON user_blacklist(identifier_type);
+CREATE INDEX IF NOT EXISTS idx_blacklist_expires ON user_blacklist(expires_at);
 
 -- ============================================
 -- 8. 审查日志
@@ -217,12 +223,13 @@ CREATE TABLE review_logs (
     -- 1=通过, 2=拒绝, 3=隐藏
     action_taken SMALLINT,
     reason TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    INDEX idx_message_id (message_id),
-    INDEX idx_reviewed_by (reviewed_by),
-    INDEX idx_created_at (created_at)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 审查日志索引 (PostgreSQL 语法)
+CREATE INDEX IF NOT EXISTS idx_review_logs_message_id ON review_logs(message_id);
+CREATE INDEX IF NOT EXISTS idx_review_logs_reviewed_by ON review_logs(reviewed_by);
+CREATE INDEX IF NOT EXISTS idx_review_logs_created_at ON review_logs(created_at);
 
 -- ============================================
 -- 9. 初始化数据
@@ -324,9 +331,9 @@ LEFT JOIN user_messages m ON u.id = m.user_id
 GROUP BY u.id, u.username, u.nickname, u.warnings_count, u.is_banned, u.created_at;
 
 -- ============================================
--- 12. 索引优化
+-- 12. 补充索引优化
 -- ============================================
-CREATE INDEX idx_messages_user_created ON user_messages(user_id, created_at DESC);
-CREATE INDEX idx_messages_review_created ON user_messages(review_status, created_at DESC);
-CREATE INDEX idx_responses_message ON broadcaster_responses(message_id);
-CREATE INDEX idx_responses_created ON broadcaster_responses(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_user_created ON user_messages(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_review_created ON user_messages(review_status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_responses_message ON broadcaster_responses(message_id);
+CREATE INDEX IF NOT EXISTS idx_responses_created ON broadcaster_responses(created_at DESC);

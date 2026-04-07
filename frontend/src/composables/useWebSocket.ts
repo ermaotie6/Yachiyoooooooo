@@ -296,12 +296,19 @@ export function useWebSocket() {
    * 发送用户消息
    */
   const sendUserMessage = (content: string, userId?: string, username?: string): boolean => {
+    // 获取 access_token 用于 WebSocket 消息认证
+    let accessToken = ''
+    try {
+      accessToken = localStorage.getItem('accessToken') || ''
+    } catch { /* 静默忽略 */ }
+
     return sendMessage({
       type: 'user_message',
       data: {
         content,
         user_id: userId || '',
         username: username || '',
+        access_token: accessToken,  // 携带JWT令牌供后端验证身份
         timestamp: Date.now(),
         language: 'ja'  // 目标语言：日语（百度翻译 API 翻译为日语）
       }

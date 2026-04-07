@@ -140,7 +140,7 @@ Utils::Result<json> WebSocketController::handleMessage(
             
             if (wsMessage.payload.contains("text")) {
                 std::string text = wsMessage.payload["text"].get<std::string>();
-                auto targetLanguage = wsMessage.payload.value("language", "zh-CN");
+                auto targetLanguage = wsMessage.payload.value("language", "ja");
                 
                 auto result = processUserMessage(clientId, userId, text, targetLanguage);
                 if (!result.isSuccess()) {
