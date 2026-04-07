@@ -27,6 +27,7 @@
 #include "utils/RedisUtil.hpp"
 #include <memory>
 #include <thread>
+#include <chrono>
 #include <csignal>
 
 // 全局服务实例 (放在全局命名空间，供所有 .cpp extern 引用)
@@ -419,6 +420,24 @@ void Application::initializeServices() {
                                 language = message["data"]["language"].get<std::string>();
                             }
 
+                            // 获取发送者用户名用于广播
+                            std::string senderName = userId;
+                            if (userId.empty()) {
+                                senderName = "匿名用户";
+                            }
+
+                            // 广播用户消息到所有观众的实时消息框
+                            json userBroadcast = {
+                                {"type", "user_broadcast"},
+                                {"data", {
+                                    {"sender_id", userId},
+                                    {"sender_name", senderName},
+                                    {"content", text},
+                                    {"timestamp", std::chrono::system_clock::now().time_since_epoch().count()}
+                                }}
+                            };
+                            g_webSocketService->broadcastMessage(userBroadcast);
+
                             // 调用 WebSocketController 处理用户消息
                             auto result = wsController->processUserMessage(
                                 clientIdStr, userId, text, language);
@@ -434,13 +453,9 @@ void Application::initializeServices() {
                                 };
                                 g_webSocketService->sendToClient(client_id, errorMsg);
                             }
-                            // 注：成功时 WebSocketController::processUserMessage 内部已通过
-                            //     broadcastResponse 构建响应 JSON，但 broadcastResponse 使用的是
-                            //     控制器内部的 session 路由，实际推送仍需通过 WebSocketService。
-                            //     这里额外通过 WebSocketService 推送 avatar_response。
                             else {
-                                // result 已包含 avatar 响应 JSON
-                                g_webSocketService->sendToClient(client_id, result.getValue());
+                                // 广播 avatar 响应到所有观众
+                                g_webSocketService->broadcastMessage(result.getValue());
                             }
                         }
                     } catch (const std::exception& e) {

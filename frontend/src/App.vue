@@ -48,17 +48,29 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { api } from '@/api/client'
 import { ArrowDown } from '@element-plus/icons-vue'
 import AuthDialog from '@/components/AuthDialog.vue'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 const authDialogVisible = ref(false)
+
+// 当路由携带 showLogin=true 参数时（从需认证页面重定向过来），自动弹出登录对话框
+watch(
+  () => route.query.showLogin,
+  (val) => {
+    if (val === 'true' && !authStore.isLoggedIn) {
+      authDialogVisible.value = true
+    }
+  },
+  { immediate: true }
+)
 
 const showAuthDialog = () => {
   authDialogVisible.value = true

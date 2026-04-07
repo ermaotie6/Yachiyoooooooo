@@ -99,8 +99,13 @@ Result<std::shared_ptr<User>> AuthServiceImpl::registerUser(
         
         // 6. 构建用户对象
         auto user = std::make_shared<User>();
+        // 从 RETURNING 结果中提取用户 ID
+        if (result[0].count("id")) {
+            user->setId(std::stoll(result[0].at("id")));
+        }
         user->setUsername(username);
         user->setEmail(email);
+        user->setNickname(username);  // 默认昵称与用户名相同
         user->setRole(Models::UserRole::USER);
         user->setStatus(Models::UserStatus::ACTIVE);
         

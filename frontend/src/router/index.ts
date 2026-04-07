@@ -68,10 +68,10 @@ router.beforeEach((to, from, next) => {
   const authStore = useAuthStore()
   
   if (to.meta.requiresAuth && !authStore.isLoggedIn) {
-    // 重定向到登录页面，记住要返回的页面
+    // 重定向到首页并自动弹出登录对话框，记住要返回的页面
     next({
       path: '/',
-      query: { redirect: to.fullPath }
+      query: { redirect: to.fullPath, showLogin: 'true' }
     })
     return
   }

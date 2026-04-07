@@ -41,11 +41,20 @@ export function useWebSocket() {
   const maxReconnectAttempts = 5
   const reconnectDelay = ref(3000)
 
+  // 用户广播消息类型
+  type UserBroadcast = {
+    sender_id: string
+    sender_name: string
+    content: string
+    timestamp: number
+  }
+
   // 事件回调
   let onAvatarResponse: ((response: AvatarResponse) => void) | null = null
   let onStatusUpdate: ((status: StatusUpdate) => void) | null = null
   let onError: ((error: string) => void) | null = null
   let onConnectionChanged: ((connected: boolean) => void) | null = null
+  let onUserBroadcast: ((broadcast: UserBroadcast) => void) | null = null
 
   /**
    * 连接到 WebSocket 服务器
@@ -234,6 +243,19 @@ export function useWebSocket() {
           }
           break
 
+        case 'user_broadcast':
+          // 其他用户发送的消息广播
+          if (onUserBroadcast && message.data) {
+            const broadcast: UserBroadcast = {
+              sender_id: message.data.sender_id || '',
+              sender_name: message.data.sender_name || '匿名用户',
+              content: message.data.content || '',
+              timestamp: message.data.timestamp || Date.now()
+            }
+            onUserBroadcast(broadcast)
+          }
+          break
+
         case 'error':
           if (onError && message.data) {
             onError(message.data.message || 'Unknown error')
@@ -279,7 +301,7 @@ export function useWebSocket() {
       data: {
         content,
         timestamp: Date.now(),
-        language: 'zh'
+        language: 'ja'  // 目标语言：日语（百度翻译 API 翻译为日语）
       }
     })
   }
@@ -346,6 +368,10 @@ export function useWebSocket() {
     onConnectionChanged = callback
   }
 
+  const onBroadcast = (callback: (broadcast: { sender_id: string; sender_name: string; content: string; timestamp: number }) => void) => {
+    onUserBroadcast = callback
+  }
+
   return {
     // 状态
     isConnected,
@@ -362,6 +388,7 @@ export function useWebSocket() {
     onAvatar,
     onStatus,
     onErr,
-    onConnectionStatusChange
+    onConnectionStatusChange,
+    onBroadcast
   }
 }

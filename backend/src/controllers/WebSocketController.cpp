@@ -195,30 +195,35 @@ Utils::Result<json> WebSocketController::processUserMessage(
     // 广播响应
     broadcastResponse(clientId, avatarResponse);
     
-    // 返回成功的 JSON 响应
+    // 返回成功的 JSON 响应（格式需与前端 useWebSocket.ts 的 avatar_response 处理匹配）
     json response = {
-        {"type", "AVATAR_RESPONSE"},
-        {"clientId", clientId},
-        {"requestId", avatarResponse.requestId},
-        {"timestamp", std::chrono::system_clock::now().time_since_epoch().count()},
-        {"payload", {
+        {"type", "avatar_response"},
+        {"data", {
+            {"request_id", avatarResponse.requestId},
             {"text", avatarResponse.text},
-            {"originalText", avatarResponse.originalText},
-            {"audioUrl", avatarResponse.audioUrl},
-            {"audioDurationMs", avatarResponse.audioDurationMs},
+            {"original_text", avatarResponse.originalText},
+            {"audio_url", avatarResponse.audioUrl},
+            {"audio_duration_ms", avatarResponse.audioDurationMs},
             {"emotions", json::array()},
             {"actions", json::array()},
-            {"processingTimeMs", avatarResponse.processingTimeMs}
+            {"animation_commands", json::array()},
+            {"processing_time_ms", avatarResponse.processingTimeMs},
+            {"timestamp", std::chrono::system_clock::now().time_since_epoch().count()}
         }}
     };
     
     // 添加表情和动作
     for (const auto& emotion : avatarResponse.emotions) {
-        response["payload"]["emotions"].push_back(emotion);
+        response["data"]["emotions"].push_back(emotion);
     }
     
     for (const auto& action : avatarResponse.actions) {
-        response["payload"]["actions"].push_back(action);
+        response["data"]["actions"].push_back(action);
+    }
+
+    // 添加动画命令
+    for (const auto& cmd : avatarResponse.animationCommands) {
+        response["data"]["animation_commands"].push_back(cmd.toJson());
     }
     
     return Utils::Result<json>::success(response);

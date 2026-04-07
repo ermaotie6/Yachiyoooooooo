@@ -144,7 +144,7 @@ const handleLogin = async () => {
       const redirect = router.currentRoute.value.query.redirect as string
       router.push(redirect || '/')
     } catch (error: any) {
-      ElMessage.error(error.response?.data?.message || '登录失败')
+      ElMessage.error(error.response?.data?.msg || error.response?.data?.message || '登录失败')
     }
   })
 }
@@ -168,7 +168,7 @@ const handleRegister = async () => {
         confirmPassword: ''
       }
     } catch (error: any) {
-      ElMessage.error(error.response?.data?.message || '注册失败')
+      ElMessage.error(error.response?.data?.msg || error.response?.data?.message || '注册失败')
     }
   })
 }

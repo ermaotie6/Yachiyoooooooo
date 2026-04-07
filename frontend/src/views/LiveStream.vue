@@ -42,7 +42,7 @@
         >
           <!-- 用户消息 -->
           <div v-if="msg.role === 'user'" class="user-message">
-            <div class="sender-name">{{ currentUser.name }}</div>
+            <div class="sender-name">{{ msg.senderName || currentUser.name }}</div>
             <div class="content">{{ msg.text }}</div>
             <div class="timestamp">{{ formatTime(msg.timestamp) }}</div>
           </div>
@@ -156,6 +156,7 @@ interface Message {
   id: string
   role: 'user' | 'avatar' | 'system'
   text: string
+  senderName?: string
   emotions?: string[]
   actions?: string[]
   audioUrl?: string
@@ -339,6 +340,24 @@ const playAnimations = (commands: any[]) => {
 }
 
 /**
+ * 处理其他用户的广播消息（实时消息框）
+ */
+const handleUserBroadcast = (broadcast: { sender_id: string; sender_name: string; content: string; timestamp: number }) => {
+  // 跳过自己发送的消息（已在 sendMessage 中添加到本地）
+  if (broadcast.sender_id === currentUser.value.id) return
+
+  messages.value.push({
+    id: `msg_${broadcast.timestamp}_${Math.random().toString(36).slice(2, 8)}`,
+    role: 'user',
+    text: broadcast.content,
+    timestamp: broadcast.timestamp,
+    senderName: broadcast.sender_name
+  })
+
+  nextTick(() => scrollToBottom())
+}
+
+/**
  * 处理连接状态变化
  */
 const handleConnectionStatusChange = (connected: boolean) => {
@@ -446,6 +465,7 @@ onMounted(async () => {
     ws.onStatus(handleStatusUpdate)
     ws.onErr(handleError)
     ws.onConnectionStatusChange(handleConnectionStatusChange)
+    ws.onBroadcast(handleUserBroadcast)
 
     // 再连接到 WebSocket
     await ws.connect(currentUser.value.id)
