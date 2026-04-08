@@ -1,4 +1,4 @@
-# Yachiyo — AI 虚拟形象直播平台
+﻿# Yachiyo — AI 虚拟形象直播平台
 
 <p align="center">
   <b>AI驱动的虚拟形象直播互动平台</b><br/>
@@ -205,7 +205,6 @@ Yachiyo/
 | [部署指南](docs/部署指南.md) | Docker / 裸机部署、HTTPS、安全加固 |
 | [外部服务对接指南](docs/外部服务对接指南.md) | OpenClaw / GPT-SoVITS / 翻译 / 审核对接 |
 | [GPT-SoVITS 部署指南](docs/GPT-SoVITS部署指南.md) | TTS 训练 (Windows) + 部署 (Linux) |
-| [OpenClaw 对接说明](docs/OpenClaw对接说明.md) | 桥接架构 + 数据流 |
 | [功能状态](docs/功能状态.md) | 功能模块实现状态跟踪 |
 
 ---
