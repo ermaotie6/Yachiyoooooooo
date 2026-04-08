@@ -58,8 +58,13 @@ Utils::Result<dto::Live2DSequenceRequest> Live2DAnimationService::generateAnimat
     }
     
     // 2. 添加动作命令
+    // 注意: 当前模型没有 Motions 定义，motion 命令在前端会静默忽略。
+    // 为确保动作有视觉反馈，同时添加表情 fallback 命令。
     if (!actions.empty()) {
         for (const auto& action : actions) {
+            // 表情 fallback（当前模型必定生效）
+            sequence.commands.push_back(mapActionToExpression(action));
+            // 保留 motion 命令（将来添加 motion3.json 后自动生效）
             sequence.commands.push_back(mapActionToMotion(action));
         }
     }
@@ -99,6 +104,10 @@ dto::ExpressionCommand Live2DAnimationService::mapEmotionToExpression(
 dto::MotionCommand Live2DAnimationService::mapActionToMotion(
     const std::string& action
 ) {
+    // 注意: 当前 yachiyo 模型 (model3.json) 没有定义任何 Motions 文件，
+    // 因此所有 motion 命令在前端都会静默失败。
+    // 这里保留 MotionCommand 结构以备将来添加 motion3.json 文件时使用，
+    // 但同时在 generateAnimationSequence() 中用表情命令作为动作的 fallback。
     dto::MotionCommand cmd;
     cmd.priority = 1;
     cmd.loop = false;
@@ -118,6 +127,33 @@ dto::MotionCommand Live2DAnimationService::mapActionToMotion(
     } else {
         cmd.group = "Idle";
         cmd.index = 0;
+    }
+    
+    return cmd;
+}
+
+dto::ExpressionCommand Live2DAnimationService::mapActionToExpression(
+    const std::string& action
+) {
+    // 当模型没有 Motions 定义时，用表情作为动作的视觉 fallback
+    // 可用表情: f_smile, f_sad, f_squint, f_cry
+    dto::ExpressionCommand cmd;
+    
+    if (action == "wave" || action == "挥手") {
+        cmd.expressionName = "f_smile";
+        cmd.durationMs = 2000;
+    } else if (action == "nod" || action == "点头") {
+        cmd.expressionName = "f_smile";
+        cmd.durationMs = 1500;
+    } else if (action == "shake" || action == "摇头") {
+        cmd.expressionName = "f_sad";
+        cmd.durationMs = 1500;
+    } else if (action == "think" || action == "思考") {
+        cmd.expressionName = "f_squint";
+        cmd.durationMs = 2500;
+    } else {
+        cmd.expressionName = "f_smile";
+        cmd.durationMs = 1000;
     }
     
     return cmd;

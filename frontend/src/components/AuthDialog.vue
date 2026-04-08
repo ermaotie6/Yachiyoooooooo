@@ -140,9 +140,9 @@ const handleLogin = async () => {
       await authStore.login(loginForm.value.username, loginForm.value.password)
       ElMessage.success('登录成功')
       emit('close')
-      // 如果有 redirect 参数，跳转到目标页面
+      // 如果有 redirect 参数，跳转到目标页面；否则默认跳转到直播页面
       const redirect = router.currentRoute.value.query.redirect as string
-      router.push(redirect || '/')
+      router.push(redirect || '/livestream')
     } catch (error: any) {
       ElMessage.error(error.response?.data?.msg || error.response?.data?.message || '登录失败')
     }
@@ -168,7 +168,14 @@ const handleRegister = async () => {
         confirmPassword: ''
       }
     } catch (error: any) {
-      ElMessage.error(error.response?.data?.msg || error.response?.data?.message || '注册失败')
+      const msg = error.response?.data?.msg || error.response?.data?.message || ''
+      if (msg.includes('用户名已被注册') || msg.includes('username') && msg.includes('exist')) {
+        ElMessage.error('该用户名已被注册，请换一个用户名')
+      } else if (msg.includes('邮箱已被注册') || msg.includes('email') && msg.includes('exist')) {
+        ElMessage.error('该邮箱已被注册，请使用其他邮箱')
+      } else {
+        ElMessage.error(msg || '注册失败')
+      }
     }
   })
 }

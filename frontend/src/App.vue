@@ -101,7 +101,7 @@ const handleLogout = async () => {
   min-height: 100vh;
   /* 背景图片可替换：将 bg.jpg 放入 public/images/ 目录即可生效 */
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  background-image: url('/images/bg.jpg');
+  background-image: url('/images/bg.jpg'), url('/images/bg.svg');
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;

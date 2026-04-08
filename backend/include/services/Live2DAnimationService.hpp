@@ -67,6 +67,13 @@ public:
     dto::MotionCommand mapActionToMotion(const std::string& action);
     
     /**
+     * 将动作映射到表情命令（当模型没有 Motions 定义时的 fallback）
+     * @param action 动作标签
+     * @return 表情命令
+     */
+    dto::ExpressionCommand mapActionToExpression(const std::string& action);
+    
+    /**
      * 设置参数 (用于高级动画控制)
      * @param paramName 参数名 (例: ParamMouthOpenY)
      * @param value 参数值 [0.0-1.0]

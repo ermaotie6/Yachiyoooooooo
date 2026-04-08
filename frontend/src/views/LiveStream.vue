@@ -107,6 +107,27 @@
 
         <!-- 操作按钮 -->
         <div class="action-buttons">
+          <!-- Emoji 选择器 -->
+          <div class="emoji-picker-wrapper">
+            <button
+              @click="toggleEmojiPicker"
+              class="emoji-toggle-btn"
+              :class="{ active: showEmojiPicker }"
+              title="表情"
+              :disabled="!isConnected || isProcessing"
+            >
+              😊
+            </button>
+            <div v-if="showEmojiPicker" class="emoji-panel">
+              <span
+                v-for="emoji in emojiList"
+                :key="emoji"
+                class="emoji-item"
+                @click="insertEmoji(emoji)"
+              >{{ emoji }}</span>
+            </div>
+          </div>
+
           <button
             @click="sendMessage"
             :disabled="!isConnected || isProcessing || !messageInput.trim()"
@@ -171,6 +192,29 @@ const isConnected = ref(false)
 const isProcessing = ref(false)
 const connectionError = ref<string | null>(null)
 const subtitleText = ref('')
+
+// Emoji 选择器
+const showEmojiPicker = ref(false)
+const emojiList = [
+  '😊', '😂', '🤣', '❤️', '👍', '👋', '🎉', '🌸',
+  '😍', '🤔', '😢', '😡', '😱', '😳', '🤩', '🥺',
+  '💛', '💚', '💙', '🖤', '🔥', '✨', '🌟', '🌞',
+  '🐶', '🐱', '🍀', '🍒', '🍰', '☕', '🌺', '🌻'
+]
+
+const toggleEmojiPicker = () => {
+  showEmojiPicker.value = !showEmojiPicker.value
+}
+
+const insertEmoji = (emoji: string) => {
+  if (messageInput.value.length < 50) {
+    messageInput.value += emoji
+  }
+  showEmojiPicker.value = false
+}
+
+// 字幕渐进显示
+let subtitleTimer: ReturnType<typeof setTimeout> | null = null
 
 const authStore = useAuthStore()
 const currentUser = computed(() => ({
@@ -247,8 +291,14 @@ const handleAvatarResponse = async (response: any) => {
 
   messages.value.push(avatarMsg)
 
-  // 显示字幕（与音频同步）
-  subtitleText.value = response.text || ''
+  // 显示字幕（渐进式，根据音频时长同步刻字）
+  const fullText = response.text || ''
+  const audioDuration = response.audio_duration_ms || 0
+  if (fullText && audioDuration > 0) {
+    startProgressiveSubtitle(fullText, audioDuration)
+  } else {
+    subtitleText.value = fullText
+  }
 
   // 滚动到底部
   await nextTick()
@@ -299,6 +349,7 @@ const playAudioWithAnimations = async (response: any) => {
           lastMessage.isAudioPlaying = false
         }
         // 音频播放结束后清除字幕
+        clearSubtitleTimer()
         subtitleText.value = ''
         resolve()
       })
@@ -319,6 +370,7 @@ const playAudioWithAnimations = async (response: any) => {
     if (lastMessage) {
       lastMessage.isAudioPlaying = false
     }
+    clearSubtitleTimer()
     subtitleText.value = ''
   }
 }
@@ -423,6 +475,47 @@ const addSystemMessage = (text: string) => {
 }
 
 /**
+ * 渐进式字幕显示：根据音频时长逐字刻出字幕
+ * @param fullText 完整字幕文本
+ * @param durationMs 音频时长（毫秒）
+ */
+const startProgressiveSubtitle = (fullText: string, durationMs: number) => {
+  clearSubtitleTimer()
+
+  const chars = Array.from(fullText)  // 支持 Unicode / emoji
+  const totalChars = chars.length
+  if (totalChars === 0) return
+
+  // 每个字符的间隔时间，留出 10% 尾部时间保持全文显示
+  const charInterval = Math.max(50, (durationMs * 0.9) / totalChars)
+  let currentIndex = 0
+
+  subtitleText.value = chars[0]  // 立刻显示第一个字
+  currentIndex = 1
+
+  const tick = () => {
+    if (currentIndex < totalChars) {
+      subtitleText.value = chars.slice(0, currentIndex + 1).join('')
+      currentIndex++
+      subtitleTimer = setTimeout(tick, charInterval)
+    }
+    // 全部显示完毕后等待 onEnd 回调清除
+  }
+
+  subtitleTimer = setTimeout(tick, charInterval)
+}
+
+/**
+ * 清除字幕定时器
+ */
+const clearSubtitleTimer = () => {
+  if (subtitleTimer !== null) {
+    clearTimeout(subtitleTimer)
+    subtitleTimer = null
+  }
+}
+
+/**
  * 清空聊天历史
  */
 const clearHistory = () => {
@@ -498,6 +591,7 @@ onMounted(async () => {
 })
 
 onUnmounted(async () => {
+  clearSubtitleTimer()
   await ws.disconnect()
   audioPlayer.cleanup()
 })
@@ -510,9 +604,9 @@ onUnmounted(async () => {
   gap: 20px;
   padding: 20px;
   height: 100vh;
-  /* 背景图片可替换：与 App.vue 共用 bg.jpg，也可单独设置 */
+  /* 背景图片可替换：将 bg.jpg 放入 public/images/ 目录即可覆盖默认背景 */
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  background-image: url('/images/bg.jpg');
+  background-image: url('/images/bg.jpg'), url('/images/bg.svg');
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -892,6 +986,88 @@ onUnmounted(async () => {
   display: flex;
   gap: 10px;
   align-items: flex-end;
+}
+
+/* ============ Emoji 选择器 ============ */
+
+.emoji-picker-wrapper {
+  position: relative;
+}
+
+.emoji-toggle-btn {
+  width: 40px;
+  height: 40px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  background: white;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.emoji-toggle-btn:hover:not(:disabled) {
+  border-color: #667eea;
+  background: #f5f3ff;
+}
+
+.emoji-toggle-btn.active {
+  border-color: #667eea;
+  background: #ede9fe;
+}
+
+.emoji-toggle-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.emoji-panel {
+  position: absolute;
+  bottom: 50px;
+  right: 0;
+  width: 280px;
+  max-height: 200px;
+  overflow-y: auto;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  padding: 10px;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+  z-index: 100;
+  animation: emojiSlideIn 0.2s ease-out;
+}
+
+@keyframes emojiSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.emoji-item {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.emoji-item:hover {
+  background: #f0f0f0;
+  transform: scale(1.15);
 }
 
 .send-button,
