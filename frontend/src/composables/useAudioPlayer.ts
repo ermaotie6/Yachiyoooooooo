@@ -7,7 +7,7 @@ interface AudioAnalysisData {
 }
 
 export function useAudioPlayer() {
-  const audioElement = new Audio()
+  let audioElement = new Audio()
   const isPlaying = ref(false)
   const currentTime = ref(0)
   const duration = ref(0)
@@ -17,6 +17,7 @@ export function useAudioPlayer() {
   let audioContext: AudioContext | null = null
   let analyser: AnalyserNode | null = null
   let sourceNode: MediaElementAudioSourceNode | null = null
+  let sourceConnected = false  // 追踪 MediaElementSource 是否已连接
   let animationFrameId: number | null = null
 
   // 事件回调
@@ -36,10 +37,13 @@ export function useAudioPlayer() {
       analyser.fftSize = 256
 
       // 将音频元素连接到分析器
-      if (audioContext && analyser) {
+      // createMediaElementSource 对同一个 Audio 元素只能调用一次，
+      // 因此用 sourceConnected 标记防止重复调用导致 InvalidStateError
+      if (audioContext && analyser && !sourceConnected) {
         sourceNode = audioContext.createMediaElementSource(audioElement)
         sourceNode.connect(analyser)
         analyser.connect(audioContext.destination)
+        sourceConnected = true
       }
 
       console.log('[AudioPlayer] Audio context initialized')
@@ -222,6 +226,12 @@ export function useAudioPlayer() {
       audioContext.close()
       audioContext = null
       analyser = null
+      sourceNode = null
+      sourceConnected = false
+      // 重建 Audio 元素，因为旧元素已被 createMediaElementSource 绑定过，
+      // 无法再次绑定到新的 AudioContext
+      audioElement = new Audio()
+      audioElement.volume = volume.value
     }
   }
 

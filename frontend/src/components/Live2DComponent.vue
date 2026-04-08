@@ -22,7 +22,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import * as PIXI from 'pixi.js'
 import { Live2DModel, MotionPreloadStrategy } from 'pixi-live2d-display'
 

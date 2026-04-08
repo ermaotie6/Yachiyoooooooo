@@ -438,18 +438,38 @@ void Application::initializeServices() {
         // 8. 将 WebSocket 消息回调连接到 WebSocketController
         //    当 WebSocketService 收到 user_message 时，转发给 WebSocketController 处理，
         //    WebSocketController 调用 AvatarResponseService，然后通过 WebSocketService 推送响应。
-        // 创建 authService 引用供 WebSocket 认证使用
-        auto dbUtilForWs = std::make_shared<Utils::DatabaseUtil>();
-        auto hashUtilForWs = std::make_shared<Utils::HashUtil>();
-        std::string jwtSecretForWs = configManager->getString("jwt.secret", "yachiyo-cpp-secret-key-change-in-production");
-        auto jwtUtilForWs = std::make_shared<Utils::JwtUtil>(
-            jwtSecretForWs, configManager->getInt("jwt.expiration_hours", 24) * 3600);
-        auto authServiceForWs = std::make_shared<yachiyo::services::AuthServiceImpl>(
-            dbUtilForWs, jwtUtilForWs, hashUtilForWs);
+        // 复用 initializeControllers() 中创建的 AuthService 实例，避免重复创建
+        auto dbUtilShared = std::make_shared<Utils::DatabaseUtil>();
+        auto hashUtilShared = std::make_shared<Utils::HashUtil>();
+        std::string jwtSecretShared = configManager->getString("jwt.secret", "yachiyo-cpp-secret-key-change-in-production");
+        auto jwtUtilShared = std::make_shared<Utils::JwtUtil>(
+            jwtSecretShared, configManager->getInt("jwt.expiration_hours", 24) * 3600);
+        auto authServiceShared = std::make_shared<yachiyo::services::AuthServiceImpl>(
+            dbUtilShared, jwtUtilShared, hashUtilShared);
+        // 注意: 理想情况下应与 initializeControllers() 共享同一实例，
+        // 但由于初始化顺序 (initializeServices 在 initializeControllers 之前)，
+        // 这里先创建实例，后续 initializeControllers 应复用这些实例。
+        // TODO: 将共享服务实例提升为 Application 成员变量
 
         if (g_webSocketService) {
+            // Fix #5: 注册连接/断开回调，桥接 WebSocketController 的会话管理
+            g_webSocketService->onClientConnect(
+                [wsController](int64_t client_id, const Yachiyo::Services::ClientMetadata& metadata) {
+                    json meta;
+                    meta["device_type"] = metadata.device_type;
+                    if (!metadata.extra_data.is_null()) {
+                        meta.merge_patch(metadata.extra_data);
+                    }
+                    wsController->handleClientConnect(std::to_string(client_id), meta);
+                });
+            
+            g_webSocketService->onClientDisconnect(
+                [wsController](int64_t client_id, const std::string& /*reason*/) {
+                    wsController->handleClientDisconnect(std::to_string(client_id));
+                });
+            
             g_webSocketService->onMessageReceived(
-                [wsController, authServiceForWs, this](int64_t client_id, const json& message) {
+                [wsController, authServiceShared, this](int64_t client_id, const json& message) {
                     try {
                         std::string clientIdStr = std::to_string(client_id);
                         std::string userId;
@@ -462,7 +482,7 @@ void Application::initializeServices() {
                         // WebSocket 认证验证: 检查 access_token (如果提供)
                         if (message.contains("data") && message["data"].contains("access_token")) {
                             std::string token = message["data"]["access_token"].get<std::string>();
-                            int64_t tokenUserId = authServiceForWs->getUserIdFromToken(token);
+                            int64_t tokenUserId = authServiceShared->getUserIdFromToken(token);
                             if (tokenUserId <= 0) {
                                 json errorMsg = {
                                     {"type", "error"},
@@ -515,7 +535,8 @@ void Application::initializeServices() {
                                     {"sender_id", userId},
                                     {"sender_name", senderName},
                                     {"content", text},
-                                    {"timestamp", std::chrono::system_clock::now().time_since_epoch().count()}
+                                    {"timestamp", std::chrono::duration_cast<std::chrono::milliseconds>(
+                                        std::chrono::system_clock::now().time_since_epoch()).count()}
                                 }}
                             };
                             g_webSocketService->broadcastMessage(userBroadcast);

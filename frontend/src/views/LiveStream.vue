@@ -207,7 +207,8 @@ const toggleEmojiPicker = () => {
 }
 
 const insertEmoji = (emoji: string) => {
-  if (messageInput.value.length < 50) {
+  // 使用 Array.from 正确统计 Unicode 字符数（包括 emoji 组合符）
+  if (Array.from(messageInput.value).length < 50) {
     messageInput.value += emoji
   }
   showEmojiPicker.value = false
@@ -217,9 +218,11 @@ const insertEmoji = (emoji: string) => {
 let subtitleTimer: ReturnType<typeof setTimeout> | null = null
 
 const authStore = useAuthStore()
+// 稳定的 guest ID — 使用 ref 保证在整个组件生命周期内不变
+const stableGuestId = ref(`guest_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`)
 const currentUser = computed(() => ({
   name: authStore.user?.username || '匿名用户',
-  id: authStore.user?.userId ? String(authStore.user.userId) : `guest_${Date.now()}`
+  id: authStore.user?.userId ? String(authStore.user.userId) : stableGuestId.value
 }))
 
 const connectionStatus = computed(() =>

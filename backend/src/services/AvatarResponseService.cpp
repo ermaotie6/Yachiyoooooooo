@@ -81,10 +81,12 @@ Utils::Result<AvatarResponse> AvatarResponseService::processUserMessage(
     auto startTime = std::chrono::system_clock::now();
     AvatarResponse response;
     response.requestId = "resp_" + std::to_string(
-        std::chrono::system_clock::now().time_since_epoch().count()
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count()
     );
     response.userId = userId;
-    response.timestamp = std::chrono::system_clock::now().time_since_epoch().count();
+    response.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
     
     // ===== 步骤1: 内容审核 =====
     if (moderation_service_) {
@@ -214,10 +216,12 @@ Utils::Result<AvatarResponse> AvatarResponseService::generateFromOpenClaw(
     
     AvatarResponse response;
     response.requestId = "resp_" + std::to_string(
-        std::chrono::system_clock::now().time_since_epoch().count()
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count()
     );
     response.userId = userId;
-    response.timestamp = std::chrono::system_clock::now().time_since_epoch().count();
+    response.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
     response.originalText = openclawResponse.text;
     response.emotions = openclawResponse.emotions;
     response.actions = openclawResponse.actions;
@@ -291,11 +295,12 @@ Utils::Result<std::vector<AvatarResponse>> AvatarResponseService::batchProcessMe
 void AvatarResponseService::clearCache(int maxAgeSeconds) {
     std::lock_guard<std::mutex> lock(cache_mutex_);
     
-    auto now = std::chrono::system_clock::now().time_since_epoch().count();
+    auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
     
     std::vector<std::string> keysToRemove;
     for (const auto& entry : response_cache_) {
-        int ageSeconds = (now - entry.second.timestamp) / 1000000000;
+        int ageSeconds = static_cast<int>((now - entry.second.timestamp) / 1000);
         if (ageSeconds > maxAgeSeconds) {
             keysToRemove.push_back(entry.first);
         }

@@ -61,7 +61,8 @@ std::string WebSocketController::handleClientConnect(
     ClientSession session;
     session.clientId = clientId;
     session.sessionId = generateSessionId();
-    session.connectedAt = std::chrono::system_clock::now().time_since_epoch().count();
+    session.connectedAt = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
     session.lastActivity = session.connectedAt;
     session.isAlive = true;
     
@@ -91,7 +92,8 @@ void WebSocketController::handleClientDisconnect(const std::string& clientId) {
     if (it != sessions_.end()) {
         json details = {
             {"connectedDuration", 
-             std::chrono::system_clock::now().time_since_epoch().count() - it->second.connectedAt}
+             std::chrono::duration_cast<std::chrono::milliseconds>(
+                 std::chrono::system_clock::now().time_since_epoch()).count() - it->second.connectedAt}
         };
         logClientEvent(clientId, "DISCONNECT", details);
         sessions_.erase(it);
@@ -120,7 +122,8 @@ Utils::Result<json> WebSocketController::handleMessage(
         std::lock_guard<std::mutex> lock(session_mutex_);
         auto it = sessions_.find(clientId);
         if (it != sessions_.end()) {
-            it->second.lastActivity = std::chrono::system_clock::now().time_since_epoch().count();
+            it->second.lastActivity = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
         }
     }
     
@@ -155,7 +158,8 @@ Utils::Result<json> WebSocketController::handleMessage(
         case WSMessageType::HEARTBEAT: {
             response = createResponse(WSMessageType::HEARTBEAT, clientId, {
                 {"status", "alive"},
-                {"timestamp", std::chrono::system_clock::now().time_since_epoch().count()}
+                {"timestamp", std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count()}
             });
             break;
         }
@@ -213,7 +217,8 @@ Utils::Result<json> WebSocketController::processUserMessage(
             {"actions", json::array()},
             {"animation_commands", json::array()},
             {"processing_time_ms", avatarResponse.processingTimeMs},
-            {"timestamp", std::chrono::system_clock::now().time_since_epoch().count()}
+            {"timestamp", std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count()}
         }}
     };
     
@@ -301,11 +306,12 @@ void WebSocketController::heartbeatRoutine() {
 void WebSocketController::checkClientHealth() {
     std::lock_guard<std::mutex> lock(session_mutex_);
     
-    auto now = std::chrono::system_clock::now().time_since_epoch().count();
+    auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
     
     for (auto& entry : sessions_) {
         // 心跳超时：5分钟没有活动
-        int inactiveSeconds = (now - entry.second.lastActivity) / 1000000000;
+        int inactiveSeconds = static_cast<int>((now - entry.second.lastActivity) / 1000);
         if (inactiveSeconds > 300) {
             entry.second.isAlive = false;
             LOG_WARN("客户端心跳超时: {}", entry.first);
@@ -350,7 +356,8 @@ json WebSocketController::getSessionInfo(const std::string& clientId) {
     }
     
     const auto& session = it->second;
-    auto now = std::chrono::system_clock::now().time_since_epoch().count();
+    auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
     
     return json{
         {"clientId", session.clientId},
@@ -359,7 +366,7 @@ json WebSocketController::getSessionInfo(const std::string& clientId) {
         {"language", session.language},
         {"connectedAt", session.connectedAt},
         {"lastActivity", session.lastActivity},
-        {"connectedDuration", (now - session.connectedAt) / 1000000000},
+        {"connectedDuration", (now - session.connectedAt) / 1000},
         {"isAlive", session.isAlive}
     };
 }
@@ -424,7 +431,8 @@ json WebSocketController::createResponse(
     return json{
         {"type", static_cast<int>(type)},
         {"clientId", clientId},
-        {"timestamp", std::chrono::system_clock::now().time_since_epoch().count()},
+        {"timestamp", std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count()},
         {"payload", payload}
     };
 }
@@ -436,11 +444,12 @@ std::string WebSocketController::generateSessionId() {
 void WebSocketController::cleanupExpiredSessions(int timeoutSeconds) {
     std::lock_guard<std::mutex> lock(session_mutex_);
     
-    auto now = std::chrono::system_clock::now().time_since_epoch().count();
+    auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
     
     std::vector<std::string> keysToRemove;
     for (const auto& entry : sessions_) {
-        int inactiveSeconds = (now - entry.second.lastActivity) / 1000000000;
+        int inactiveSeconds = static_cast<int>((now - entry.second.lastActivity) / 1000);
         if (inactiveSeconds > timeoutSeconds && !entry.second.isAlive) {
             keysToRemove.push_back(entry.first);
         }
