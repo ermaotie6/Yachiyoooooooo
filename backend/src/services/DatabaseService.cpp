@@ -373,8 +373,8 @@ Result<void> ConversationContextDAO::update(const ConversationContext& context) 
         std::string query = R"(
             UPDATE conversation_contexts
             SET context_data = $1, message_history = $2, user_profile = $3,
-                message_count = $4, updated_at = NOW()
-            WHERE id = $5
+                message_count = $4, is_active = $5, updated_at = NOW()
+            WHERE id = $6
         )";
 
         txn.exec_params(
@@ -383,6 +383,7 @@ Result<void> ConversationContextDAO::update(const ConversationContext& context) 
             context.message_history.dump(),
             context.user_profile.dump(),
             context.message_count,
+            context.is_active,
             context.id
         );
 

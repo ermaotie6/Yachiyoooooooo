@@ -24,8 +24,7 @@ static std::string generateUUID() {
 WebSocketController::WebSocketController(
     std::shared_ptr<services::AvatarResponseService> avatarService
 ) 
-    : avatar_service_(avatarService),
-      is_running_(false) {
+    : avatar_service_(avatarService) {
 }
 
 WebSocketController::~WebSocketController() {
@@ -112,7 +111,7 @@ Utils::Result<json> WebSocketController::handleMessage(
     auto parseResult = parseMessage(messageData);
     if (!parseResult.isSuccess()) {
         LOG_ERROR("消息解析失败: {}", parseResult.getError().message);
-        return parseResult;
+        return Utils::Result<json>::fail(4000, parseResult.getError().message);
     }
     
     auto wsMessage = parseResult.getValue();
@@ -394,13 +393,13 @@ void WebSocketController::broadcastError(
 
 // ==================== 私有方法 ====================
 
-Utils::Result<json> WebSocketController::parseMessage(const std::string& messageData) {
+Utils::Result<WSMessage> WebSocketController::parseMessage(const std::string& messageData) {
     try {
         auto msg = json::parse(messageData);
         
         // 验证必要字段 —— 兼容前端格式 (type + data) 和控制器格式 (type + payload)
         if (!msg.contains("type")) {
-            return Utils::Result<json>::fail(4000, "消息格式不完整: 缺少 type");
+            return Utils::Result<WSMessage>::fail(4000, "消息格式不完整: 缺少 type");
         }
         
         // 统一: 如果前端发送的是 'data'，映射为 'payload'
@@ -416,10 +415,38 @@ Utils::Result<json> WebSocketController::parseMessage(const std::string& message
             msg["payload"]["text"] = msg["payload"]["content"];
         }
         
-        return Utils::Result<json>::success(msg);
+        // 构建 WSMessage 结构体
+        WSMessage wsMessage;
+        wsMessage.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        wsMessage.payload = msg["payload"];
+        
+        // 提取 userId
+        if (wsMessage.payload.contains("user_id")) {
+            wsMessage.userId = wsMessage.payload["user_id"].get<std::string>();
+        }
+        
+        // 提取 clientId
+        if (msg.contains("clientId")) {
+            wsMessage.clientId = msg["clientId"].get<std::string>();
+        }
+        
+        // 映射消息类型字符串到枚举
+        std::string typeStr = msg["type"].get<std::string>();
+        if (typeStr == "user_message") {
+            wsMessage.type = WSMessageType::USER_MESSAGE;
+        } else if (typeStr == "pong" || typeStr == "ping" || typeStr == "heartbeat") {
+            wsMessage.type = WSMessageType::HEARTBEAT;
+        } else if (typeStr == "status_request" || typeStr == "system_info") {
+            wsMessage.type = WSMessageType::SYSTEM_INFO;
+        } else {
+            wsMessage.type = WSMessageType::USER_MESSAGE;  // 默认当作用户消息
+        }
+        
+        return Utils::Result<WSMessage>::success(wsMessage);
     } catch (const std::exception& e) {
         LOG_ERROR("JSON 解析异常: {}", e.what());
-        return Utils::Result<json>::fail(4001, "消息解析失败");
+        return Utils::Result<WSMessage>::fail(4001, "消息解析失败");
     }
 }
 
@@ -428,12 +455,26 @@ json WebSocketController::createResponse(
     const std::string& clientId,
     const json& payload
 ) {
+    // 枚举转字符串类型名（与前端 useWebSocket.ts 的 switch(message.type) 对应）
+    static const std::map<WSMessageType, std::string> typeNames = {
+        {WSMessageType::CONNECT,        "welcome"},
+        {WSMessageType::DISCONNECT,     "disconnect"},
+        {WSMessageType::USER_MESSAGE,   "user_message"},
+        {WSMessageType::SYSTEM_INFO,    "status"},
+        {WSMessageType::HEARTBEAT,      "ping"},
+        {WSMessageType::ERROR_RESPONSE, "error"},
+        {WSMessageType::AVATAR_RESPONSE,"avatar_response"}
+    };
+
+    auto it = typeNames.find(type);
+    std::string typeName = (it != typeNames.end()) ? it->second : "unknown";
+
     return json{
-        {"type", static_cast<int>(type)},
+        {"type", typeName},
         {"clientId", clientId},
+        {"data", payload},
         {"timestamp", std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count()},
-        {"payload", payload}
+            std::chrono::system_clock::now().time_since_epoch()).count()}
     };
 }
 

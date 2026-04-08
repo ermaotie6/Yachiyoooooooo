@@ -70,11 +70,52 @@ export const useAuthStore = defineStore('auth', () => {
     return access
   }
 
-  // 初始化：从存储恢复用户
-  const initializeAuth = () => {
+  // 初始化：从存储恢复用户，并验证 token 有效性
+  const initializeAuth = async () => {
     const savedUser = localStorage.getItem('user')
     if (savedUser) {
-      user.value = JSON.parse(savedUser)
+      try {
+        user.value = JSON.parse(savedUser)
+      } catch {
+        // 解析失败，清除脏数据
+        logout()
+        return
+      }
+    }
+
+    // 如果有 accessToken，验证其有效性
+    if (accessToken.value && user.value) {
+      try {
+        // 尝试使用当前 token 获取用户信息来验证有效性
+        const response = await api.get('/auth/me')
+        if (response.data?.data) {
+          // token 有效，使用服务端返回的最新用户信息
+          const serverUser = response.data.data
+          const roleRaw = String(serverUser.role ?? 'user').toLowerCase()
+          const normalizedRole: 'user' | 'admin' = roleRaw === 'admin' ? 'admin' : 'user'
+          const userData: User = {
+            userId: serverUser.id ?? user.value.userId,
+            username: serverUser.username ?? user.value.username,
+            email: serverUser.email ?? user.value.email,
+            displayName: serverUser.nickname ?? serverUser.username ?? user.value.displayName,
+            role: normalizedRole,
+            createdAt: serverUser.created_at ?? user.value.createdAt
+          }
+          setUser(userData)
+        }
+      } catch {
+        // token 无效或过期，尝试刷新
+        if (refreshToken.value) {
+          try {
+            await refreshAccessToken()
+          } catch {
+            // 刷新也失败，强制登出
+            logout()
+          }
+        } else {
+          logout()
+        }
+      }
     }
   }
 

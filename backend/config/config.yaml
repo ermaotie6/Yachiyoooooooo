@@ -1,9 +1,13 @@
 # YachiyoCPP 配置文件
+# 注意: 此文件在 Docker 部署时通过 docker-compose 挂载到容器的 /app/config/ 目录
+# 配置键名必须与 Application.cpp 中 configManager->getString/getInt 的 key 路径一致
 
-# 服务器配置
+# ============ 服务器配置 ============
 server:
+  host: "${SERVER_HOST:0.0.0.0}"
   port: 8080
-  host: "0.0.0.0"
+  debug: false
+  log_level: "info"
   threads: 4
   max_connections: 1000
   timeout: 30
@@ -11,169 +15,180 @@ server:
   ssl_cert: ""
   ssl_key: ""
 
-# 数据库配置
-database:
-  type: "postgresql"
-  host: "localhost"
-  port: 5432
-  name: "yachiyo_cpp"
-  username: "postgres"
-  password: "password"
-  max_connections: 20
-  connection_timeout: 10
-  reconnect_attempts: 3
-
-# Redis配置
-redis:
-  host: "localhost"
-  port: 6379
-  password: ""
-  database: 0
-  max_connections: 10
-  timeout: 5
-
-# WebSocket配置
+# ============ WebSocket 配置 ============
 websocket:
+  enabled: true
+  host: "${WEBSOCKET_HOST:0.0.0.0}"
   port: 9001
+  path: "/ws"
   max_connections: 1000
   heartbeat_interval_ms: 30000
   idle_timeout_ms: 300000
 
-# OpenClaw 桥接服务配置
-openclaw:
-  bridge_endpoint: "http://localhost:8765"
-  timeout_seconds: 30
+# ============ 数据库配置 ============
+database:
+  type: "postgresql"
+  host: "${DB_HOST:localhost}"
+  port: 5432
+  name: "${DB_NAME:yachiyo}"
+  username: "${DB_USER:postgres}"
+  password: "${DB_PASSWORD}"
+  connection_timeout: 30
+  poolSize: 20
+  max_idle_time: 300
 
-# 虚拟形象配置
+# ============ Redis 缓存配置 ============
+redis:
+  enabled: true
+  host: "${REDIS_HOST:localhost}"
+  port: 6379
+  database: 0
+  password: ""
+  ttl_seconds: 3600
+  pool_size: 10
+
+# ============ GPT-SoVITS 配置 ============
+gpt_sovits:
+  enabled: true
+  api_endpoint: "${SOVITS_ENDPOINT:http://localhost:5000}"
+  api_key: "${SOVITS_API_KEY}"
+  mode: "cpu"
+  timeout_seconds: 60
+  voice_presets:
+    default:
+      pitch: 1.0
+      speed: 1.0
+      energy: 0.5
+      reference_audio: ""
+    playful:
+      pitch: 1.2
+      speed: 1.1
+      energy: 0.8
+      reference_audio: ""
+    serious:
+      pitch: 0.9
+      speed: 0.9
+      energy: 0.6
+      reference_audio: ""
+
+# ============ Live2D 配置 ============
+live2d:
+  model_path: "./resources/live2d"
+  default_model: "yachiyo"
+  expression_map:
+    neutral: "f_smile"
+    happy: "f_smile"
+    sad: "f_sad"
+    angry: "f_squint"
+    surprised: "f_cry"
+    cry: "f_cry"
+    squint: "f_squint"
+  motion_map:
+    greet: "m_greet"
+    nod: "m_nod"
+    shake: "m_shake"
+    think: "m_think"
+    wave: "m_wave"
+    idle: "m_idle"
+
+# ============ 内容审核配置 ============
+moderation:
+  enabled: true
+  use_deepseek: true
+  deepseek_api_key: "${DEEPSEEK_API_KEY}"
+  deepseek_api_endpoint: "${DEEPSEEK_ENDPOINT:https://api.deepseek.com}"
+  quick_check_enabled: true
+  ai_moderation_enabled: true
+  contextual_check_enabled: true
+  thresholds:
+    violence: 0.8
+    adult: 0.9
+    harassment: 0.7
+    spam: 0.6
+    hate: 0.7
+    profanity: 0.8
+  keywords_path: "./resources/keywords/sensitive_words.txt"
+
+# ============ OpenClaw 桥接服务配置 ============
+openclaw:
+  enabled: true
+  bridge_endpoint: "${OPENCLAW_BRIDGE_ENDPOINT:http://localhost:8765}"
+  request_timeout: 30
+  response_cache_enabled: true
+  response_cache_ttl: 300
+
+# ============ 翻译配置 ============
+translation:
+  enabled: true
+  default_language: "zh"
+  services:
+    - name: "baidu"
+      appid: "${BAIDU_TRANSLATE_APPID}"
+      api_key: "${BAIDU_TRANSLATE_API_KEY}"
+      endpoint: "https://fanyi-api.baidu.com/api/trans/vip/translate"
+      priority: 1
+    - name: "deepseek"
+      api_key: "${DEEPSEEK_API_KEY}"
+      endpoint: "${DEEPSEEK_ENDPOINT:https://api.deepseek.com}"
+      priority: 2
+
+# ============ JWT 认证配置 ============
+jwt:
+  secret: "${JWT_SECRET_KEY:yachiyo-cpp-secret-key-change-in-production}"
+  algorithm: "HS256"
+  expiration_hours: 24
+  refresh_expiration_days: 7
+  issuer: "yachiyo-cpp"
+  audience: "yachiyo-users"
+
+# ============ 虚拟形象配置 ============
 avatar:
   language: "ja"
   default_emotion: "neutral"
   model_path: "resources/live2d"
 
-# JWT配置
-jwt:
-  secret: "yachiyo-cpp-secret-key-change-in-production"
-  expiration_hours: 24
-  issuer: "yachiyo-cpp"
-  audience: "yachiyo-users"
-
-# AI服务配置
+# ============ AI 服务配置 ============
 ai:
-  # OpenAI配置
-  openai:
-    api_key: ""  # 填入你的 OpenAI API Key
-    base_url: "https://api.openai.com/v1"
-    model: "gpt-3.5-turbo"
-    temperature: 0.7
-    max_tokens: 1000
-    
-  # DeepSeek配置
   deepseek:
-    api_key: ""  # 填入你的 DeepSeek API Key (https://platform.deepseek.com)
+    api_key: "${DEEPSEEK_API_KEY}"
     base_url: "https://api.deepseek.com"
     model: "deepseek-chat"
     temperature: 0.7
     max_tokens: 4000
-    
-  # 千问 (阿里云国内版) 配置
+  openai:
+    api_key: ""
+    base_url: "https://api.openai.com/v1"
+    model: "gpt-3.5-turbo"
+    temperature: 0.7
+    max_tokens: 1000
   qianwen:
-    api_key: ""  # 填入你的 千问 API Key (https://dashscope.aliyun.com/api-key_create 或阿里云控制台)
-    base_url: "https://dashscope.aliyuncs.com/api/v1"  # 国内端点
+    api_key: ""
+    base_url: "https://dashscope.aliyuncs.com/api/v1"
     model: "qwen-turbo"
     temperature: 0.7
     max_tokens: 2000
-    
-  # Qwen (国际版 DashScope) 配置
-  qwen_intl:
-    api_key: ""  # 填入你的 Qwen 国际版 API Key (https://dashscope.aliyun.com)
-    base_url: "https://dashscope.aliyuncs.com/api/v1"  # 国际端点
-    model: "qwen-turbo"
-    temperature: 0.7
-    max_tokens: 2000
-    
-  # Ollama配置 (本地部署)
   ollama:
-    base_url: "http://localhost:11434"
+    base_url: ""
     model: "llama2"
     temperature: 0.7
     max_tokens: 1000
-    
-  # 语音合成配置 (GPT-SoVITS)
-  gpt_sovits:
-    enabled: true
-    endpoint: "http://localhost:5000"
-    mode: "cpu"                    # "gpu" (timeout=15s) 或 "cpu" (timeout=60s)
-    timeout_seconds: 60            # CPU 模式建议 60，GPU 模式建议 15
-    model: "deepseek-chat"
-    cache:
-      enabled: true
-      ttl_days: 7
-    performance:
-      max_concurrent: 5
-      batch_size: 10
-    voice_presets:
-      default: "yachiyou_default"
-      playful: "yachiyou_playful"
-      cool: "yachiyou_cool"
-  
-  # 翻译服务配置
-  translation:
-    enabled: true
-    engines:
-      - name: "baidu"
-        type: "api"
-        enabled: true
-        endpoint: "https://fanyi-api.baidu.com/api/trans/vip/translate"
-        appid: ""       # 填入百度翻译 APPID（开发者信息页面获取）
-        api_key: ""     # 填入百度翻译密钥（同一页面获取）
-        timeout_seconds: 5
-      - name: "deepseek"
-        type: "api"
-        enabled: true
-        endpoint: "https://api.deepseek.com"
-        api_key: ""     # 复用 DeepSeek API Key
-        model: "deepseek-chat"
-        timeout_seconds: 5
-    cache:
-      enabled: true
-      ttl_seconds: 3600
-      max_entries: 100000
-    performance:
-      batch_size: 10
-      max_concurrent: 5
-      fallback_to_source: true
-  
-  # 内容审查 (DeepSeek)
-  deepseek_moderation:
-    enabled: true
-    engine: "deepseek"
-    endpoint: "https://api.deepseek.com"
-    api_key: ""  # 填入 DeepSeek API Key
-    model: "deepseek-chat"
-    timeout_seconds: 5
-    cache:
-      enabled: true
-      ttl_seconds: 3600
-    categories:
-      - violence
-      - adult
-      - harassment
-      - spam
-      - hate
-      - profanity
-    performance:
-      batch_size: 10
-      max_concurrent: 5
 
-# 日志配置
+# ============ 日志配置 ============
 logging:
-  level: "info"  # debug, info, warn, error
-  file_path: "logs/yachiyo.log"
-  max_size_mb: 100
-  max_files: 10
+  level: "info"
+  format: "json"
+  file_path: "./logs/yachiyo.log"
+  max_file_size_mb: 100
+  retention_days: 30
   console_output: true
+  modules:
+    database: "info"
+    websocket: "debug"
+    auth: "info"
+    moderation: "info"
+    openclaw: "info"
 
-# 安全配置
+# ============ 安全配置 ============
 security:
   password_min_length: 8
   password_require_uppercase: true
@@ -185,22 +200,22 @@ security:
   cors_enabled: true
   cors_origins: "*"
 
-# 缓存配置
-cache:
-  enabled: true
-  default_ttl_seconds: 3600
-  user_cache_ttl: 1800
-  conversation_cache_ttl: 7200
-
-# 性能配置
+# ============ 性能优化配置 ============
 performance:
+  message_queue_size: 1000
+  worker_threads: 4
+  batch_interval_ms: 100
+  db_pool_min_size: 5
+  db_pool_max_size: 20
+  db_connection_timeout_ms: 5000
+  cache_enabled: true
+  cache_max_size: 10000
+  cache_ttl_seconds: 3600
   max_request_size_mb: 10
-  max_response_time_ms: 5000
   rate_limit_enabled: true
   rate_limit_requests_per_minute: 60
-  compression_enabled: true
 
-# 监控配置
+# ============ 监控配置 ============
 monitoring:
   enabled: true
   metrics_port: 9090

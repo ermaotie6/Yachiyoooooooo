@@ -125,6 +125,13 @@ public:
     json toJson() const override {
         json j = BaseModel::toJson();
         
+        // 覆盖 BaseModel 的 string id，输出为整数（前端 User.userId 为 number 类型）
+        try {
+            j["id"] = std::stoll(getId());
+        } catch (...) {
+            // id 不是合法数字时保留原始字符串
+        }
+        
         std::string roleStr = (role == UserRole::ADMIN) ? "admin" : "user";
         std::string statusStr;
         switch (status) {

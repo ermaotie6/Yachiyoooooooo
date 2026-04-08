@@ -98,6 +98,12 @@ dto::ExpressionCommand Live2DAnimationService::mapEmotionToExpression(
         cmd.durationMs = 1000;
     }
     
+    // 同步写入 params，防止存入 vector<Live2DCommand> 时 object slicing 丢失子类字段
+    cmd.params = {
+        {"expression_name", cmd.expressionName},
+        {"duration_ms", cmd.durationMs}
+    };
+    
     return cmd;
 }
 
@@ -129,6 +135,14 @@ dto::MotionCommand Live2DAnimationService::mapActionToMotion(
         cmd.index = 0;
     }
     
+    // 同步写入 params，防止存入 vector<Live2DCommand> 时 object slicing 丢失子类字段
+    cmd.params = {
+        {"group", cmd.group},
+        {"index", cmd.index},
+        {"loop", cmd.loop},
+        {"priority", cmd.priority}
+    };
+    
     return cmd;
 }
 
@@ -155,6 +169,12 @@ dto::ExpressionCommand Live2DAnimationService::mapActionToExpression(
         cmd.expressionName = "f_smile";
         cmd.durationMs = 1000;
     }
+    
+    // 同步写入 params，防止存入 vector<Live2DCommand> 时 object slicing 丢失子类字段
+    cmd.params = {
+        {"expression_name", cmd.expressionName},
+        {"duration_ms", cmd.durationMs}
+    };
     
     return cmd;
 }

@@ -54,6 +54,15 @@ void AuthController::registerRoutes(crow::SimpleApp& app) {
             return res;
         });
 
+    // /auth/me 别名 — 前端 initializeAuth() 使用此端点验证令牌
+    CROW_ROUTE(app, "/api/v1/auth/me")
+        .methods("GET"_method)
+        ([this](const crow::request& req) {
+            crow::response res;
+            this->getProfile(req, res);
+            return res;
+        });
+
     // 更新个人资料 — 需要认证
     CROW_ROUTE(app, "/api/v1/auth/profile")
         .methods("PUT"_method)

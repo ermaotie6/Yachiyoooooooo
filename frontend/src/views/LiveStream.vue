@@ -91,16 +91,16 @@
           <textarea
             v-model="messageInput"
             placeholder="输入你的消息（最多50字）..."
-            maxlength="50"
             :disabled="!isConnected || isProcessing"
             @keydown.enter.ctrl="sendMessage"
+            @input="onInputLimit"
             class="message-input"
           />
 
           <!-- 字数统计 -->
           <div class="char-counter">
-            <span :class="{ warning: messageInput.length > 40, danger: messageInput.length > 45 }">
-              {{ messageInput.length }}/50
+            <span :class="{ warning: charCount > 40, danger: charCount > 45 }">
+              {{ charCount }}/50
             </span>
           </div>
         </div>
@@ -214,6 +214,17 @@ const insertEmoji = (emoji: string) => {
   showEmojiPicker.value = false
 }
 
+/**
+ * 输入限制 — 用 Unicode 字符计数截断超长输入
+ * 替代原生 maxlength（原生按 UTF-16 代码单元计数，对 emoji 不准确）
+ */
+const onInputLimit = () => {
+  const chars = Array.from(messageInput.value)
+  if (chars.length > 50) {
+    messageInput.value = chars.slice(0, 50).join('')
+  }
+}
+
 // 字幕渐进显示
 let subtitleTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -228,6 +239,9 @@ const currentUser = computed(() => ({
 const connectionStatus = computed(() =>
   isConnected.value ? 'connected' : 'disconnected'
 )
+
+// Unicode 字符计数 — Array.from 正确处理 emoji 等多字节字符
+const charCount = computed(() => Array.from(messageInput.value).length)
 
 // ============ 组件引用 ============
 
@@ -266,7 +280,12 @@ const sendMessage = async () => {
 
   try {
     // 发送给后端（携带 userId 和 username 供广播使用）
-    ws.sendUserMessage(content, currentUser.value.id, currentUser.value.name)
+    const sent = ws.sendUserMessage(content, currentUser.value.id, currentUser.value.name)
+    if (!sent) {
+      // 消息被排队（WebSocket 未连接），不会收到 avatar_response，需重置状态
+      isProcessing.value = false
+      addSystemMessage('⚠️ 消息已排队，等待连接恢复后自动发送')
+    }
   } catch (error) {
     console.error('发送消息失败:', error)
     isProcessing.value = false
@@ -448,6 +467,8 @@ const handleConnectionStatusChange = (connected: boolean) => {
 const handleError = (error: string) => {
   console.error('错误:', error)
   connectionError.value = error
+  // 收到后端错误消息，说明本次请求处理失败，重置处理状态防止 UI 锁死
+  isProcessing.value = false
   addSystemMessage(`⚠️ 错误: ${error}`)
 }
 

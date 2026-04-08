@@ -20,19 +20,19 @@ websocket:
 # ============ 数据库配置 ============
 database:
   type: "postgresql"
-  host: "localhost"
+  host: "${DB_HOST:localhost}"
   port: 5432
-  name: "yachiyo"
-  user: "yachiyo_app"
+  name: "${DB_NAME:yachiyo}"
+  username: "${DB_USER:yachiyo_app}"
   password: "${DB_PASSWORD}"  # 从环境变量读取
   connection_timeout: 30
-  pool_size: 10
+  poolSize: 10
   max_idle_time: 300
 
 # ============ Redis 缓存配置 ============
 redis:
   enabled: true
-  host: "localhost"
+  host: "${REDIS_HOST:localhost}"
   port: 6379
   database: 0
   password: ""
@@ -71,14 +71,14 @@ live2d:
   default_model: "yachiyo"
   
   # 表情映射 (emotion → expression文件名)
+  # 注意: 必须与 yachiyo.model3.json 中的 Expressions.Name 一致
+  # 当前可用表情: f_smile, f_sad, f_squint, f_cry
   expression_map:
-    neutral: "f_default"
+    neutral: "f_smile"      # 模型无 f_default，用 f_smile 代替
     happy: "f_smile"
     sad: "f_sad"
-    angry: "f_angry"
-    surprised: "f_surprised"
-    confused: "f_confused"
-    thinking: "f_thinking"
+    angry: "f_squint"       # 模型无 f_angry，用 f_squint 代替
+    surprised: "f_cry"      # 模型无 f_surprised，用 f_cry 代替
     cry: "f_cry"
     squint: "f_squint"
   
@@ -152,9 +152,9 @@ translation:
 
 # ============ JWT 认证配置 ============
 jwt:
-  secret_key: "${JWT_SECRET_KEY}"
+  secret: "${JWT_SECRET_KEY}"
   algorithm: "HS256"
-  expiration_minutes: 60
+  expiration_hours: 24
   refresh_expiration_days: 7
 
 # ============ 日志配置 ============

@@ -77,42 +77,9 @@ CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS sessions_session_id_idx ON sessions(session_id);
 CREATE INDEX IF NOT EXISTS sessions_expires_at_idx ON sessions(expires_at);
 
--- ============ 消息表 ============
-
-CREATE TABLE IF NOT EXISTS messages (
-    id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    
-    -- 消息内容
-    content TEXT NOT NULL,
-    content_hash VARCHAR(255),  -- 用于去重
-    
-    -- 消息元数据
-    language VARCHAR(10),
-    character_count INT,
-    
-    -- 审核信息
-    review_status VARCHAR(50) DEFAULT 'pending',  -- pending, approved, rejected
-    moderation_result JSONB,
-    moderation_timestamp TIMESTAMP,
-    moderation_notes TEXT,
-    
-    -- 响应信息
-    avatar_response JSONB,
-    response_timestamp TIMESTAMP,
-    
-    -- 时间戳
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    -- 状态
-    is_visible BOOLEAN DEFAULT TRUE
-);
-
-CREATE INDEX IF NOT EXISTS messages_user_id_idx ON messages(user_id);
-CREATE INDEX IF NOT EXISTS messages_created_at_idx ON messages(created_at);
-CREATE INDEX IF NOT EXISTS messages_review_status_idx ON messages(review_status);
-CREATE INDEX IF NOT EXISTS messages_user_created_idx ON messages(user_id, created_at DESC);
+-- ============ 消息表（已废弃，统一使用 user_messages 表） ============
+-- 注意: messages 表已移除，实际业务数据存储在 user_messages 表中。
+-- 后端 MessageServiceImpl 仅操作 user_messages。
 
 -- ============ 对话上下文表 ============
 
@@ -147,12 +114,50 @@ CREATE INDEX IF NOT EXISTS contexts_user_id_idx ON conversation_contexts(user_id
 CREATE INDEX IF NOT EXISTS contexts_user_updated_idx ON conversation_contexts(user_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS contexts_session_id_idx ON conversation_contexts(session_id);
 
+-- ============ 用户消息表 (后端 MessageServiceImpl 引用) ============
+-- 注意: 此表必须在 avatar_responses、moderation_logs 之前创建（外键依赖）
+
+CREATE TABLE IF NOT EXISTS user_messages (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    
+    -- 消息内容
+    original_message TEXT NOT NULL,
+    message_length INT NOT NULL,
+    
+    -- 审查状态 (0=未审查, 1=通过, 2=拒绝, 3=待人工审查)
+    review_status SMALLINT DEFAULT 0 CHECK (review_status IN (0, 1, 2, 3)),
+    review_reason VARCHAR(255),
+    reviewed_by BIGINT REFERENCES users(id),
+    reviewed_at TIMESTAMP,
+    
+    -- 恶意行为检测
+    is_spam BOOLEAN DEFAULT FALSE,
+    is_abusive BOOLEAN DEFAULT FALSE,
+    is_blocked_keyword BOOLEAN DEFAULT FALSE,
+    spam_score DECIMAL(5, 2) DEFAULT 0,
+    
+    -- 速率限制
+    rate_limit_violated BOOLEAN DEFAULT FALSE,
+    
+    -- 元数据
+    user_ip VARCHAR(45),
+    user_agent VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_messages_user_id ON user_messages(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_messages_review_status ON user_messages(review_status);
+CREATE INDEX IF NOT EXISTS idx_user_messages_created_at ON user_messages(created_at);
+CREATE INDEX IF NOT EXISTS idx_user_messages_is_spam ON user_messages(is_spam);
+CREATE INDEX IF NOT EXISTS idx_user_messages_user_created ON user_messages(user_id, created_at DESC);
+
 -- ============ Avatar 响应缓存表 ============
 
 CREATE TABLE IF NOT EXISTS avatar_responses (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    message_id BIGINT REFERENCES messages(id) ON DELETE CASCADE,
+    message_id BIGINT REFERENCES user_messages(id) ON DELETE CASCADE,
     
     -- 请求信息
     request_text TEXT,
@@ -184,7 +189,7 @@ CREATE INDEX IF NOT EXISTS responses_request_hash_idx ON avatar_responses(reques
 
 CREATE TABLE IF NOT EXISTS moderation_logs (
     id BIGSERIAL PRIMARY KEY,
-    message_id BIGINT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    message_id BIGINT NOT NULL REFERENCES user_messages(id) ON DELETE CASCADE,
     user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     
     -- 审核信息
@@ -214,36 +219,151 @@ CREATE INDEX IF NOT EXISTS moderation_user_idx ON moderation_logs(user_id);
 CREATE INDEX IF NOT EXISTS moderation_severity_idx ON moderation_logs(severity_score);
 CREATE INDEX IF NOT EXISTS moderation_created_idx ON moderation_logs(created_at DESC);
 
--- ============ 用户统计表 ============
+-- ============ 虚拟主播配置表 ============
 
-CREATE TABLE IF NOT EXISTS user_statistics (
+CREATE TABLE IF NOT EXISTS broadcaster_config (
     id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(100) UNIQUE NOT NULL,
+    description TEXT,
+    avatar_model_path VARCHAR(255),
     
-    -- 消息统计
-    total_messages INT DEFAULT 0,
-    total_characters INT DEFAULT 0,
-    average_message_length DECIMAL(10, 2),
+    -- openclaw 配置
+    openclaw_api_endpoint VARCHAR(255),
+    openclaw_api_key VARCHAR(255),
     
-    -- 审核统计
-    flagged_messages INT DEFAULT 0,
-    violation_count INT DEFAULT 0,
+    -- 语言与翻译
+    default_language VARCHAR(10) DEFAULT 'ja',
     
-    -- 活跃度统计
-    first_message_date TIMESTAMP,
-    last_message_date TIMESTAMP,
-    days_active INT DEFAULT 0,
+    -- 状态
+    is_active BOOLEAN DEFAULT TRUE,
+    is_streaming BOOLEAN DEFAULT FALSE,
     
-    -- 响应统计
-    average_response_time_ms INT,
-    fastest_response_ms INT,
-    slowest_response_ms INT,
+    -- 限制设置
+    max_concurrent_users INT DEFAULT 1000,
+    message_processing_timeout INT DEFAULT 5000,
     
-    -- 更新时间
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS stats_user_id_idx ON user_statistics(user_id);
+-- ============ 虚拟形象反应表 ============
+
+CREATE TABLE IF NOT EXISTS broadcaster_responses (
+    id BIGSERIAL PRIMARY KEY,
+    message_id BIGINT NOT NULL REFERENCES user_messages(id) ON DELETE CASCADE,
+    
+    -- 响应内容
+    original_message TEXT,
+    
+    -- openclaw 输出
+    openclaw_response JSONB,
+    speech_text VARCHAR(500),
+    
+    -- 动作列表
+    actions JSONB,
+    
+    -- 语音生成
+    tts_audio_url VARCHAR(255),
+    tts_generated_at TIMESTAMP,
+    
+    -- 元数据
+    processing_time_ms INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_responses_message_id ON broadcaster_responses(message_id);
+CREATE INDEX IF NOT EXISTS idx_responses_created_at ON broadcaster_responses(created_at);
+
+-- ============ 预设动作库 ============
+
+CREATE TABLE IF NOT EXISTS preset_actions (
+    id SERIAL PRIMARY KEY,
+    action_name VARCHAR(50) UNIQUE NOT NULL,
+    action_description TEXT,
+    animation_params JSONB,
+    duration_ms INT,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_preset_actions_name ON preset_actions(action_name);
+CREATE INDEX IF NOT EXISTS idx_preset_actions_active ON preset_actions(is_active);
+
+-- ============ 敏感词库 ============
+
+CREATE TABLE IF NOT EXISTS blocked_keywords (
+    id SERIAL PRIMARY KEY,
+    keyword VARCHAR(100) UNIQUE NOT NULL,
+    -- 1=敏感词, 2=广告词, 3=骚扰词
+    keyword_type SMALLINT,
+    -- 1=低, 2=中, 3=高
+    severity SMALLINT DEFAULT 1,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_blocked_keywords_keyword ON blocked_keywords(keyword);
+CREATE INDEX IF NOT EXISTS idx_blocked_keywords_type ON blocked_keywords(keyword_type);
+CREATE INDEX IF NOT EXISTS idx_blocked_keywords_active ON blocked_keywords(is_active);
+
+-- ============ 用户黑名单 (IP/邮箱) ============
+
+CREATE TABLE IF NOT EXISTS user_blacklist (
+    id BIGSERIAL PRIMARY KEY,
+    identifier VARCHAR(255) UNIQUE NOT NULL,
+    -- 1=IP, 2=邮箱
+    identifier_type SMALLINT,
+    reason TEXT,
+    blocked_by BIGINT REFERENCES users(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_blacklist_identifier ON user_blacklist(identifier);
+CREATE INDEX IF NOT EXISTS idx_blacklist_type ON user_blacklist(identifier_type);
+CREATE INDEX IF NOT EXISTS idx_blacklist_expires ON user_blacklist(expires_at);
+
+-- ============ 审查日志 ============
+
+CREATE TABLE IF NOT EXISTS review_logs (
+    id BIGSERIAL PRIMARY KEY,
+    message_id BIGINT NOT NULL REFERENCES user_messages(id) ON DELETE CASCADE,
+    -- 1=自动, 2=人工
+    review_type SMALLINT,
+    reviewed_by BIGINT REFERENCES users(id),
+    -- 1=通过, 2=拒绝, 3=隐藏
+    action_taken SMALLINT,
+    reason TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_review_logs_message_id ON review_logs(message_id);
+CREATE INDEX IF NOT EXISTS idx_review_logs_reviewed_by ON review_logs(reviewed_by);
+CREATE INDEX IF NOT EXISTS idx_review_logs_created_at ON review_logs(created_at);
+
+-- ============ 用户统计视图（自动聚合，无需手动更新） ============
+
+CREATE OR REPLACE VIEW user_statistics_view AS
+SELECT
+    u.id AS user_id,
+    u.username,
+    u.nickname,
+    COUNT(DISTINCT m.id) AS total_messages,
+    COALESCE(SUM(m.message_length), 0) AS total_characters,
+    CASE WHEN COUNT(m.id) > 0 
+         THEN ROUND(AVG(m.message_length)::numeric, 2) 
+         ELSE 0 END AS average_message_length,
+    COUNT(DISTINCT CASE WHEN m.review_status = 1 THEN m.id END) AS approved_messages,
+    COUNT(DISTINCT CASE WHEN m.review_status = 2 THEN m.id END) AS rejected_messages,
+    COUNT(DISTINCT CASE WHEN m.is_spam = TRUE THEN m.id END) AS spam_count,
+    u.warnings_count,
+    u.is_banned,
+    MIN(m.created_at) AS first_message_date,
+    MAX(m.created_at) AS last_message_date,
+    u.created_at
+FROM users u
+LEFT JOIN user_messages m ON u.id = m.user_id
+GROUP BY u.id, u.username, u.nickname, u.warnings_count, u.is_banned, u.created_at;
 
 -- ============ WebSocket 连接日志表 ============
 
@@ -290,7 +410,7 @@ CREATE TABLE IF NOT EXISTS system_logs (
     
     -- 关联信息
     user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
-    message_id BIGINT REFERENCES messages(id) ON DELETE SET NULL,
+    message_id BIGINT REFERENCES user_messages(id) ON DELETE SET NULL,
     
     -- 时间戳
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -307,22 +427,21 @@ CREATE INDEX IF NOT EXISTS logs_user_idx ON system_logs(user_id);
 CREATE OR REPLACE VIEW active_users AS
 SELECT u.id, u.username, u.email, COUNT(m.id) as message_count, MAX(m.created_at) as last_activity
 FROM users u
-LEFT JOIN messages m ON u.id = m.user_id
+LEFT JOIN user_messages m ON u.id = m.user_id
 WHERE u.is_active = TRUE AND u.is_banned = FALSE
 GROUP BY u.id, u.username, u.email;
 
 -- 最近消息视图
 CREATE OR REPLACE VIEW recent_messages AS
-SELECT m.id, m.user_id, u.username, m.content, m.review_status, m.created_at
-FROM messages m
+SELECT m.id, m.user_id, u.username, m.original_message AS content, m.review_status, m.created_at
+FROM user_messages m
 JOIN users u ON m.user_id = u.id
 WHERE m.created_at > NOW() - INTERVAL '24 hours'
 ORDER BY m.created_at DESC;
 
 -- ============ 创建索引 ============
 
-CREATE INDEX IF NOT EXISTS idx_messages_user_created ON messages(user_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_messages_review_status ON messages(review_status);
+CREATE INDEX IF NOT EXISTS idx_user_messages_review_created ON user_messages(review_status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_contexts_active ON conversation_contexts(is_active) WHERE is_active = TRUE;
 CREATE INDEX IF NOT EXISTS idx_moderation_severity ON moderation_logs(severity_score DESC);
 CREATE INDEX IF NOT EXISTS idx_websocket_active ON websocket_logs(status) WHERE status = 'connected';
@@ -355,6 +474,44 @@ VALUES (
     TRUE
 ) ON CONFLICT (username) DO NOTHING;
 
+-- 插入虚拟主播配置
+INSERT INTO broadcaster_config (name, description, default_language, is_active, is_streaming)
+VALUES (
+    'Yachiyo',
+    '虚拟主播 Yachiyo',
+    'ja',
+    TRUE,
+    FALSE
+) ON CONFLICT (name) DO NOTHING;
+
+-- 插入预设动作
+INSERT INTO preset_actions (action_name, action_description, duration_ms, is_active)
+VALUES
+    ('bow', '鞠躬，向观众表示感谢或问候', 1000, TRUE),
+    ('wave', '挥手，向观众打招呼', 500, TRUE),
+    ('nod', '点头，表示同意或理解', 300, TRUE),
+    ('smile', '微笑，表示开心或满足', 800, TRUE),
+    ('surprised', '惊讶，表示意外或惊喜', 600, TRUE),
+    ('thinking', '思考，做思考状态', 1200, TRUE),
+    ('dance', '跳舞，庆祝或娱乐', 2000, TRUE),
+    ('clap', '鼓掌，表示赞同或庆祝', 1500, TRUE),
+    ('heart', '比心，表示爱意或感谢', 800, TRUE),
+    ('thumbs_up', '竖起大拇指，表示赞好', 600, TRUE)
+ON CONFLICT (action_name) DO NOTHING;
+
+-- 插入常见敏感词 (示例)
+INSERT INTO blocked_keywords (keyword, keyword_type, severity, is_active)
+VALUES
+    ('色情', 1, 3, TRUE),
+    ('暴力', 1, 3, TRUE),
+    ('骚扰', 1, 2, TRUE),
+    ('广告', 2, 2, TRUE),
+    ('微信', 2, 2, TRUE),
+    ('QQ号', 2, 2, TRUE),
+    ('骂人', 3, 2, TRUE),
+    ('诈骗', 1, 3, TRUE)
+ON CONFLICT (keyword) DO NOTHING;
+
 -- ============ 创建函数 ============
 
 -- 自动更新 updated_at 时间戳的触发器函数
@@ -379,21 +536,15 @@ BEFORE UPDATE ON sessions
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp();
 
-DROP TRIGGER IF EXISTS messages_update_timestamp ON messages;
-CREATE TRIGGER messages_update_timestamp
-BEFORE UPDATE ON messages
-FOR EACH ROW
-EXECUTE FUNCTION update_timestamp();
-
 DROP TRIGGER IF EXISTS contexts_update_timestamp ON conversation_contexts;
 CREATE TRIGGER contexts_update_timestamp
 BEFORE UPDATE ON conversation_contexts
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp();
 
-DROP TRIGGER IF EXISTS stats_update_timestamp ON user_statistics;
-CREATE TRIGGER stats_update_timestamp
-BEFORE UPDATE ON user_statistics
+DROP TRIGGER IF EXISTS broadcaster_config_update_timestamp ON broadcaster_config;
+CREATE TRIGGER broadcaster_config_update_timestamp
+BEFORE UPDATE ON broadcaster_config
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp();
 

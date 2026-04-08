@@ -10,6 +10,25 @@
 // 全局数据库服务引用 — 定义在 Application.cpp (全局命名空间)
 extern std::shared_ptr<Yachiyo::Services::DatabaseService> g_databaseService;
 
+namespace {
+/**
+ * @brief 计算 UTF-8 字符串的 Unicode 字符数
+ */
+size_t utf8CharCount(const std::string& s) {
+    size_t count = 0;
+    for (size_t i = 0; i < s.size(); ) {
+        unsigned char c = static_cast<unsigned char>(s[i]);
+        if (c < 0x80)            i += 1;
+        else if ((c >> 5) == 0x06) i += 2;
+        else if ((c >> 4) == 0x0E) i += 3;
+        else if ((c >> 3) == 0x1E) i += 4;
+        else                       i += 1;
+        ++count;
+    }
+    return count;
+}
+} // anonymous namespace
+
 namespace Yachiyo::Services {
 
 // DTO 别名
@@ -101,7 +120,7 @@ dto::ChatMessageDTO ChatServiceImpl::sendMessage(const dto::ChatMessageDTO& mess
         dbMsg.user_id = std::stoll(message.senderId);
         dbMsg.content = message.content;
         dbMsg.language = "zh";
-        dbMsg.character_count = static_cast<int>(message.content.size());
+        dbMsg.character_count = static_cast<int>(utf8CharCount(message.content));
         dbMsg.review_status = "pending";
         dbMsg.created_at = std::chrono::system_clock::now().time_since_epoch().count();
         dbMsg.is_visible = true;

@@ -63,8 +63,9 @@ Utils::Result<ModerationResponse> DeepSeekModerationService::moderate(
         std::lock_guard<std::mutex> lock(cache_mutex_);
         auto it = cache_.find(cacheKey);
         if (it != cache_.end()) {
-            auto ageSeconds = (std::chrono::system_clock::now().time_since_epoch().count() - 
-                             it->second.timestamp) / 1000000000;
+            auto now = std::chrono::system_clock::now().time_since_epoch();
+            auto cacheTime = std::chrono::system_clock::duration(it->second.timestamp);
+            auto ageSeconds = std::chrono::duration_cast<std::chrono::seconds>(now - cacheTime).count();
             if (ageSeconds < 3600) {
                 LOG_DEBUG("返回缓存审核结果");
                 auto cached = it->second.response;
@@ -181,11 +182,12 @@ void DeepSeekModerationService::clearCache() {
 
 void DeepSeekModerationService::clearExpiredCache(int maxAgeSeconds) {
     std::lock_guard<std::mutex> lock(cache_mutex_);
-    auto now = std::chrono::system_clock::now().time_since_epoch().count();
+    auto now = std::chrono::system_clock::now().time_since_epoch();
     
     std::vector<std::string> keysToRemove;
     for (const auto& [key, entry] : cache_) {
-        int64_t ageSeconds = (now - entry.timestamp) / 1000000000;
+        auto cacheTime = std::chrono::system_clock::duration(entry.timestamp);
+        auto ageSeconds = std::chrono::duration_cast<std::chrono::seconds>(now - cacheTime).count();
         if (ageSeconds > maxAgeSeconds) {
             keysToRemove.push_back(key);
         }

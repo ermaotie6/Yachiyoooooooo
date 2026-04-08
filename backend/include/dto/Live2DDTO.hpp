@@ -41,12 +41,29 @@ struct ExpressionCommand : Live2DCommand {
     ExpressionCommand() {
         type = "expression";
     }
+
+    // 覆写 toJson：将子类字段序列化到 params 中
+    json toJson() const {
+        json j;
+        j["type"] = type;
+        j["params"] = {
+            {"expression_name", expressionName},
+            {"duration_ms", durationMs}
+        };
+        return j;
+    }
     
     static ExpressionCommand fromJson(const json& j) {
         ExpressionCommand cmd;
         if (j.contains("type")) cmd.type = j["type"];
         if (j.contains("expression_name")) cmd.expressionName = j["expression_name"];
         if (j.contains("duration_ms")) cmd.durationMs = j["duration_ms"];
+        // 也支持嵌套在 params 中的格式
+        if (j.contains("params")) {
+            auto& p = j["params"];
+            if (p.contains("expression_name")) cmd.expressionName = p["expression_name"];
+            if (p.contains("duration_ms")) cmd.durationMs = p["duration_ms"];
+        }
         cmd.params = j;
         return cmd;
     }
@@ -64,6 +81,19 @@ struct MotionCommand : Live2DCommand {
     MotionCommand() {
         type = "motion";
     }
+
+    // 覆写 toJson：将子类字段序列化到 params 中
+    json toJson() const {
+        json j;
+        j["type"] = type;
+        j["params"] = {
+            {"group", group},
+            {"index", index},
+            {"loop", loop},
+            {"priority", priority}
+        };
+        return j;
+    }
     
     static MotionCommand fromJson(const json& j) {
         MotionCommand cmd;
@@ -72,6 +102,14 @@ struct MotionCommand : Live2DCommand {
         if (j.contains("index")) cmd.index = j["index"];
         if (j.contains("loop")) cmd.loop = j["loop"];
         if (j.contains("priority")) cmd.priority = j["priority"];
+        // 也支持嵌套在 params 中的格式
+        if (j.contains("params")) {
+            auto& p = j["params"];
+            if (p.contains("group")) cmd.group = p["group"];
+            if (p.contains("index")) cmd.index = p["index"];
+            if (p.contains("loop")) cmd.loop = p["loop"];
+            if (p.contains("priority")) cmd.priority = p["priority"];
+        }
         cmd.params = j;
         return cmd;
     }

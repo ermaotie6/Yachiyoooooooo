@@ -113,6 +113,34 @@ const validateConfirmPassword = (_rule: any, value: string, callback: Function) 
   }
 }
 
+const validatePassword = (_rule: any, value: string, callback: Function) => {
+  if (!value) {
+    callback(new Error('请输入密码'))
+    return
+  }
+  if (value.length < 8) {
+    callback(new Error('密码至少 8 个字符'))
+    return
+  }
+  if (!/[A-Z]/.test(value)) {
+    callback(new Error('密码需包含至少一个大写字母'))
+    return
+  }
+  if (!/[a-z]/.test(value)) {
+    callback(new Error('密码需包含至少一个小写字母'))
+    return
+  }
+  if (!/[0-9]/.test(value)) {
+    callback(new Error('密码需包含至少一个数字'))
+    return
+  }
+  if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(value)) {
+    callback(new Error('密码需包含至少一个特殊字符'))
+    return
+  }
+  callback()
+}
+
 const registerRules = reactive<FormRules>({
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },
@@ -124,7 +152,7 @@ const registerRules = reactive<FormRules>({
   ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 8, message: '密码至少 8 个字符', trigger: 'blur' }
+    { validator: validatePassword, trigger: 'blur' }
   ],
   confirmPassword: [
     { required: true, message: '请再次输入密码', trigger: 'blur' },

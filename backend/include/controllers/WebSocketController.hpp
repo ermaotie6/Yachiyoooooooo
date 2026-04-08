@@ -7,6 +7,7 @@
 #include <mutex>
 #include <thread>
 #include <functional>
+#include <atomic>
 #include <nlohmann/json.hpp>
 #include "utils/Result.hpp"
 #include "dto/CommonDTO.hpp"
@@ -33,6 +34,7 @@ struct WSMessage {
     WSMessageType type;
     std::string clientId;
     std::string sessionId;
+    std::string userId;
     int64_t timestamp;
     json payload;
 };
@@ -107,9 +109,9 @@ private:
     // 成员变量
     std::shared_ptr<services::AvatarResponseService> avatar_service_;
     std::map<std::string, ClientSession> sessions_;
-    std::mutex session_mutex_;
+    mutable std::mutex session_mutex_;
     
-    bool is_running_;
+    std::atomic<bool> is_running_{false};
     std::thread heartbeat_thread_;
     
     // ===== 私有方法 =====

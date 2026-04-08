@@ -43,7 +43,7 @@ using Utils = Yachiyo::Utils;
 // 全局应用程序实例
 std::shared_ptr<Application> Application::instance = nullptr;
 
-Application::Application() 
+Application::Application(PrivateTag) 
     : configManager(nullptr), 
       httpServer(nullptr), 
       running(false),
@@ -57,7 +57,7 @@ Application::~Application() {
 
 std::shared_ptr<Application> Application::getInstance() {
     if (!instance) {
-        instance = std::make_shared<Application>();
+        instance = std::make_shared<Application>(PrivateTag{});
     }
     return instance;
 }
@@ -76,8 +76,8 @@ bool Application::initialize(int argc, char* argv[]) {
         logger->info("配置环境: {}", configManager->getEnvironment());
         logger->info("配置路径: {}", configManager->getConfigPath());
         
-        // 加载应用程序配置
-        auto appConfig = configManager->loadConfig("application");
+        // 加载应用程序配置（对应 config/config.yaml）
+        auto appConfig = configManager->loadConfig("config");
         
         // 初始化日志系统
         LogUtils::initialize(configManager->getString("logging.level", "info"),
@@ -202,22 +202,35 @@ void Application::initializeControllers() {
     auto healthController = std::make_shared<controllers::HealthController>();
     httpServer->registerController("/api/v1/health", healthController);
     
-    // 注册认证控制器
-    auto dbUtil = std::make_shared<Utils::DatabaseUtil>();
-    auto hashUtil = std::make_shared<Utils::HashUtil>();
-    std::string jwtSecret = configManager->getString("jwt.secret", "");
-    if (jwtSecret.empty() || jwtSecret == "yachiyo-cpp-secret-key-change-in-production") {
-        logger->warn("⚠️  JWT secret 未配置或使用了默认值！生产环境请务必修改 config.yaml 中的 jwt.secret");
-        if (jwtSecret.empty()) {
-            jwtSecret = "yachiyo-cpp-secret-key-change-in-production";
-        }
+    // 复用 initializeServices() 中创建的共享服务实例
+    // 如果共享实例尚未创建（理论上不会，因为 initializeServices 先于本方法调用），则创建新实例
+    if (!sharedDbUtil) {
+        sharedDbUtil = std::make_shared<Utils::DatabaseUtil>();
     }
-    auto jwtUtil = std::make_shared<Utils::JwtUtil>(
-        jwtSecret,
-        configManager->getInt("jwt.expiration_hours", 24) * 3600
-    );
-    auto authService = std::make_shared<yachiyo::services::AuthServiceImpl>(dbUtil, jwtUtil, hashUtil);
-    auto authController = std::make_shared<controllers::AuthController>(authService, jwtUtil);
+    if (!sharedHashUtil) {
+        sharedHashUtil = std::make_shared<Utils::HashUtil>();
+    }
+    if (!sharedJwtUtil) {
+        std::string jwtSecret = configManager->getString("jwt.secret", "");
+        if (jwtSecret.empty() || jwtSecret == "yachiyo-cpp-secret-key-change-in-production") {
+            logger->warn("⚠️  JWT secret 未配置或使用了默认值！生产环境请务必修改 config.yaml 中的 jwt.secret");
+            if (jwtSecret.empty()) {
+                jwtSecret = "yachiyo-cpp-secret-key-change-in-production";
+            }
+        }
+        sharedJwtUtil = std::make_shared<Utils::JwtUtil>(
+            jwtSecret,
+            configManager->getInt("jwt.expiration_hours", 24) * 3600
+        );
+    }
+    if (!sharedAuthService) {
+        sharedAuthService = std::make_shared<yachiyo::services::AuthServiceImpl>(
+            sharedDbUtil, sharedJwtUtil, sharedHashUtil);
+    }
+
+    // 注册认证控制器
+    auto authController = std::make_shared<controllers::AuthController>(
+        sharedAuthService, sharedJwtUtil);
     httpServer->registerController("/api/v1/auth", authController);
     
     // 注册AI控制器
@@ -232,14 +245,14 @@ void Application::initializeControllers() {
     if (g_databaseService && g_webSocketService) {
         // 创建 MessageServiceImpl
         auto messageService = std::make_shared<yachiyo::services::MessageServiceImpl>(
-            dbUtil,
-            std::static_pointer_cast<yachiyo::services::IAuthService>(authService)
+            sharedDbUtil,
+            sharedAuthService
         );
         
         auto messageController = std::make_shared<controllers::MessageController>(
             messageService,
-            std::static_pointer_cast<yachiyo::services::IAuthService>(authService),
-            g_databaseService, g_webSocketService, jwtUtil,
+            sharedAuthService,
+            g_databaseService, g_webSocketService, sharedJwtUtil,
             Yachiyo::Utils::Logger::getLogger("MessageController")
         );
         httpServer->registerController("/api/v1/messages", messageController);
@@ -299,14 +312,52 @@ void Application::initializeDatabase() {
 void Application::initializeAIServices() {
     logger->info("正在初始化AI服务...");
     
-    // 获取AI配置
-    std::string aiProvider = configManager->getString("ai.provider", "openai");
-    std::string apiKey = configManager->getString("ai.apiKey", "");
-    std::string baseUrl = configManager->getString("ai.baseUrl", "https://api.openai.com/v1");
-    std::string model = configManager->getString("ai.model", "gpt-3.5-turbo");
+    // 获取AI配置 —— 按优先级检测可用的 AI 提供商
+    // 配置结构: ai.openai.api_key, ai.deepseek.api_key, ai.qianwen.api_key, ai.ollama.base_url
+    std::string aiProvider = "none";
+    std::string apiKey;
+    std::string baseUrl;
+    std::string model;
+
+    // 优先级: DeepSeek > OpenAI > 千问 > Ollama
+    apiKey = configManager->getString("ai.deepseek.api_key", "");
+    if (!apiKey.empty()) {
+        aiProvider = "deepseek";
+        baseUrl = configManager->getString("ai.deepseek.base_url", "https://api.deepseek.com");
+        model = configManager->getString("ai.deepseek.model", "deepseek-chat");
+    }
+    if (aiProvider == "none") {
+        apiKey = configManager->getString("ai.openai.api_key", "");
+        if (!apiKey.empty()) {
+            aiProvider = "openai";
+            baseUrl = configManager->getString("ai.openai.base_url", "https://api.openai.com/v1");
+            model = configManager->getString("ai.openai.model", "gpt-3.5-turbo");
+        }
+    }
+    if (aiProvider == "none") {
+        apiKey = configManager->getString("ai.qianwen.api_key", "");
+        if (!apiKey.empty()) {
+            aiProvider = "qianwen";
+            baseUrl = configManager->getString("ai.qianwen.base_url", "https://dashscope.aliyuncs.com/api/v1");
+            model = configManager->getString("ai.qianwen.model", "qwen-turbo");
+        }
+    }
+    if (aiProvider == "none") {
+        // Ollama 不需要 API Key
+        std::string ollamaUrl = configManager->getString("ai.ollama.base_url", "");
+        if (!ollamaUrl.empty()) {
+            aiProvider = "ollama";
+            baseUrl = ollamaUrl;
+            model = configManager->getString("ai.ollama.model", "llama2");
+        }
+    }
+
+    if (aiProvider == "none") {
+        logger->warn("未配置任何 AI 服务 API Key，AI 功能将不可用");
+    }
     
-    // 初始化AI服务
-    // aiService = std::make_shared<AIService>(...);
+    // TODO: 初始化AI服务实例
+    // aiService = std::make_shared<AIService>(aiProvider, apiKey, baseUrl, model);
     
     logger->info("AI服务初始化完成: provider={}, model={}", aiProvider, model);
 }
@@ -322,7 +373,7 @@ void Application::initializeServices() {
         std::string wsHost = configManager->getString("websocket.host", "0.0.0.0");
         
         // 启动WebSocket服务（在后台线程中，start() 是阻塞调用）
-        std::thread wsThread([this, wsHost, wsPort]() {
+        wsThread_ = std::thread([this, wsHost, wsPort]() {
             try {
                 logger->info("WebSocket服务启动: {}:{}", wsHost, wsPort);
                 g_webSocketService->start(wsHost, wsPort, "/");
@@ -330,7 +381,6 @@ void Application::initializeServices() {
                 logger->error("WebSocket服务异常: {}", e.what());
             }
         });
-        wsThread.detach();  // 在后台运行
         
         // 等待 Crow WebSocket 服务启动
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -362,7 +412,7 @@ void Application::initializeServices() {
         auto openClawGateway = std::make_shared<yachiyo::services::OpenClawGateway>();
         std::string bridgeEndpoint = configManager->getString(
             "openclaw.bridge_endpoint", "http://localhost:8765");
-        int bridgeTimeout = configManager->getInt("openclaw.timeout", 30);
+        int bridgeTimeout = configManager->getInt("openclaw.request_timeout", 30);
         if (openClawGateway->initialize(bridgeEndpoint, bridgeTimeout)) {
             logger->info("OpenClaw 网关初始化完成: {}", bridgeEndpoint);
         } else {
@@ -370,23 +420,23 @@ void Application::initializeServices() {
         }
 
         // 2. 翻译服务
-        //    配置键名与 config.yaml 中的 ai.translation 保持一致
+        //    配置键名与 config.yaml 中的 translation.services 保持一致
         auto translationService = std::make_shared<yachiyo::services::TranslationService>();
         translationService->initialize();
         // 注入百度翻译 API 配置 (appid:secret_key 格式)
-        std::string baiduAppId = configManager->getString("ai.translation.engines.0.appid", "");
-        std::string baiduApiKey = configManager->getString("ai.translation.engines.0.api_key", "");
+        std::string baiduAppId = configManager->getString("translation.services.0.appid", "");
+        std::string baiduApiKey = configManager->getString("translation.services.0.api_key", "");
         if (!baiduAppId.empty() && !baiduApiKey.empty()) {
             translationService->configureEngine(
                 yachiyo::services::TranslationService::Engine::BAIDU,
                 baiduAppId + ":" + baiduApiKey);
             logger->info("百度翻译引擎配置完成 (appid={})", baiduAppId);
         } else {
-            logger->warn("百度翻译引擎未配置 (ai.translation.engines.0.appid/api_key)");
+            logger->warn("百度翻译引擎未配置 (translation.services.0.appid/api_key)");
         }
         // 注入 DeepSeek 翻译 API 配置
-        std::string deepseekTransKey = configManager->getString("ai.translation.engines.1.api_key", "");
-        std::string deepseekTransEndpoint = configManager->getString("ai.translation.engines.1.endpoint", "");
+        std::string deepseekTransKey = configManager->getString("translation.services.1.api_key", "");
+        std::string deepseekTransEndpoint = configManager->getString("translation.services.1.endpoint", "");
         if (!deepseekTransKey.empty()) {
             translationService->configureEngine(
                 yachiyo::services::TranslationService::Engine::DEEPSEEK,
@@ -396,10 +446,10 @@ void Application::initializeServices() {
         logger->info("翻译服务初始化完成");
 
         // 3. GPT-SoVITS TTS 服务
-        //    配置键名与 config.yaml 中的 ai.gpt_sovits 保持一致
+        //    配置键名与 config.yaml 中的 gpt_sovits 保持一致
         auto ttsService = std::make_shared<yachiyo::services::GPTSoVITSService>();
-        std::string ttsEndpoint = configManager->getString("ai.gpt_sovits.endpoint", "http://localhost:5000");
-        std::string ttsModeStr = configManager->getString("ai.gpt_sovits.mode", "cpu");
+        std::string ttsEndpoint = configManager->getString("gpt_sovits.api_endpoint", "http://localhost:5000");
+        std::string ttsModeStr = configManager->getString("gpt_sovits.mode", "cpu");
         auto ttsMode = (ttsModeStr == "gpu")
             ? yachiyo::services::GPTSoVITSService::InferenceMode::GPU
             : yachiyo::services::GPTSoVITSService::InferenceMode::CPU;
@@ -412,16 +462,16 @@ void Application::initializeServices() {
         logger->info("Live2D 动画服务初始化完成");
 
         // 5. 内容审查服务 (可选)
-        //    配置键名与 config.yaml 中的 ai.deepseek_moderation 保持一致
+        //    配置键名与 config.yaml 中的 moderation 保持一致
         std::shared_ptr<yachiyo::services::DeepSeekModerationService> moderationService = nullptr;
-        if (configManager->getBool("ai.deepseek_moderation.enabled", true)) {
+        if (configManager->getBool("moderation.enabled", true)) {
             moderationService = std::make_shared<yachiyo::services::DeepSeekModerationService>();
-            std::string moderationApiKey = configManager->getString("ai.deepseek_moderation.api_key", "");
-            std::string moderationEndpoint = configManager->getString("ai.deepseek_moderation.endpoint", "https://api.deepseek.com");
+            std::string moderationApiKey = configManager->getString("moderation.deepseek_api_key", "");
+            std::string moderationEndpoint = configManager->getString("moderation.deepseek_api_endpoint", "https://api.deepseek.com");
             moderationService->initialize(moderationApiKey, moderationEndpoint);
             logger->info("DeepSeek 内容审查服务初始化完成");
         } else {
-            logger->warn("DeepSeek 内容审查服务已禁用 (ai.deepseek_moderation.enabled=false)");
+            logger->warn("DeepSeek 内容审查服务已禁用 (moderation.enabled=false)");
         }
 
         // 6. 组装 AvatarResponseService
@@ -438,18 +488,14 @@ void Application::initializeServices() {
         // 8. 将 WebSocket 消息回调连接到 WebSocketController
         //    当 WebSocketService 收到 user_message 时，转发给 WebSocketController 处理，
         //    WebSocketController 调用 AvatarResponseService，然后通过 WebSocketService 推送响应。
-        // 复用 initializeControllers() 中创建的 AuthService 实例，避免重复创建
-        auto dbUtilShared = std::make_shared<Utils::DatabaseUtil>();
-        auto hashUtilShared = std::make_shared<Utils::HashUtil>();
+        // 创建共享服务实例并保存为成员变量，供 initializeControllers() 复用
+        sharedDbUtil = std::make_shared<Utils::DatabaseUtil>();
+        sharedHashUtil = std::make_shared<Utils::HashUtil>();
         std::string jwtSecretShared = configManager->getString("jwt.secret", "yachiyo-cpp-secret-key-change-in-production");
-        auto jwtUtilShared = std::make_shared<Utils::JwtUtil>(
+        sharedJwtUtil = std::make_shared<Utils::JwtUtil>(
             jwtSecretShared, configManager->getInt("jwt.expiration_hours", 24) * 3600);
-        auto authServiceShared = std::make_shared<yachiyo::services::AuthServiceImpl>(
-            dbUtilShared, jwtUtilShared, hashUtilShared);
-        // 注意: 理想情况下应与 initializeControllers() 共享同一实例，
-        // 但由于初始化顺序 (initializeServices 在 initializeControllers 之前)，
-        // 这里先创建实例，后续 initializeControllers 应复用这些实例。
-        // TODO: 将共享服务实例提升为 Application 成员变量
+        sharedAuthService = std::make_shared<yachiyo::services::AuthServiceImpl>(
+            sharedDbUtil, sharedJwtUtil, sharedHashUtil);
 
         if (g_webSocketService) {
             // Fix #5: 注册连接/断开回调，桥接 WebSocketController 的会话管理
@@ -469,7 +515,7 @@ void Application::initializeServices() {
                 });
             
             g_webSocketService->onMessageReceived(
-                [wsController, authServiceShared, this](int64_t client_id, const json& message) {
+                [wsController, this](int64_t client_id, const json& message) {
                     try {
                         std::string clientIdStr = std::to_string(client_id);
                         std::string userId;
@@ -482,7 +528,7 @@ void Application::initializeServices() {
                         // WebSocket 认证验证: 检查 access_token (如果提供)
                         if (message.contains("data") && message["data"].contains("access_token")) {
                             std::string token = message["data"]["access_token"].get<std::string>();
-                            int64_t tokenUserId = authServiceShared->getUserIdFromToken(token);
+                            int64_t tokenUserId = sharedAuthService->getUserIdFromToken(token);
                             if (tokenUserId <= 0) {
                                 json errorMsg = {
                                     {"type", "error"},
@@ -499,10 +545,24 @@ void Application::initializeServices() {
                             std::string text = message["data"]["content"].get<std::string>();
 
                             // 消息长度检查（与前端50字限制一致）
-                            if (text.length() > 200) {  // UTF-8 中文每字最多4字节，50字≈200字节
+                            // 使用 Unicode 码点计数，与前端 Array.from() 行为一致
+                            size_t unicodeCharCount = 0;
+                            {
+                                const unsigned char* p = reinterpret_cast<const unsigned char*>(text.c_str());
+                                const unsigned char* end = p + text.size();
+                                while (p < end) {
+                                    if (*p < 0x80) { p += 1; }
+                                    else if ((*p & 0xE0) == 0xC0) { p += 2; }
+                                    else if ((*p & 0xF0) == 0xE0) { p += 3; }
+                                    else if ((*p & 0xF8) == 0xF0) { p += 4; }
+                                    else { p += 1; }  // 无效 UTF-8 字节，按1字节跳过
+                                    unicodeCharCount++;
+                                }
+                            }
+                            if (unicodeCharCount > 50) {
                                 json errorMsg = {
                                     {"type", "error"},
-                                    {"data", {{"message", "消息内容超出长度限制"}, {"code", "MSG_TOO_LONG"}}}
+                                    {"data", {{"message", "消息内容超出长度限制（最多50字）"}, {"code", "MSG_TOO_LONG"}}}
                                 };
                                 g_webSocketService->sendToClient(client_id, errorMsg);
                                 return;
@@ -528,7 +588,7 @@ void Application::initializeServices() {
                                 senderName = userId.empty() ? "匿名用户" : userId;
                             }
 
-                            // 广播用户消息到所有观众的实时消息框
+                            // 广播用户消息到其他观众的实时消息框（排除发送者自己，因为前端已本地添加）
                             json userBroadcast = {
                                 {"type", "user_broadcast"},
                                 {"data", {
@@ -539,7 +599,15 @@ void Application::initializeServices() {
                                         std::chrono::system_clock::now().time_since_epoch()).count()}
                                 }}
                             };
-                            g_webSocketService->broadcastMessage(userBroadcast);
+                            // 排除发送者，避免前端重复显示
+                            {
+                                auto clients = g_webSocketService->getClients();
+                                for (const auto& client : clients) {
+                                    if (client.client_id != client_id && client.is_active) {
+                                        g_webSocketService->sendToClient(client.client_id, userBroadcast);
+                                    }
+                                }
+                            }
 
                             // 调用 WebSocketController 处理用户消息
                             auto result = wsController->processUserMessage(
@@ -647,6 +715,11 @@ void Application::stop() {
     //     redisPool->close();
     // }
     
+    // 等待 WebSocket 线程退出
+    if (wsThread_.joinable()) {
+        wsThread_.join();
+    }
+
     running = false;
     logger->info("Yachiyo应用程序已停止");
 }

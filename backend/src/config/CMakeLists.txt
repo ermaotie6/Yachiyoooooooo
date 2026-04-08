@@ -1,9 +1,14 @@
-add_library(config INTERFACE)
+add_library(config STATIC
+    ConfigManager.cpp
+)
 
 target_include_directories(config
-    INTERFACE
+    PUBLIC
         ${CMAKE_SOURCE_DIR}/include
 )
 
-# config 是 header-only, 使用 INTERFACE 链接
-# target_link_libraries(config INTERFACE utils)
+# 链接依赖: yaml-cpp, nlohmann_json
+target_link_libraries(config
+    PUBLIC
+        yaml-cpp::yaml-cpp
+)

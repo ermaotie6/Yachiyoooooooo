@@ -57,20 +57,26 @@ services:
       - "8080:8080"    # HTTP API
       - "9001:9001"    # WebSocket
     environment:
-      - DATABASE_HOST=postgres
-      - DATABASE_PORT=5432
-      - DATABASE_NAME=yachiyo
-      - DATABASE_USER=postgres
-      - DATABASE_PASSWORD=postgres
-      - DATABASE_POOL_SIZE=20
-      - WEBSOCKET_PORT=9001
+      # 数据库 — 与 config.yaml 中 ${DB_HOST} / ${DB_NAME} 等环境变量引用对应
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=yachiyo
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      # WebSocket
       - WEBSOCKET_HOST=0.0.0.0
-      - REDIS_URL=redis://redis:6379
+      - WEBSOCKET_PORT=9001
+      # Redis
+      - REDIS_HOST=redis
+      # JWT
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-production-secret-key-change-me}
+      # AI / 翻译 / 审核
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
       - BAIDU_TRANSLATE_APPID=${BAIDU_TRANSLATE_APPID:-}
       - BAIDU_TRANSLATE_API_KEY=${BAIDU_TRANSLATE_API_KEY:-}
+      # OpenClaw 桥接
       - OPENCLAW_BRIDGE_ENDPOINT=http://bridge:8765
+      # 运行环境
       - APP_LOG_LEVEL=INFO
       - ENVIRONMENT=production
     volumes:
@@ -94,10 +100,10 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
+    # 注意: VITE_ 前缀变量是构建时注入的，运行时设置无效。
+    # 请在 frontend/.env.production 中配置，或在 docker build 时通过 ARG 传入。
     environment:
-      - VITE_API_BASE_URL=http://localhost:8080/api/v1
-      - VITE_API_V2_BASE_URL=http://localhost:8080/api/v2
-      - VITE_WS_BASE_URL=
+      - NODE_ENV=production
     depends_on:
       - backend
     networks:

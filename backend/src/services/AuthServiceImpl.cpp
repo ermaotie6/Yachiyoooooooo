@@ -4,7 +4,6 @@
 #include <sstream>
 #include <iomanip>
 #include <regex>
-#include <ctime>
 
 namespace yachiyo::services {
 
@@ -123,7 +122,7 @@ Result<std::shared_ptr<User>> AuthServiceImpl::registerUser(
         auto user = std::make_shared<User>();
         // 从 RETURNING 结果中提取用户 ID
         if (result[0].count("id")) {
-            user->setId(std::stoll(result[0].at("id")));
+            user->setId(result[0].at("id"));  // id 为 string 类型 (BaseModel::id)
         }
         user->setUsername(username);
         user->setEmail(email);
@@ -338,7 +337,7 @@ Result<std::shared_ptr<User>> AuthServiceImpl::getUserById(int64_t userId) {
         auto row = result[0];
         auto user = std::make_shared<User>();
         
-        user->setId(userId);
+        user->setId(std::to_string(userId));
         user->setUsername(row["username"]);
         user->setEmail(row["email"]);
         user->setNickname(row["nickname"]);

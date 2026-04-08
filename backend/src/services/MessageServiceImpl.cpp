@@ -10,6 +10,31 @@ namespace yachiyo::services {
 // 静态日志器
 static auto logger = yachiyo::utils::LogUtils::getLogger("MessageServiceImpl");
 
+/**
+ * @brief 计算 UTF-8 字符串的 Unicode 字符数（与前端 Array.from(str).length 口径一致）
+ * 
+ * 正确处理 ASCII、多字节中文、emoji 等。
+ */
+static size_t utf8CharCount(const std::string& s) {
+    size_t count = 0;
+    for (size_t i = 0; i < s.size(); ) {
+        unsigned char c = static_cast<unsigned char>(s[i]);
+        if (c < 0x80) {
+            i += 1;           // 0xxxxxxx — ASCII
+        } else if ((c >> 5) == 0x06) {
+            i += 2;           // 110xxxxx — 2字节
+        } else if ((c >> 4) == 0x0E) {
+            i += 3;           // 1110xxxx — 3字节 (中文等 BMP 字符)
+        } else if ((c >> 3) == 0x1E) {
+            i += 4;           // 11110xxx — 4字节 (emoji 等 supplementary)
+        } else {
+            i += 1;           // 无效字节，跳过
+        }
+        ++count;
+    }
+    return count;
+}
+
 // ==================== 发送消息 (执行6层审查) ====================
 
 Result<std::shared_ptr<Message>> MessageServiceImpl::sendMessage(
@@ -25,8 +50,9 @@ Result<std::shared_ptr<Message>> MessageServiceImpl::sendMessage(
             return Result<std::shared_ptr<Message>>::Error(canSendResult.getErrorMsg());
         }
         
-        // 验证消息内容
-        if (message.empty() || message.length() > 50) {
+        // 验证消息内容（使用 UTF-8 字符计数，与前端 Array.from(str).length 一致）
+        size_t charLen = utf8CharCount(message);
+        if (message.empty() || charLen > 50) {
             return Result<std::shared_ptr<Message>>::Error("消息长度必须1-50字符");
         }
         
@@ -123,7 +149,7 @@ Result<std::shared_ptr<Message>> MessageServiceImpl::sendMessage(
                 {
                     std::to_string(userId),
                     message,
-                    std::to_string(message.length()),
+                    std::to_string(charLen),
                     std::to_string(static_cast<int>(msg->getReviewStatus())),
                     msg->getIsSpam() ? "true" : "false",
                     msg->getIsAbusive() ? "true" : "false",

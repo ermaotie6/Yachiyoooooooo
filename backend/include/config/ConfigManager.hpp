@@ -65,13 +65,25 @@ public:
             return defaultValue;
         }
         
-        // 加载主配置文件
-        json config = loadConfig("application");
+        // 加载主配置文件（对应 config/config.yaml）
+        json config = loadConfig("config");
         
         // 遍历配置树
         json current = config;
         for (const auto& p : parts) {
-            if (current.contains(p)) {
+            if (current.is_array()) {
+                // 数组节点：将 key 视为整数索引 (如 "0", "1")
+                try {
+                    size_t idx = std::stoul(p);
+                    if (idx < current.size()) {
+                        current = current[idx];
+                    } else {
+                        return defaultValue;
+                    }
+                } catch (...) {
+                    return defaultValue;
+                }
+            } else if (current.contains(p)) {
                 current = current[p];
             } else {
                 return defaultValue;

@@ -10,6 +10,8 @@
 // 前向声明
 namespace yachiyo::config { class ConfigManager; }
 namespace yachiyo::utils { class CrowHttpServer; class LogUtils; }
+namespace yachiyo::services { class IAuthService; }
+namespace Yachiyo::Utils { class DatabaseUtil; class HashUtil; class JwtUtil; }
 namespace spdlog { class logger; }
 
 namespace yachiyo {
@@ -20,8 +22,10 @@ using json = nlohmann::json;
  * @brief 应用程序类 - 管理整个应用的生命周期 (单例模式)
  */
 class Application : public std::enable_shared_from_this<Application> {
+    // 允许 make_shared 访问私有构造函数
+    struct PrivateTag {};
 public:
-    Application();
+    explicit Application(PrivateTag);
     ~Application();
 
     /**
@@ -59,6 +63,11 @@ public:
      * @return 版本字符串
      */
     static std::string getVersion() { return "1.0.0"; }
+
+    /**
+     * @brief 检查应用是否正在运行
+     */
+    bool isRunning() const { return running.load(); }
 
     /**
      * @brief 获取启动时间
@@ -125,6 +134,13 @@ private:
     std::atomic<bool> running;
     Arguments arguments;
     std::chrono::system_clock::time_point startTime;
+    std::thread wsThread_;  // WebSocket 服务线程（可 join）
+
+    // 共享服务实例 — 在 initializeServices() 中创建，在 initializeControllers() 中复用
+    std::shared_ptr<Yachiyo::Utils::DatabaseUtil> sharedDbUtil;
+    std::shared_ptr<Yachiyo::Utils::HashUtil> sharedHashUtil;
+    std::shared_ptr<Yachiyo::Utils::JwtUtil> sharedJwtUtil;
+    std::shared_ptr<yachiyo::services::IAuthService> sharedAuthService;
 };
 
 } // namespace yachiyo
