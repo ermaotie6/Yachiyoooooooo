@@ -397,7 +397,7 @@ void Application::initializeServices() {
         std::string redisHost = configManager->getString("redis.host", "localhost");
         int redisPort = configManager->getInt("redis.port", 6379);
         std::string redisPassword = configManager->getString("redis.password", "");
-        int redisPoolSize = configManager->getInt("redis.poolSize", 5);
+        int redisPoolSize = configManager->getInt("redis.pool_size", 10);
         
         // redisPool = std::make_shared<RedisPool>(...);
         logger->info("Redis连接初始化完成: {}:{}", redisHost, redisPort);

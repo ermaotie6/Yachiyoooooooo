@@ -66,6 +66,13 @@ public:
     
     Result<json> getStatistics() override;
     
+    Result<bool> deleteMessage(
+        int64_t messageId,
+        int64_t userId,
+        bool isAdmin,
+        const std::string& reason = ""
+    ) override;
+
     Result<bool> hideMessage(
         int64_t messageId,
         const std::string& reason = ""

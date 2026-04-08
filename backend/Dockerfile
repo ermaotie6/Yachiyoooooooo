@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y \
     libhiredis-dev \
     libcurl4-openssl-dev \
     nlohmann-json3-dev \
+    uuid-dev \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
 

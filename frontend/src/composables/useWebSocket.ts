@@ -92,7 +92,9 @@ export function useWebSocket() {
         const host = window.location.host
         wsUrl = `${protocol}//${host}/ws`
       }
-      const url = `${wsUrl}?user_id=${userId}`
+      // user_id 通过 identify 消息发送，不通过 URL query 传递
+      // (Crow WebSocket 不暴露 HTTP 升级请求的 query string)
+      const url = wsUrl
 
       console.log('[WebSocket] Connecting to', url)
 

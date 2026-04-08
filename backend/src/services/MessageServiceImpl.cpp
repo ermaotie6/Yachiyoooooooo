@@ -357,6 +357,45 @@ Result<json> MessageServiceImpl::getStatistics() {
     }
 }
 
+// ==================== 删除消息 ====================
+
+Result<bool> MessageServiceImpl::deleteMessage(
+    int64_t messageId,
+    int64_t userId,
+    bool isAdmin,
+    const std::string& reason
+) {
+    try {
+        // 非管理员只能删除自己的消息
+        if (!isAdmin) {
+            auto result = dbUtil->query(
+                "SELECT user_id FROM user_messages WHERE id = $1",
+                {std::to_string(messageId)}
+            );
+            if (result.empty()) {
+                return Result<bool>::Error("消息不存在");
+            }
+            int64_t ownerId = std::stoll(result[0]["user_id"]);
+            if (ownerId != userId) {
+                return Result<bool>::Error("权限不足，只能删除自己的消息");
+            }
+        }
+
+        dbUtil->execute(
+            "DELETE FROM user_messages WHERE id = $1",
+            {std::to_string(messageId)}
+        );
+
+        logger->info("消息已删除: messageId={}, by userId={}, isAdmin={}, reason={}",
+                    messageId, userId, isAdmin, reason);
+        return Result<bool>::Success(true);
+
+    } catch (const std::exception& e) {
+        logger->error("删除消息异常: {}", e.what());
+        return Result<bool>::Error("删除失败");
+    }
+}
+
 // ==================== 隐藏消息 ====================
 
 Result<bool> MessageServiceImpl::hideMessage(
@@ -415,7 +454,8 @@ Result<bool> MessageServiceImpl::checkRateLimit(int64_t userId, const std::strin
 Result<bool> MessageServiceImpl::checkIpBlacklist(const std::string& userIp) {
     try {
         auto result = dbUtil->query(
-            "SELECT 1 FROM user_blacklist WHERE identifier = $1 AND identifier_type = 1",
+            "SELECT 1 FROM user_blacklist WHERE identifier = $1 AND identifier_type = 1 "
+            "AND (expires_at IS NULL OR expires_at > NOW())",
             {userIp}
         );
         if (!result.empty()) {

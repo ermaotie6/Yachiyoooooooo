@@ -102,6 +102,21 @@ public:
     virtual Result<json> getStatistics() = 0;
     
     /**
+     * @brief 删除消息 (消息所有者或管理员)
+     * @param messageId 消息ID
+     * @param userId 操作者用户ID
+     * @param isAdmin 操作者是否为管理员
+     * @param reason 删除理由
+     * @return Result<bool> 操作是否成功
+     */
+    virtual Result<bool> deleteMessage(
+        int64_t messageId,
+        int64_t userId,
+        bool isAdmin,
+        const std::string& reason = ""
+    ) = 0;
+
+    /**
      * @brief 阻止消息被看到 (隐藏消息)
      * @param messageId 消息ID
      * @param reason 隐藏理由

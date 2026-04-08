@@ -27,27 +27,27 @@
 
       <el-table :data="messages" stripe v-loading="loading">
         <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="username" label="用户" width="120" />
-        <el-table-column prop="content" label="内容" min-width="300">
+        <el-table-column prop="user_id" label="用户ID" width="120" />
+        <el-table-column prop="message" label="内容" min-width="300">
           <template #default="{ row }">
-            {{ row.content?.substring(0, 80) }}{{ row.content?.length > 80 ? '...' : '' }}
+            {{ row.message?.substring(0, 80) }}{{ row.message?.length > 80 ? '...' : '' }}
           </template>
         </el-table-column>
-        <el-table-column prop="reviewStatus" label="状态" width="100">
+        <el-table-column prop="review_status" label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="getStatusType(row.reviewStatus)" size="small">
-              {{ getStatusText(row.reviewStatus) }}
+            <el-tag :type="getStatusType(row.review_status)" size="small">
+              {{ getStatusText(row.review_status) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="createdAt" label="时间" width="180">
+        <el-table-column prop="created_at" label="时间" width="180">
           <template #default="{ row }">
-            {{ formatDate(row.createdAt) }}
+            {{ formatDate(row.created_at) }}
           </template>
         </el-table-column>
         <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
-            <el-button type="danger" size="small" @click="deleteMessage(row.id)">删除</el-button>
+            <el-button type="danger" size="small" @click="deleteMessage(row.message_id)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -80,24 +80,26 @@ const searchKeyword = ref('')
 
 const formatDate = (date: string) => date ? new Date(date).toLocaleString('zh-CN') : '-'
 
-const getStatusType = (status: string) => {
-  const map: Record<string, string> = { approved: 'success', pending: 'warning', rejected: 'danger' }
-  return map[status] || 'info'
+const getStatusType = (status: number | string) => {
+  // 后端 review_status: 0=PENDING, 1=APPROVED, 2=REJECTED, 3=MANUAL_REVIEW
+  const map: Record<string, string> = { '1': 'success', '0': 'warning', '2': 'danger', '3': 'warning', approved: 'success', pending: 'warning', rejected: 'danger' }
+  return map[String(status)] || 'info'
 }
 
-const getStatusText = (status: string) => {
-  const map: Record<string, string> = { approved: '已通过', pending: '待审核', rejected: '已拒绝' }
-  return map[status] || '未知'
+const getStatusText = (status: number | string) => {
+  const map: Record<string, string> = { '1': '已通过', '0': '待审核', '2': '已拒绝', '3': '人工审核', approved: '已通过', pending: '待审核', rejected: '已拒绝' }
+  return map[String(status)] || '未知'
 }
 
 const fetchMessages = async () => {
   loading.value = true
   try {
-    const res = await api.get('/admin/messages', {
+    const res = await api.get('/messages/list', {
       params: { page: currentPage.value, size: pageSize.value, status: statusFilter.value, keyword: searchKeyword.value }
     })
     if (res.data?.data) {
-      messages.value = res.data.data.items || []
+      // 后端返回 { data: { messages: [...], total: N } }
+      messages.value = res.data.data.messages || res.data.data.items || []
       total.value = res.data.data.total || 0
     }
   } catch (error) {
@@ -110,7 +112,7 @@ const fetchMessages = async () => {
 const deleteMessage = async (id: number) => {
   try {
     await ElMessageBox.confirm('确定要删除这条消息吗？', '确认删除', { type: 'warning' })
-    await api.delete(`/admin/messages/${id}`)
+    await api.post('/messages/delete', { message_id: id })
     ElMessage.success('已删除')
     await fetchMessages()
   } catch (error) {

@@ -45,9 +45,12 @@ export interface ChatSession {
 }
 
 export interface ApiResponse<T> {
-  success: boolean
-  code: string
-  message: string
+  code: number
+  msg: string
   data: T
-  timestamp: string
+  /** @deprecated 部分旧接口可能返回 success 布尔值 */
+  success?: boolean
+  /** @deprecated 部分旧接口可能返回 message 字符串 */
+  message?: string
+  timestamp?: string
 }

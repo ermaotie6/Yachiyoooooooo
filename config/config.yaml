@@ -38,6 +38,7 @@ redis:
   password: ""
   ttl_seconds: 3600
   pool_size: 10
+  # 注意: Application.cpp 读取键名为 redis.pool_size（下划线命名）
 
 # ============ GPT-SoVITS 配置 ============
 gpt_sovits:

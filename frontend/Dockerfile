@@ -31,10 +31,10 @@ WORKDIR /app
 COPY --from=builder /app/dist ./dist
 
 # 创建非root用户
-RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
+RUN addgroup -g 1001 -S yachiyo && adduser -S yachiyo -u 1001 -G yachiyo
 
 # 设置用户
-USER nextjs
+USER yachiyo
 
 # 暴露端口
 EXPOSE 3000

@@ -449,6 +449,8 @@ CREATE INDEX IF NOT EXISTS idx_websocket_active ON websocket_logs(status) WHERE 
 -- ============ 创建初始数据 ============
 
 -- 创建管理员用户（可选）
+-- ⚠️ 警告: 以下密码哈希为 placeholder，无法用于登录！
+-- 生产环境请通过 API 注册用户或手动生成正确的 bcrypt 哈希替换。
 INSERT INTO users (username, email, password_hash, salt, nickname, role, status, is_active)
 VALUES (
     'admin',

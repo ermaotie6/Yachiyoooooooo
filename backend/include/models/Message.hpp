@@ -80,7 +80,21 @@ public:
     // ==================== Setters ====================
     void setMessageId(int64_t id_) { messageId = id_; }
     void setUserId(int64_t userId_) { userId = userId_; }
-    void setOriginalMessage(const std::string& msg) { originalMessage = msg; messageLength = msg.length(); }
+    void setOriginalMessage(const std::string& msg) {
+        originalMessage = msg;
+        // 使用 UTF-8 字符计数（与前端 Array.from(str).length 和数据库 message_length 一致）
+        int32_t count = 0;
+        for (size_t i = 0; i < msg.size(); ) {
+            unsigned char c = static_cast<unsigned char>(msg[i]);
+            if (c < 0x80) i += 1;
+            else if ((c >> 5) == 0x06) i += 2;
+            else if ((c >> 4) == 0x0E) i += 3;
+            else if ((c >> 3) == 0x1E) i += 4;
+            else i += 1;
+            ++count;
+        }
+        messageLength = count;
+    }
     
     void setReviewStatus(ReviewStatus status) { reviewStatus = status; }
     void setReviewReason(const std::string& reason) { reviewReason = reason; }

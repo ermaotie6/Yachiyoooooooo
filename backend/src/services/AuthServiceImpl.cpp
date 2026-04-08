@@ -10,10 +10,40 @@ namespace yachiyo::services {
 // ==================== 辅助验证方法 ====================
 
 bool AuthServiceImpl::isValidUsername(const std::string& username) const {
-    if (username.length() < 3 || username.length() > 50) return false;
-    // 允许字母、数字、下划线、中文
-    std::regex pattern("^[a-zA-Z0-9_\\u4e00-\\u9fff]+$");
-    return std::regex_match(username, pattern);
+    // 长度检查：使用 UTF-8 字符计数而非字节长度
+    size_t charCount = 0;
+    for (size_t i = 0; i < username.size(); ) {
+        unsigned char c = static_cast<unsigned char>(username[i]);
+        if (c < 0x80) {
+            // ASCII: 只允许字母、数字、下划线
+            if (!std::isalnum(c) && c != '_') return false;
+            i += 1;
+        } else if ((c >> 5) == 0x06) {
+            // 2字节 UTF-8
+            if (i + 1 >= username.size()) return false;
+            i += 2;
+        } else if ((c >> 4) == 0x0E) {
+            // 3字节 UTF-8 — 包含 CJK 统一汉字 (U+4E00-U+9FFF)
+            if (i + 2 >= username.size()) return false;
+            // 验证是否为合法的 CJK 汉字范围
+            uint32_t codepoint = (static_cast<uint32_t>(c & 0x0F) << 12)
+                               | (static_cast<uint32_t>(username[i+1] & 0x3F) << 6)
+                               | static_cast<uint32_t>(username[i+2] & 0x3F);
+            if (codepoint < 0x4E00 || codepoint > 0x9FFF) {
+                // 不在 CJK 汉字范围内，拒绝
+                return false;
+            }
+            i += 3;
+        } else if ((c >> 3) == 0x1E) {
+            // 4字节 UTF-8 (emoji 等) — 不允许在用户名中使用
+            return false;
+        } else {
+            // 无效 UTF-8 字节
+            return false;
+        }
+        ++charCount;
+    }
+    return charCount >= 3 && charCount <= 50;
 }
 
 bool AuthServiceImpl::isValidEmail(const std::string& email) const {
