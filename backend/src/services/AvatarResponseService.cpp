@@ -141,6 +141,7 @@ Utils::Result<AvatarResponse> AvatarResponseService::processUserMessage(
             
             if (translationResult.isSuccess()) {
                 finalText = translationResult.getValue().translatedText;
+                response.translatedText = finalText;
             } else {
                 LOG_WARN("翻译失败，使用原文: {}", translationResult.getError().message);
             }
@@ -148,6 +149,7 @@ Utils::Result<AvatarResponse> AvatarResponseService::processUserMessage(
     }
     
     response.text = finalText;
+    response.targetLanguage = targetLanguage;
     
     // ===== 步骤4: 音频生成 (TTS) =====
     LOG_DEBUG("生成语音");
@@ -234,10 +236,12 @@ Utils::Result<AvatarResponse> AvatarResponseService::generateFromOpenClaw(
         );
         if (translationResult.isSuccess()) {
             finalText = translationResult.getValue().translatedText;
+            response.translatedText = finalText;
         }
     }
     
     response.text = finalText;
+    response.targetLanguage = targetLanguage;
     
     // 生成语音
     std::string emotionForTTS = openclawResponse.emotions.empty() ? 

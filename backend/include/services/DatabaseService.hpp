@@ -4,6 +4,9 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <mutex>
+#include <queue>
+#include <condition_variable>
 #include <pqxx/pqxx>
 
 namespace Yachiyo::Services {
@@ -11,22 +14,38 @@ namespace Yachiyo::Services {
 using namespace Yachiyo::Models;
 
 /**
- * 数据库连接池 (简化版)
+ * 数据库连接池
+ * 
+ * 维护多个 pqxx::connection 实例，线程安全地分配和回收连接。
+ * pqxx::connection 不是线程安全的，因此每个线程必须使用独立的连接。
  */
 class DatabasePool {
 public:
     static DatabasePool& getInstance();
 
-    bool connect(const std::string& connection_string);
+    bool connect(const std::string& connection_string, size_t pool_size = 5);
     bool isConnected() const;
     void close();
 
+    /**
+     * @brief 获取一个空闲连接（阻塞等待，最多 5 秒）
+     * @return 连接指针，使用完毕后必须调用 releaseConnection() 归还
+     */
     std::shared_ptr<pqxx::connection> getConnection();
+
+    /**
+     * @brief 归还连接到池中
+     */
+    void releaseConnection(std::shared_ptr<pqxx::connection> conn);
 
 private:
     DatabasePool() = default;
     std::string connection_string_;
-    std::shared_ptr<pqxx::connection> connection_;
+    std::queue<std::shared_ptr<pqxx::connection>> pool_;
+    mutable std::mutex mutex_;
+    std::condition_variable cv_;
+    size_t pool_size_ = 0;
+    bool closed_ = false;
 };
 
 /**
@@ -61,6 +80,7 @@ public:
 
 private:
     std::shared_ptr<pqxx::connection> conn_;
+    mutable std::mutex mutex_;  // pqxx::connection 非线程安全，需要互斥锁保护
 
     Message parseRow(const pqxx::row& row);
 };
@@ -92,6 +112,7 @@ public:
 
 private:
     std::shared_ptr<pqxx::connection> conn_;
+    mutable std::mutex mutex_;
 
     ConversationContext parseRow(const pqxx::row& row);
 };
@@ -114,6 +135,7 @@ public:
     // 更新用户信息
     Result<void> updateProfile(int64_t user_id, const json& profile_data);
     Result<void> updatePreferences(int64_t user_id, const json& preferences);
+    Result<void> updateRole(int64_t user_id, int role);
     Result<void> updateLastLogin(int64_t user_id);
 
     // 删除用户
@@ -121,6 +143,7 @@ public:
 
 private:
     std::shared_ptr<pqxx::connection> conn_;
+    mutable std::mutex mutex_;
 
     User parseRow(const pqxx::row& row);
 };
@@ -144,6 +167,7 @@ public:
 
 private:
     std::shared_ptr<pqxx::connection> conn_;
+    mutable std::mutex mutex_;
 
     ModerationLog parseRow(const pqxx::row& row);
 };
@@ -155,7 +179,7 @@ class DatabaseService {
 public:
     static DatabaseService& getInstance();
 
-    bool initialize(const std::string& connection_string);
+    bool initialize(const std::string& connection_string, size_t pool_size = 5);
     bool isInitialized() const { return initialized_; }
 
     // DAO 访问

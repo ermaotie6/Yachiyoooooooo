@@ -301,7 +301,7 @@ const handleAvatarResponse = async (response: any) => {
 
   // 添加 Avatar 消息
   const avatarMsg: Message = {
-    id: `msg_${Date.now()}`,
+    id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     role: 'avatar',
     text: response.text,
     emotions: response.emotions || [],

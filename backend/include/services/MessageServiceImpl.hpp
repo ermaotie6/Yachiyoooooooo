@@ -7,6 +7,9 @@
 
 namespace yachiyo::services {
 
+// 前向声明
+class DeepSeekModerationService;
+
 /**
  * @brief 消息服务实现 (6层安全审查系统)
  */
@@ -14,6 +17,7 @@ class MessageServiceImpl : public IMessageService {
 private:
     std::shared_ptr<Yachiyo::Utils::DatabaseUtil> dbUtil;
     std::shared_ptr<IAuthService> authService;
+    std::shared_ptr<DeepSeekModerationService> moderationService;
     
     // 配置参数
     static constexpr int MAX_MESSAGES_PER_MINUTE = 10;      // 每分钟最多消息数
@@ -24,8 +28,9 @@ private:
 public:
     MessageServiceImpl(
         std::shared_ptr<Yachiyo::Utils::DatabaseUtil> db = nullptr,
-        std::shared_ptr<IAuthService> auth = nullptr
-    ) : dbUtil(db), authService(auth) {}
+        std::shared_ptr<IAuthService> auth = nullptr,
+        std::shared_ptr<DeepSeekModerationService> moderation = nullptr
+    ) : dbUtil(db), authService(auth), moderationService(moderation) {}
     
     // ==================== 实现接口 ====================
     

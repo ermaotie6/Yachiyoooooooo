@@ -17,6 +17,11 @@ struct User {
     std::string username;
     std::string email;
     std::string password_hash;
+    std::string salt;
+    std::string nickname;
+    std::string avatar_url;
+    int role = 1;        // 1=普通用户, 99=管理员
+    int status = 1;      // 1=活跃, 2=禁用, 3=封禁
     json profile_data;
     json preferences;
     int64_t created_at;

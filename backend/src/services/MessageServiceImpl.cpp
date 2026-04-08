@@ -1,4 +1,5 @@
 #include "services/MessageServiceImpl.hpp"
+#include "services/DeepSeekModerationService.hpp"
 #include "utils/LogUtils.hpp"
 #include "utils/RedisUtil.hpp"
 #include <ctime>
@@ -386,11 +387,21 @@ Result<bool> MessageServiceImpl::checkRateLimit(int64_t userId, const std::strin
     try {
         using RedisUtil = Yachiyo::Utils::RedisUtil;
         std::string key = "rate_limit:" + std::to_string(userId);
-        // 使用 getCache/setCache 模拟计数器
-        auto cached = RedisUtil::getCache(key);
-        int count = cached.empty() ? 0 : std::stoi(cached);
-        count++;
-        RedisUtil::setCache(key, std::to_string(count), 60); // 60秒TTL
+        // 使用 Redis INCR 原子命令实现计数器，避免 get+set 的竞态条件
+        auto conn = RedisUtil::getConnection();
+        if (!conn) {
+            // Redis 不可用时放行
+            return Result<bool>::Success(true);
+        }
+        // INCR 是原子操作，返回递增后的值；如果 key 不存在则初始化为 0 再 +1
+        std::string countStr = conn->executeCommand("INCR", {key});
+        int count = 0;
+        try { count = std::stoi(countStr); } catch (...) { count = 1; }
+        // 首次创建 key 时设置 TTL（仅当 count == 1 时设置，避免每次重置 TTL）
+        if (count == 1) {
+            conn->expire(key, 60); // 60秒窗口
+        }
+        RedisUtil::releaseConnection(conn);
         if (count > MAX_MESSAGES_PER_MINUTE) {
             return Result<bool>::Error("消息过于频繁，请稍后再试");
         }
@@ -438,8 +449,8 @@ Result<std::pair<bool, double>> MessageServiceImpl::checkBlockedKeywords(const s
             // 关键词匹配 (消息和关键词均已转小写，英文大小写不敏感)
             if (lowerMessage.find(keyword) != std::string::npos) {
                 foundKeyword = true;
-                // 根据严重程度计算评分 (1-5级 -> 0.2-1.0)
-                double score = severity * 0.2;
+                // 根据严重程度计算评分 (1=低→0.3, 2=中→0.6, 3=高→0.9)
+                double score = severity * 0.3;
                 maxScore = std::max(maxScore, score);
             }
         }
@@ -454,10 +465,39 @@ Result<std::pair<bool, double>> MessageServiceImpl::checkBlockedKeywords(const s
 
 Result<std::pair<bool, double>> MessageServiceImpl::aiContentReview(const std::string& message) {
     try {
-        // Layer 4: 基于启发式方法的 AI 内容审查
-        // (真实的 AI 审查可通过 OpenClaw 异步接口实现)
+        // Layer 4: AI 内容审查
+        // 优先调用 DeepSeekModerationService (调用 DeepSeek Chat API)，
+        // 若未配置或调用失败则回退到启发式审查。
         
-        // 启发式检查: 基于消息特征的评分
+        if (moderationService) {
+            // 使用 DeepSeek 内容审查服务
+            ModerationRequest modReq;
+            modReq.content = message;
+            auto modResult = moderationService->moderate(modReq);
+            
+            if (modResult.isSuccess()) {
+                auto modResp = modResult.getValue();
+                double riskScore = static_cast<double>(modResp.overallRiskScore);
+                bool isAbusive = false;
+                
+                if (modResp.overallVerdict == "block") {
+                    isAbusive = true;
+                    riskScore = std::max(riskScore, 0.95);
+                } else if (modResp.overallVerdict == "review") {
+                    // 风险评分 >= 阈值时标记为可能辱骂
+                    isAbusive = (riskScore >= AI_REVIEW_THRESHOLD);
+                }
+                
+                logger->debug("DeepSeek 审核完成: verdict={}, riskScore={}",
+                             modResp.overallVerdict, riskScore);
+                return Result<std::pair<bool, double>>::Success({isAbusive, riskScore});
+            } else {
+                logger->warn("DeepSeek 审核调用失败: {}，回退到启发式审查",
+                            modResult.getError().message);
+            }
+        }
+        
+        // 回退: 基于启发式方法的 AI 内容审查
         double riskScore = 0.0;
         bool isAbusive = false;
         
@@ -515,16 +555,24 @@ Result<bool> MessageServiceImpl::behaviorAnalysis(int64_t userId, const std::str
         using RedisUtil = Yachiyo::Utils::RedisUtil;
         bool hasAbnormalBehavior = false;
         
-        // 行为分析1: 短时间内大量消息 (基于Redis缓存)
+        // 行为分析1: 短时间内大量消息 (基于Redis原子计数器)
         std::string userKey = "user_activity:" + std::to_string(userId);
         try {
-            auto cached = RedisUtil::getCache(userKey);
-            int messageCount = cached.empty() ? 0 : std::stoi(cached);
-            messageCount++;
-            RedisUtil::setCache(userKey, std::to_string(messageCount), 300); // 5分钟窗口
-            if (messageCount > 20) {
-                hasAbnormalBehavior = true;
-                logger->warn("用户异常行为检测: {} 5分钟内消息数:{}", userId, messageCount);
+            // 使用 INCR 原子操作，与 checkRateLimit 保持一致，避免 get+set 竞态条件
+            auto conn = RedisUtil::getConnection();
+            if (conn) {
+                std::string countStr = conn->executeCommand("INCR", {userKey});
+                int messageCount = 0;
+                try { messageCount = std::stoi(countStr); } catch (...) { messageCount = 1; }
+                // 首次创建 key 时设置 TTL (5分钟窗口)
+                if (messageCount == 1) {
+                    conn->expire(userKey, 300);
+                }
+                RedisUtil::releaseConnection(conn);
+                if (messageCount > 20) {
+                    hasAbnormalBehavior = true;
+                    logger->warn("用户异常行为检测: {} 5分钟内消息数:{}", userId, messageCount);
+                }
             }
         } catch (...) {}
         

@@ -210,6 +210,7 @@ Utils::Result<json> WebSocketController::processUserMessage(
             {"request_id", avatarResponse.requestId},
             {"text", avatarResponse.text},
             {"original_text", avatarResponse.originalText},
+            {"translated_text", avatarResponse.translatedText.empty() ? avatarResponse.text : avatarResponse.translatedText},
             {"audio_url", avatarResponse.audioUrl},
             {"audio_duration_ms", avatarResponse.audioDurationMs},
             {"emotions", json::array()},

@@ -180,14 +180,16 @@ Result<json> AuthServiceImpl::login(
         // 4. 生成令牌
         std::string username_val = row["username"];
         std::string role_val = row["role"];
+        // 将 SMALLINT 角色值转换为可读字符串，供 JWT 和前端使用
+        std::string role_readable = (role_val == "99") ? "admin" : "user";
         
         // access_token: 使用默认过期时间 (由 JwtUtil 构造时设定, 通常 24 小时)
-        auto accessToken = jwtUtil->generateToken(userId, username_val, role_val);
+        auto accessToken = jwtUtil->generateToken(userId, username_val, role_readable);
         // refresh_token: 使用 7 天有效期 (604800 秒)
         nlohmann::json refreshPayload;
         refreshPayload["user_id"] = userId;
         refreshPayload["username"] = username_val;
-        refreshPayload["role"] = role_val;
+        refreshPayload["role"] = role_readable;
         refreshPayload["token_type"] = "refresh";
         auto refreshToken = jwtUtil->generateToken(refreshPayload, 604800);
         
@@ -205,7 +207,7 @@ Result<json> AuthServiceImpl::login(
             {"id", userId},
             {"username", row["username"]},
             {"email", row["email"]},
-            {"role", row["role"]}
+            {"role", role_readable}
         };
         
         LOG_INFO("用户登录成功: " + std::string(row["username"]));

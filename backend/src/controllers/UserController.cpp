@@ -55,7 +55,8 @@ bool UserController::isAdmin(const std::string& token) {
     try {
         auto jwt = getJwtUtilCached();
         std::string role = jwt->getRoleFromToken(token);
-        return role == "admin" || role == "ADMIN";
+        // JWT 中 role 可能是 SMALLINT 字符串 "99" 或字符串 "admin"/"ADMIN"
+        return role == "99" || role == "admin" || role == "ADMIN";
     } catch (...) { return false; }
 }
 
@@ -223,7 +224,7 @@ crow::response UserController::createUser(const crow::request& req) {
         std::string username = body.value("username", "");
         std::string email    = body.value("email", "");
         std::string password = body.value("password", "");
-        std::string role     = body.value("role", "user");
+        std::string roleStr  = body.value("role", "user");
         std::string avatar   = body.value("avatar", "");
         std::string bio      = body.value("bio", "");
 
@@ -231,38 +232,50 @@ crow::response UserController::createUser(const crow::request& req) {
             return badRequestResponse("用户名、邮箱和密码不能为空");
         if (password.length() < 8)
             return badRequestResponse("密码长度至少为8个字符");
-        if (role != "user" && role != "admin" && role != "moderator")
+        if (roleStr != "user" && roleStr != "admin")
             return badRequestResponse("无效的用户角色");
 
-        // 直接通过 SQL 创建用户
+        // 将角色字符串映射为数据库 SMALLINT (1=普通用户, 99=管理员)
+        int roleInt = (roleStr == "admin") ? 99 : 1;
+
+        // 使用 hashPassword() 分离存储 hash 和 salt
+        auto [hashedPassword, salt] = Yachiyo::Utils::HashUtil::hashPassword(password);
+
+        auto conn = Yachiyo::Services::DatabasePool::getInstance().getConnection();
+        if (!conn || !conn->is_open()) {
+            return internalServerErrorResponse("数据库连接失败");
+        }
         try {
-            std::string hashedPassword = Yachiyo::Utils::HashUtil::hashPasswordCombined(password);
-            auto conn = Yachiyo::Services::DatabasePool::getInstance().getConnection();
-            if (!conn || !conn->is_open()) {
-                return internalServerErrorResponse("数据库连接失败");
-            }
             pqxx::work txn(*conn);
             auto result = txn.exec_params(
-                "INSERT INTO users (username, email, password_hash, role, avatar_url, bio, is_active, is_verified) "
-                "VALUES ($1, $2, $3, $4, $5, $6, true, false) RETURNING id, username, email, role",
-                username, email, hashedPassword, role, avatar, bio
+                "INSERT INTO users (username, email, password_hash, salt, role, avatar_url, bio, is_active, status) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, true, 1) RETURNING id, username, email, role",
+                username, email, hashedPassword, salt, roleInt, avatar, bio
             );
             txn.commit();
+            Yachiyo::Services::DatabasePool::getInstance().releaseConnection(conn);
 
             if (result.empty()) {
                 return internalServerErrorResponse("创建用户失败");
             }
 
+            // 将返回的 role SMALLINT 转回可读字符串
+            int retRole = result[0]["role"].as<int>();
+            std::string retRoleStr = (retRole == 99) ? "admin" : "user";
+
             return successResponse("创建用户成功", {
                 {"id", result[0]["id"].as<int64_t>()},
                 {"username", result[0]["username"].as<std::string>()},
                 {"email", result[0]["email"].as<std::string>()},
-                {"role", result[0]["role"].as<std::string>()}
+                {"role", retRoleStr}
             });
         } catch (const pqxx::unique_violation& e) {
+            Yachiyo::Services::DatabasePool::getInstance().releaseConnection(conn);
             return badRequestResponse("用户名或邮箱已存在");
+        } catch (...) {
+            Yachiyo::Services::DatabasePool::getInstance().releaseConnection(conn);
+            throw;
         }
-
     } catch (const std::exception& e) {
         logger->error("创建用户失败: {}", e.what());
         return internalServerErrorResponse("服务器内部错误");

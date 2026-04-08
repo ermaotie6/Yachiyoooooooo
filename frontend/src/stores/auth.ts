@@ -33,7 +33,8 @@ export const useAuthStore = defineStore('auth', () => {
     // 构建用户对象 — 后端 user 子对象用 id (不是 userId)，role 可能是数字字符串
     const backendUser = data.user || {}
     const roleRaw = String(backendUser.role ?? data.role ?? 'user').toLowerCase()
-    const normalizedRole: 'user' | 'admin' = roleRaw === 'admin' ? 'admin' : 'user'
+    // 兼容 SMALLINT 值 "99" 和字符串 "admin"
+    const normalizedRole: 'user' | 'admin' = (roleRaw === 'admin' || roleRaw === '99') ? 'admin' : 'user'
     
     const userData: User = {
       userId: backendUser.id ?? data.userId ?? data.user_id ?? 0,
@@ -92,7 +93,8 @@ export const useAuthStore = defineStore('auth', () => {
           // token 有效，使用服务端返回的最新用户信息
           const serverUser = response.data.data
           const roleRaw = String(serverUser.role ?? 'user').toLowerCase()
-          const normalizedRole: 'user' | 'admin' = roleRaw === 'admin' ? 'admin' : 'user'
+          // 兼容 SMALLINT 值 "99" 和字符串 "admin"
+          const normalizedRole: 'user' | 'admin' = (roleRaw === 'admin' || roleRaw === '99') ? 'admin' : 'user'
           const userData: User = {
             userId: serverUser.id ?? user.value.userId,
             username: serverUser.username ?? user.value.username,

@@ -42,6 +42,7 @@ using Utils = Yachiyo::Utils;
 
 // 全局应用程序实例
 std::shared_ptr<Application> Application::instance = nullptr;
+std::once_flag Application::initFlag;
 
 Application::Application(PrivateTag) 
     : configManager(nullptr), 
@@ -56,9 +57,9 @@ Application::~Application() {
 }
 
 std::shared_ptr<Application> Application::getInstance() {
-    if (!instance) {
+    std::call_once(initFlag, []() {
         instance = std::make_shared<Application>(PrivateTag{});
-    }
+    });
     return instance;
 }
 
@@ -243,14 +244,14 @@ void Application::initializeControllers() {
     
     // 注册消息控制器（需要数据库和WebSocket服务）
     if (g_databaseService && g_webSocketService) {
-        // 创建 MessageServiceImpl
-        auto messageService = std::make_shared<yachiyo::services::MessageServiceImpl>(
-            sharedDbUtil,
-            sharedAuthService
-        );
+        // 复用 initializeServices() 中创建的 sharedMessageService
+        if (!sharedMessageService) {
+            sharedMessageService = std::make_shared<yachiyo::services::MessageServiceImpl>(
+                sharedDbUtil, sharedAuthService, sharedModerationService);
+        }
         
         auto messageController = std::make_shared<controllers::MessageController>(
-            messageService,
+            sharedMessageService,
             sharedAuthService,
             g_databaseService, g_webSocketService, sharedJwtUtil,
             Yachiyo::Utils::Logger::getLogger("MessageController")
@@ -290,8 +291,8 @@ void Application::initializeDatabase() {
         // 获取数据库服务单例
         auto& dbService = Yachiyo::Services::DatabaseService::getInstance();
         
-        // 初始化连接
-        if (!dbService.initialize(connectionString)) {
+        // 初始化连接（传递配置的连接池大小）
+        if (!dbService.initialize(connectionString, static_cast<size_t>(dbPoolSize))) {
             logger->error("数据库连接池初始化失败");
             return;
         }
@@ -356,8 +357,8 @@ void Application::initializeAIServices() {
         logger->warn("未配置任何 AI 服务 API Key，AI 功能将不可用");
     }
     
-    // TODO: 初始化AI服务实例
-    // aiService = std::make_shared<AIService>(aiProvider, apiKey, baseUrl, model);
+    // 注意: 通用 AI 聊天服务 (AIController) 的初始化在此处检测配置。
+    // 实际的 DeepSeek 审核和翻译服务在 initializeServices() 中通过专用服务类初始化。
     
     logger->info("AI服务初始化完成: provider={}, model={}", aiProvider, model);
 }
@@ -463,12 +464,12 @@ void Application::initializeServices() {
 
         // 5. 内容审查服务 (可选)
         //    配置键名与 config.yaml 中的 moderation 保持一致
-        std::shared_ptr<yachiyo::services::DeepSeekModerationService> moderationService = nullptr;
+        sharedModerationService = nullptr;
         if (configManager->getBool("moderation.enabled", true)) {
-            moderationService = std::make_shared<yachiyo::services::DeepSeekModerationService>();
+            sharedModerationService = std::make_shared<yachiyo::services::DeepSeekModerationService>();
             std::string moderationApiKey = configManager->getString("moderation.deepseek_api_key", "");
             std::string moderationEndpoint = configManager->getString("moderation.deepseek_api_endpoint", "https://api.deepseek.com");
-            moderationService->initialize(moderationApiKey, moderationEndpoint);
+            sharedModerationService->initialize(moderationApiKey, moderationEndpoint);
             logger->info("DeepSeek 内容审查服务初始化完成");
         } else {
             logger->warn("DeepSeek 内容审查服务已禁用 (moderation.enabled=false)");
@@ -476,7 +477,7 @@ void Application::initializeServices() {
 
         // 6. 组装 AvatarResponseService
         auto avatarService = std::make_shared<yachiyo::services::AvatarResponseService>(
-            openClawGateway, translationService, ttsService, animationService, moderationService);
+            openClawGateway, translationService, ttsService, animationService, sharedModerationService);
         std::string avatarLanguage = configManager->getString("avatar.language", "zh-CN");
         avatarService->initialize(avatarLanguage);
         logger->info("AvatarResponseService 初始化完成");
@@ -496,6 +497,12 @@ void Application::initializeServices() {
             jwtSecretShared, configManager->getInt("jwt.expiration_hours", 24) * 3600);
         sharedAuthService = std::make_shared<yachiyo::services::AuthServiceImpl>(
             sharedDbUtil, sharedJwtUtil, sharedHashUtil);
+
+        // 创建 MessageServiceImpl，注入 DeepSeekModerationService 以实现 6 层安全审查中的 AI 内容审核
+        sharedMessageService = std::make_shared<yachiyo::services::MessageServiceImpl>(
+            sharedDbUtil, sharedAuthService, sharedModerationService);
+        logger->info("MessageServiceImpl 初始化完成 (DeepSeek 审核: {})",
+                     sharedModerationService ? "已启用" : "未启用");
 
         if (g_webSocketService) {
             // Fix #5: 注册连接/断开回调，桥接 WebSocketController 的会话管理
@@ -544,30 +551,6 @@ void Application::initializeServices() {
                         if (message.contains("data") && message["data"].contains("content")) {
                             std::string text = message["data"]["content"].get<std::string>();
 
-                            // 消息长度检查（与前端50字限制一致）
-                            // 使用 Unicode 码点计数，与前端 Array.from() 行为一致
-                            size_t unicodeCharCount = 0;
-                            {
-                                const unsigned char* p = reinterpret_cast<const unsigned char*>(text.c_str());
-                                const unsigned char* end = p + text.size();
-                                while (p < end) {
-                                    if (*p < 0x80) { p += 1; }
-                                    else if ((*p & 0xE0) == 0xC0) { p += 2; }
-                                    else if ((*p & 0xF0) == 0xE0) { p += 3; }
-                                    else if ((*p & 0xF8) == 0xF0) { p += 4; }
-                                    else { p += 1; }  // 无效 UTF-8 字节，按1字节跳过
-                                    unicodeCharCount++;
-                                }
-                            }
-                            if (unicodeCharCount > 50) {
-                                json errorMsg = {
-                                    {"type", "error"},
-                                    {"data", {{"message", "消息内容超出长度限制（最多50字）"}, {"code", "MSG_TOO_LONG"}}}
-                                };
-                                g_webSocketService->sendToClient(client_id, errorMsg);
-                                return;
-                            }
-
                             // 空内容检查
                             if (text.empty()) {
                                 return;
@@ -588,7 +571,75 @@ void Application::initializeServices() {
                                 senderName = userId.empty() ? "匿名用户" : userId;
                             }
 
-                            // 广播用户消息到其他观众的实时消息框（排除发送者自己，因为前端已本地添加）
+                            // 提取用户 IP (WebSocket 场景下可能无法获取，使用占位)
+                            std::string userIp = "ws-client";
+
+                            // ==================== 6层安全审查 + 持久化 ====================
+                            // 调用 MessageServiceImpl::sendMessage() 执行完整的6层安全审查，
+                            // 并将消息持久化到数据库。
+                            int64_t numericUserId = 0;
+                            try {
+                                if (!userId.empty()) numericUserId = std::stoll(userId);
+                            } catch (...) {}
+
+                            if (sharedMessageService && numericUserId > 0) {
+                                auto msgResult = sharedMessageService->sendMessage(
+                                    numericUserId, text, userIp, "websocket");
+                                
+                                if (!msgResult.isSuccess()) {
+                                    // 消息未通过安全审查，返回错误
+                                    json errorMsg = {
+                                        {"type", "error"},
+                                        {"data", {{"message", msgResult.getErrorMsg()}, {"code", "MSG_REJECTED"}}}
+                                    };
+                                    g_webSocketService->sendToClient(client_id, errorMsg);
+                                    return;
+                                }
+                                
+                                auto savedMsg = msgResult.value();
+                                auto reviewStatus = savedMsg->getReviewStatus();
+                                
+                                // 如果消息被拒绝或需要人工审查，不广播也不发给 Avatar
+                                if (reviewStatus == yachiyo::models::ReviewStatus::REJECTED) {
+                                    json errorMsg = {
+                                        {"type", "error"},
+                                        {"data", {{"message", "消息未通过内容审核"}, {"code", "MSG_BLOCKED"}}}
+                                    };
+                                    g_webSocketService->sendToClient(client_id, errorMsg);
+                                    return;
+                                }
+                                
+                                if (reviewStatus == yachiyo::models::ReviewStatus::MANUAL_REVIEW) {
+                                    // 需要人工审查的消息，仍然广播给用户但不触发 Avatar 回复
+                                    json userBroadcast = {
+                                        {"type", "user_broadcast"},
+                                        {"data", {
+                                            {"sender_id", userId},
+                                            {"sender_name", senderName},
+                                            {"content", text},
+                                            {"timestamp", std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                std::chrono::system_clock::now().time_since_epoch()).count()}
+                                        }}
+                                    };
+                                    {
+                                        auto clients = g_webSocketService->getClients();
+                                        for (const auto& client : clients) {
+                                            if (client.client_id != client_id && client.is_active) {
+                                                g_webSocketService->sendToClient(client.client_id, userBroadcast);
+                                            }
+                                        }
+                                    }
+                                    // 通知发送者消息待审核
+                                    json noticeMsg = {
+                                        {"type", "status"},
+                                        {"data", {{"status", "pending_review"}, {"message", "消息已提交，待审核"}}}
+                                    };
+                                    g_webSocketService->sendToClient(client_id, noticeMsg);
+                                    return;
+                                }
+                            }
+
+                            // ==================== 消息通过审查，广播 + 调用 Avatar ====================
                             json userBroadcast = {
                                 {"type", "user_broadcast"},
                                 {"data", {

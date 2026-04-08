@@ -150,7 +150,15 @@ Yachiyo::Utils::Result<void> BaseController::checkPermission(const crow::request
     int jwtExpiration = configManager->getInt("jwt.expiresIn", 24);
     
     Yachiyo::Utils::JwtUtil jwtUtil(jwtSecret, jwtExpiration);
-    std::string userRole = jwtUtil.getRoleFromToken(token);
+    std::string rawRole = jwtUtil.getRoleFromToken(token);
+    
+    // 归一化角色: JWT 中可能是 SMALLINT "1"/"99" 或字符串 "admin"/"user"
+    std::string userRole;
+    if (rawRole == "99" || rawRole == "admin" || rawRole == "ADMIN") {
+        userRole = "ADMIN";
+    } else if (rawRole == "1" || rawRole == "user" || rawRole == "USER" || !rawRole.empty()) {
+        userRole = "USER";
+    }
     
     // 定义路由权限规则 (基于RBAC模式)
     // 管理员路由 (需要ADMIN角色)

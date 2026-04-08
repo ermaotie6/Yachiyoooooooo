@@ -313,23 +313,29 @@ std::vector<dto::ChatMessageDTO> ChatServiceImpl::searchMessages(const std::stri
         int64_t uid = std::stoll(userId);
         auto conn = Yachiyo::Services::DatabasePool::getInstance().getConnection();
         if (conn && conn->is_open()) {
-            pqxx::work txn(*conn);
-            std::string likePattern = "%" + keyword + "%";
-            auto result = txn.exec_params(
-                "SELECT id, user_id, content FROM messages WHERE user_id = $1 AND content LIKE $2 ORDER BY id DESC LIMIT $3",
-                uid, likePattern, limit
-            );
-            txn.commit();
+            try {
+                pqxx::work txn(*conn);
+                std::string likePattern = "%" + keyword + "%";
+                auto result = txn.exec_params(
+                    "SELECT id, user_id, original_message FROM user_messages WHERE user_id = $1 AND original_message LIKE $2 ORDER BY id DESC LIMIT $3",
+                    uid, likePattern, limit
+                );
+                txn.commit();
+                Yachiyo::Services::DatabasePool::getInstance().releaseConnection(conn);
 
-            for (const auto& row : result) {
-                dto::ChatMessageDTO msg;
-                msg.id = std::to_string(row["id"].as<int64_t>());
-                msg.senderId = std::to_string(row["user_id"].as<int64_t>());
-                msg.receiverId = userId;
-                msg.content = row["content"].as<std::string>();
-                msg.isRead = true;
-                msg.messageType = "text";
-                messages.push_back(msg);
+                for (const auto& row : result) {
+                    dto::ChatMessageDTO msg;
+                    msg.id = std::to_string(row["id"].as<int64_t>());
+                    msg.senderId = std::to_string(row["user_id"].as<int64_t>());
+                    msg.receiverId = userId;
+                    msg.content = row["original_message"].as<std::string>();
+                    msg.isRead = true;
+                    msg.messageType = "text";
+                    messages.push_back(msg);
+                }
+            } catch (...) {
+                Yachiyo::Services::DatabasePool::getInstance().releaseConnection(conn);
+                throw;
             }
         }
 
@@ -353,12 +359,18 @@ bool ChatServiceImpl::clearChatHistory(const std::string& userId, const std::str
             int64_t uid = std::stoll(userId);
             auto conn = Yachiyo::Services::DatabasePool::getInstance().getConnection();
             if (conn && conn->is_open()) {
-                pqxx::work txn(*conn);
-                txn.exec_params(
-                    "DELETE FROM messages WHERE user_id = $1",
-                    uid
-                );
-                txn.commit();
+                try {
+                    pqxx::work txn(*conn);
+                    txn.exec_params(
+                        "DELETE FROM user_messages WHERE user_id = $1",
+                        uid
+                    );
+                    txn.commit();
+                    Yachiyo::Services::DatabasePool::getInstance().releaseConnection(conn);
+                } catch (...) {
+                    Yachiyo::Services::DatabasePool::getInstance().releaseConnection(conn);
+                    throw;
+                }
             }
         }
 

@@ -4,13 +4,14 @@
 #include <memory>
 #include <vector>
 #include <atomic>
+#include <mutex>
 #include <iostream>
 #include <nlohmann/json.hpp>
 
 // 前向声明
 namespace yachiyo::config { class ConfigManager; }
 namespace yachiyo::utils { class CrowHttpServer; class LogUtils; }
-namespace yachiyo::services { class IAuthService; }
+namespace yachiyo::services { class IAuthService; class IMessageService; class DeepSeekModerationService; }
 namespace Yachiyo::Utils { class DatabaseUtil; class HashUtil; class JwtUtil; }
 namespace spdlog { class logger; }
 
@@ -126,6 +127,7 @@ private:
 
     // 单例实例
     static std::shared_ptr<Application> instance;
+    static std::once_flag initFlag;
 
     // 成员变量
     std::shared_ptr<config::ConfigManager> configManager;
@@ -141,6 +143,8 @@ private:
     std::shared_ptr<Yachiyo::Utils::HashUtil> sharedHashUtil;
     std::shared_ptr<Yachiyo::Utils::JwtUtil> sharedJwtUtil;
     std::shared_ptr<yachiyo::services::IAuthService> sharedAuthService;
+    std::shared_ptr<yachiyo::services::IMessageService> sharedMessageService;
+    std::shared_ptr<yachiyo::services::DeepSeekModerationService> sharedModerationService;
 };
 
 } // namespace yachiyo

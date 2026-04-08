@@ -11,17 +11,23 @@ DatabasePool& DatabasePool::getInstance() {
     return instance;
 }
 
-bool DatabasePool::connect(const std::string& connection_string) {
+bool DatabasePool::connect(const std::string& connection_string, size_t pool_size) {
+    std::lock_guard<std::mutex> lock(mutex_);
     try {
         connection_string_ = connection_string;
-        connection_ = std::make_shared<pqxx::connection>(connection_string);
-        
-        if (!connection_->is_open()) {
-            std::cerr << "[DatabasePool] Failed to open connection" << std::endl;
-            return false;
+        pool_size_ = pool_size;
+        closed_ = false;
+
+        for (size_t i = 0; i < pool_size; ++i) {
+            auto conn = std::make_shared<pqxx::connection>(connection_string);
+            if (!conn->is_open()) {
+                std::cerr << "[DatabasePool] Failed to open connection #" << i << std::endl;
+                return false;
+            }
+            pool_.push(conn);
         }
 
-        std::cout << "[DatabasePool] Connected to database" << std::endl;
+        std::cout << "[DatabasePool] Connected to database (pool size: " << pool_size << ")" << std::endl;
         return true;
     } catch (const std::exception& e) {
         std::cerr << "[DatabasePool] Connection error: " << e.what() << std::endl;
@@ -30,30 +36,70 @@ bool DatabasePool::connect(const std::string& connection_string) {
 }
 
 bool DatabasePool::isConnected() const {
-    return connection_ && connection_->is_open();
+    std::lock_guard<std::mutex> lock(mutex_);
+    return pool_size_ > 0 && !closed_;
 }
 
 void DatabasePool::close() {
-    if (connection_) {
-        connection_->disconnect();
-        connection_.reset();
+    std::lock_guard<std::mutex> lock(mutex_);
+    closed_ = true;
+    while (!pool_.empty()) {
+        auto conn = pool_.front();
+        pool_.pop();
+        if (conn) {
+            try { conn->disconnect(); } catch (...) {}
+        }
     }
+    pool_size_ = 0;
+    cv_.notify_all();
 }
 
 std::shared_ptr<pqxx::connection> DatabasePool::getConnection() {
-    return connection_;
+    std::unique_lock<std::mutex> lock(mutex_);
+    // 等待有可用连接，最多 5 秒
+    if (!cv_.wait_for(lock, std::chrono::seconds(5), [this]() {
+        return !pool_.empty() || closed_;
+    })) {
+        throw std::runtime_error("[DatabasePool] Timeout waiting for available connection");
+    }
+    if (closed_ || pool_.empty()) {
+        throw std::runtime_error("[DatabasePool] Pool is closed or empty");
+    }
+    auto conn = pool_.front();
+    pool_.pop();
+
+    // 检查连接是否仍然有效，否则重新创建
+    if (!conn || !conn->is_open()) {
+        try {
+            conn = std::make_shared<pqxx::connection>(connection_string_);
+        } catch (const std::exception& e) {
+            // 归还一个空位，让其他等待者有机会
+            cv_.notify_one();
+            throw;
+        }
+    }
+    return conn;
+}
+
+void DatabasePool::releaseConnection(std::shared_ptr<pqxx::connection> conn) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!closed_ && conn) {
+        pool_.push(conn);
+    }
+    cv_.notify_one();
 }
 
 // ============ MessageDAO 实现 ============
 
 Result<int64_t> MessageDAO::create(const Message& message) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
         std::string query = R"(
-            INSERT INTO messages 
-            (user_id, content, language, character_count, review_status, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO user_messages 
+            (user_id, original_message, message_length, review_status, created_at)
+            VALUES ($1, $2, $3, $4, NOW())
             RETURNING id
         )";
 
@@ -61,10 +107,8 @@ Result<int64_t> MessageDAO::create(const Message& message) {
             query,
             message.user_id,
             message.content,
-            message.language,
             message.character_count,
-            message.review_status,
-            message.created_at
+            message.review_status
         );
 
         txn.commit();
@@ -84,13 +128,14 @@ Result<int64_t> MessageDAO::create(const Message& message) {
 
 Result<Message> MessageDAO::getById(int64_t message_id) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
         std::string query = R"(
-            SELECT id, user_id, content, language, character_count, 
-                   review_status, moderation_result, avatar_response, 
-                   created_at, is_visible
-            FROM messages
+            SELECT id, user_id, original_message AS content, 'zh' AS language, message_length AS character_count, 
+                   review_status, NULL AS moderation_result, NULL AS avatar_response, 
+                   created_at, (review_status != 2) AS is_visible
+            FROM user_messages
             WHERE id = $1
         )";
 
@@ -109,14 +154,15 @@ Result<Message> MessageDAO::getById(int64_t message_id) {
 
 Result<std::vector<Message>> MessageDAO::getByUserId(int64_t user_id, int limit, int offset) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
         std::string query = R"(
-            SELECT id, user_id, content, language, character_count, 
-                   review_status, moderation_result, avatar_response, 
-                   created_at, is_visible
-            FROM messages
-            WHERE user_id = $1 AND is_visible = TRUE
+            SELECT id, user_id, original_message AS content, 'zh' AS language, message_length AS character_count, 
+                   review_status, NULL AS moderation_result, NULL AS avatar_response, 
+                   created_at, (review_status != 2) AS is_visible
+            FROM user_messages
+            WHERE user_id = $1 AND review_status != 2
             ORDER BY created_at DESC
             LIMIT $2 OFFSET $3
         )";
@@ -137,14 +183,15 @@ Result<std::vector<Message>> MessageDAO::getByUserId(int64_t user_id, int limit,
 
 Result<std::vector<Message>> MessageDAO::getPendingReview(int limit) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
         std::string query = R"(
-            SELECT id, user_id, content, language, character_count, 
-                   review_status, moderation_result, avatar_response, 
-                   created_at, is_visible
-            FROM messages
-            WHERE review_status = 'pending'
+            SELECT id, user_id, original_message AS content, 'zh' AS language, message_length AS character_count, 
+                   review_status::text, NULL AS moderation_result, NULL AS avatar_response, 
+                   created_at, (review_status != 2) AS is_visible
+            FROM user_messages
+            WHERE review_status = 3
             ORDER BY created_at ASC
             LIMIT $1
         )";
@@ -167,11 +214,12 @@ Result<void> MessageDAO::updateModerationResult(int64_t message_id,
                                                const std::string& status,
                                                const json& moderation_data) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
         std::string query = R"(
-            UPDATE messages
-            SET review_status = $1, moderation_result = $2, updated_at = NOW()
+            UPDATE user_messages
+            SET review_status = $1::smallint, review_reason = $2
             WHERE id = $3
         )";
 
@@ -193,15 +241,18 @@ Result<void> MessageDAO::updateModerationResult(int64_t message_id,
 
 Result<void> MessageDAO::updateAvatarResponse(int64_t message_id, const json& response_data) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
+        // user_messages 表没有 avatar_response 列，写入 avatar_responses 表
         std::string query = R"(
-            UPDATE messages
-            SET avatar_response = $1, updated_at = NOW()
-            WHERE id = $2
+            INSERT INTO avatar_responses (user_id, message_id, response_data, created_at)
+            SELECT user_id, $1, $2::jsonb, NOW()
+            FROM user_messages WHERE id = $1
+            ON CONFLICT (message_id) DO UPDATE SET response_data = $2::jsonb
         )";
 
-        txn.exec_params(query, response_data.dump(), message_id);
+        txn.exec_params(query, message_id, response_data.dump());
         txn.commit();
 
         return Result<void>();
@@ -212,9 +263,10 @@ Result<void> MessageDAO::updateAvatarResponse(int64_t message_id, const json& re
 
 Result<void> MessageDAO::delete_(int64_t message_id) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
-        std::string query = "UPDATE messages SET is_visible = FALSE WHERE id = $1";
+        std::string query = "UPDATE user_messages SET review_status = 2 WHERE id = $1";
         txn.exec_params(query, message_id);
         txn.commit();
 
@@ -251,6 +303,7 @@ Message MessageDAO::parseRow(const pqxx::row& row) {
 
 Result<int64_t> ConversationContextDAO::create(const ConversationContext& context) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
         std::string query = R"(
@@ -289,6 +342,7 @@ Result<int64_t> ConversationContextDAO::create(const ConversationContext& contex
 
 Result<ConversationContext> ConversationContextDAO::getById(int64_t context_id) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
         std::string query = R"(
@@ -314,6 +368,7 @@ Result<ConversationContext> ConversationContextDAO::getById(int64_t context_id) 
 
 Result<std::vector<ConversationContext>> ConversationContextDAO::getByUserId(int64_t user_id) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
         std::string query = R"(
@@ -341,6 +396,7 @@ Result<std::vector<ConversationContext>> ConversationContextDAO::getByUserId(int
 
 Result<ConversationContext> ConversationContextDAO::getActiveContext(int64_t user_id) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
         std::string query = R"(
@@ -368,6 +424,7 @@ Result<ConversationContext> ConversationContextDAO::getActiveContext(int64_t use
 
 Result<void> ConversationContextDAO::update(const ConversationContext& context) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
         std::string query = R"(
@@ -396,6 +453,7 @@ Result<void> ConversationContextDAO::update(const ConversationContext& context) 
 
 Result<void> ConversationContextDAO::addMessageToHistory(int64_t context_id, const json& message_data) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
         // 先获取当前的消息历史
@@ -442,14 +500,14 @@ ConversationContext ConversationContextDAO::parseRow(const pqxx::row& row) {
     ConversationContext ctx;
     ctx.id = row["id"].as<int64_t>();
     ctx.user_id = row["user_id"].as<int64_t>();
-    ctx.session_id = row["session_id"].as<std::string>();
-    ctx.conversation_id = row["conversation_id"].as<std::string>();
-    ctx.context_data = json::parse(row["context_data"].as<std::string>());
-    ctx.message_history = json::parse(row["message_history"].as<std::string>());
-    ctx.user_profile = json::parse(row["user_profile"].as<std::string>());
+    ctx.session_id = row["session_id"].is_null() ? "" : row["session_id"].as<std::string>();
+    ctx.conversation_id = row["conversation_id"].is_null() ? "" : row["conversation_id"].as<std::string>();
+    ctx.context_data = row["context_data"].is_null() ? json::object() : json::parse(row["context_data"].as<std::string>("{}"));
+    ctx.message_history = row["message_history"].is_null() ? json::object() : json::parse(row["message_history"].as<std::string>("{}"));
+    ctx.user_profile = row["user_profile"].is_null() ? json::object() : json::parse(row["user_profile"].as<std::string>("{}"));
     ctx.message_count = row["message_count"].as<int>();
-    ctx.created_at = row["created_at"].as<int64_t>();
-    ctx.updated_at = row["updated_at"].as<int64_t>();
+    ctx.created_at = row["created_at"].is_null() ? 0 : row["created_at"].as<int64_t>();
+    ctx.updated_at = row["updated_at"].is_null() ? 0 : row["updated_at"].as<int64_t>();
     ctx.is_active = row["is_active"].as<bool>();
     return ctx;
 }
@@ -468,9 +526,9 @@ DatabaseService::DatabaseService()
       user_dao_(nullptr),
       moderation_dao_(nullptr) {}
 
-bool DatabaseService::initialize(const std::string& connection_string) {
+bool DatabaseService::initialize(const std::string& connection_string, size_t pool_size) {
     try {
-        if (!DatabasePool::getInstance().connect(connection_string)) {
+        if (!DatabasePool::getInstance().connect(connection_string, pool_size)) {
             return false;
         }
 
@@ -542,12 +600,14 @@ Result<json> DatabaseService::buildOpenClawContext(int64_t user_id) {
 
 Result<int64_t> UserDAO::create(const User& user) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
         std::string query = R"(
             INSERT INTO users 
-            (username, email, password_hash, profile_data, preferences, is_active)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            (username, email, password_hash, salt, nickname, avatar_url, role, status,
+             profile_data, preferences, is_active)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING id
         )";
 
@@ -556,6 +616,11 @@ Result<int64_t> UserDAO::create(const User& user) {
             user.username,
             user.email,
             user.password_hash,
+            user.salt,
+            user.nickname,
+            user.avatar_url,
+            user.role,
+            user.status,
             user.profile_data.dump(),
             user.preferences.dump(),
             user.is_active
@@ -577,11 +642,13 @@ Result<int64_t> UserDAO::create(const User& user) {
 
 Result<User> UserDAO::getById(int64_t user_id) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
         std::string query = R"(
-            SELECT id, username, email, password_hash, profile_data, 
-                   preferences, created_at, updated_at, last_login, is_active
+            SELECT id, username, email, password_hash, salt, nickname, avatar_url,
+                   role, status, profile_data, preferences,
+                   created_at, updated_at, last_login_at, is_active
             FROM users
             WHERE id = $1
         )";
@@ -601,11 +668,13 @@ Result<User> UserDAO::getById(int64_t user_id) {
 
 Result<User> UserDAO::getByUsername(const std::string& username) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
         std::string query = R"(
-            SELECT id, username, email, password_hash, profile_data, 
-                   preferences, created_at, updated_at, last_login, is_active
+            SELECT id, username, email, password_hash, salt, nickname, avatar_url,
+                   role, status, profile_data, preferences,
+                   created_at, updated_at, last_login_at, is_active
             FROM users
             WHERE username = $1
         )";
@@ -625,11 +694,13 @@ Result<User> UserDAO::getByUsername(const std::string& username) {
 
 Result<User> UserDAO::getByEmail(const std::string& email) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
         std::string query = R"(
-            SELECT id, username, email, password_hash, profile_data, 
-                   preferences, created_at, updated_at, last_login, is_active
+            SELECT id, username, email, password_hash, salt, nickname, avatar_url,
+                   role, status, profile_data, preferences,
+                   created_at, updated_at, last_login_at, is_active
             FROM users
             WHERE email = $1
         )";
@@ -649,6 +720,7 @@ Result<User> UserDAO::getByEmail(const std::string& email) {
 
 Result<void> UserDAO::updateProfile(int64_t user_id, const json& profile_data) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
         std::string query = R"(
@@ -666,8 +738,29 @@ Result<void> UserDAO::updateProfile(int64_t user_id, const json& profile_data) {
     }
 }
 
+Result<void> UserDAO::updateRole(int64_t user_id, int role) {
+    try {
+        std::lock_guard<std::mutex> lock(mutex_);
+        pqxx::work txn(*conn_);
+
+        std::string query = R"(
+            UPDATE users
+            SET role = $1, updated_at = NOW()
+            WHERE id = $2
+        )";
+
+        txn.exec_params(query, role, user_id);
+        txn.commit();
+
+        return Result<void>();
+    } catch (const std::exception& e) {
+        return Result<void>::Error(std::string(e.what()));
+    }
+}
+
 Result<void> UserDAO::updatePreferences(int64_t user_id, const json& preferences) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
         std::string query = R"(
@@ -687,9 +780,10 @@ Result<void> UserDAO::updatePreferences(int64_t user_id, const json& preferences
 
 Result<void> UserDAO::updateLastLogin(int64_t user_id) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
-        std::string query = "UPDATE users SET last_login = NOW() WHERE id = $1";
+        std::string query = "UPDATE users SET last_login_at = NOW() WHERE id = $1";
         txn.exec_params(query, user_id);
         txn.commit();
 
@@ -701,6 +795,7 @@ Result<void> UserDAO::updateLastLogin(int64_t user_id) {
 
 Result<void> UserDAO::delete_(int64_t user_id) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
         std::string query = "UPDATE users SET is_active = FALSE WHERE id = $1";
@@ -719,11 +814,17 @@ User UserDAO::parseRow(const pqxx::row& row) {
     user.username = row["username"].as<std::string>();
     user.email = row["email"].as<std::string>();
     user.password_hash = row["password_hash"].as<std::string>();
-    user.profile_data = json::parse(row["profile_data"].as<std::string>());
-    user.preferences = json::parse(row["preferences"].as<std::string>());
-    user.created_at = row["created_at"].as<int64_t>();
-    user.updated_at = row["updated_at"].as<int64_t>();
-    user.last_login = row["last_login"].is_null() ? 0 : row["last_login"].as<int64_t>();
+    user.salt = row["salt"].is_null() ? "" : row["salt"].as<std::string>();
+    user.nickname = row["nickname"].is_null() ? "" : row["nickname"].as<std::string>();
+    user.avatar_url = row["avatar_url"].is_null() ? "" : row["avatar_url"].as<std::string>();
+    user.role = row["role"].is_null() ? 1 : row["role"].as<int>();
+    user.status = row["status"].is_null() ? 1 : row["status"].as<int>();
+    // profile_data 和 preferences 可能为 NULL，需要安全处理
+    user.profile_data = row["profile_data"].is_null() ? json::object() : json::parse(row["profile_data"].as<std::string>("{}"));
+    user.preferences = row["preferences"].is_null() ? json::object() : json::parse(row["preferences"].as<std::string>("{}"));
+    user.created_at = row["created_at"].is_null() ? 0 : row["created_at"].as<int64_t>();
+    user.updated_at = row["updated_at"].is_null() ? 0 : row["updated_at"].as<int64_t>();
+    user.last_login = row["last_login_at"].is_null() ? 0 : row["last_login_at"].as<int64_t>();
     user.is_active = row["is_active"].as<bool>();
     return user;
 }
@@ -732,6 +833,7 @@ User UserDAO::parseRow(const pqxx::row& row) {
 
 Result<int64_t> ModerationLogDAO::create(const ModerationLog& log) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
         std::string query = R"(
@@ -771,6 +873,7 @@ Result<int64_t> ModerationLogDAO::create(const ModerationLog& log) {
 
 Result<std::vector<ModerationLog>> ModerationLogDAO::getByMessageId(int64_t message_id) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
         std::string query = R"(
@@ -797,6 +900,7 @@ Result<std::vector<ModerationLog>> ModerationLogDAO::getByMessageId(int64_t mess
 
 Result<std::vector<ModerationLog>> ModerationLogDAO::getByUserId(int64_t user_id) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
         std::string query = R"(
@@ -823,6 +927,7 @@ Result<std::vector<ModerationLog>> ModerationLogDAO::getByUserId(int64_t user_id
 
 Result<std::vector<ModerationLog>> ModerationLogDAO::getHighRiskMessages(double severity_threshold) {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         pqxx::work txn(*conn_);
 
         std::string query = R"(
@@ -853,13 +958,13 @@ ModerationLog ModerationLogDAO::parseRow(const pqxx::row& row) {
     log.id = row["id"].as<int64_t>();
     log.message_id = row["message_id"].as<int64_t>();
     log.user_id = row["user_id"].as<int64_t>();
-    log.violation_type = row["violation_type"].as<std::string>();
-    log.severity_score = row["severity_score"].as<double>();
-    log.is_violation = row["is_violation"].as<bool>();
-    log.violation_details = json::parse(row["violation_details"].as<std::string>());
-    log.confidence_score = row["confidence_score"].as<double>();
-    log.action_taken = row["action_taken"].as<std::string>();
-    log.created_at = row["created_at"].as<int64_t>();
+    log.violation_type = row["violation_type"].is_null() ? "" : row["violation_type"].as<std::string>();
+    log.severity_score = row["severity_score"].is_null() ? 0.0 : row["severity_score"].as<double>();
+    log.is_violation = row["is_violation"].is_null() ? false : row["is_violation"].as<bool>();
+    log.violation_details = row["violation_details"].is_null() ? json::object() : json::parse(row["violation_details"].as<std::string>("{}"));
+    log.confidence_score = row["confidence_score"].is_null() ? 0.0 : row["confidence_score"].as<double>();
+    log.action_taken = row["action_taken"].is_null() ? "" : row["action_taken"].as<std::string>();
+    log.created_at = row["created_at"].is_null() ? 0 : row["created_at"].as<int64_t>();
     return log;
 }
 

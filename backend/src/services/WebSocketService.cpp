@@ -233,22 +233,27 @@ void WebSocketService::processClientMessage(int64_t client_id, const json& messa
 
     if (msg_type == "identify") {
         // 客户端身份识别：{ type: "identify", data: { user_id: "xxx" } }
-        std::lock_guard<std::mutex> lock(clients_mutex_);
-        auto it = clients_.find(client_id);
-        if (it != clients_.end() && message.contains("data")) {
-            if (message["data"].contains("user_id")) {
-                it->second.user_id = message["data"]["user_id"].get<std::string>();
-                std::cout << "[WebSocketService] Client " << client_id
-                          << " identified as user: " << it->second.user_id << std::endl;
-            }
-            if (message["data"].contains("device_type")) {
-                it->second.metadata.device_type = message["data"]["device_type"].get<std::string>();
+        ClientMetadata metadata_copy;
+        bool should_notify = false;
+        {
+            std::lock_guard<std::mutex> lock(clients_mutex_);
+            auto it = clients_.find(client_id);
+            if (it != clients_.end() && message.contains("data")) {
+                if (message["data"].contains("user_id")) {
+                    it->second.user_id = message["data"]["user_id"].get<std::string>();
+                    std::cout << "[WebSocketService] Client " << client_id
+                              << " identified as user: " << it->second.user_id << std::endl;
+                }
+                if (message["data"].contains("device_type")) {
+                    it->second.metadata.device_type = message["data"]["device_type"].get<std::string>();
+                }
+                metadata_copy = it->second.metadata;
+                should_notify = true;
             }
         }
-
-        // 触发连接回调
-        if (on_client_connect_ && it != clients_.end()) {
-            on_client_connect_(client_id, it->second.metadata);
+        // 锁外调用回调，避免死锁（与 handleClose 保持一致）
+        if (should_notify && on_client_connect_) {
+            on_client_connect_(client_id, metadata_copy);
         }
         return;
     }

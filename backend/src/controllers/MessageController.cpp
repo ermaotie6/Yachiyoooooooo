@@ -775,7 +775,24 @@ void MessageController::submitFeedback(const crow::request& req, crow::response&
             return;
         }
         
-        // 记录反馈（存入审查日志或反馈表）
+        // 将反馈持久化到 review_logs 表
+        try {
+            auto& dbService = Yachiyo::Services::DatabaseService::getInstance();
+            if (dbService.isInitialized()) {
+                auto dbConn = Yachiyo::Services::DatabasePool::getInstance().getConnection();
+                pqxx::work txn(*dbConn);
+                txn.exec_params(
+                    R"(INSERT INTO review_logs (message_id, review_type, reviewed_by, action_taken, reason, created_at)
+                       VALUES ($1, 2, $2, 1, $3, NOW()))",
+                    messageId, userId,
+                    feedbackType + (reason.empty() ? "" : ": " + reason)
+                );
+                txn.commit();
+            }
+        } catch (const std::exception& dbErr) {
+            LOG_ERROR("反馈存储失败: " + std::string(dbErr.what()));
+        }
+        
         LOG_INFO("用户反馈: user={}, message={}, type={}, reason={}", 
                  userId, messageId, feedbackType, reason);
         

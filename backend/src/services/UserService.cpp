@@ -48,8 +48,9 @@ static dto::UserDTO buildUserDTO(const Yachiyo::Models::User& dbUser) {
     if (dbUser.profile_data.contains("bio")) {
         user.bio = dbUser.profile_data["bio"].get<std::string>();
     }
-    if (dbUser.profile_data.contains("role")) {
-        user.role = dbUser.profile_data["role"].get<std::string>();
+    // 从数据库 role SMALLINT 列读取角色 (1=user, 99=admin)
+    if (dbUser.role == 99) {
+        user.role = "admin";
     } else {
         user.role = "user";
     }
@@ -178,8 +179,8 @@ bool UserServiceImpl::updatePassword(const std::string& userId,
             throw std::runtime_error("数据库服务未初始化");
         }
 
-        // 生成新的密码哈希 (salt:hash 格式)
-        std::string newHash = HashUtil::hashPasswordCombined(newPassword);
+        // 生成新的密码哈希（分离存储 hash 和 salt，与 AuthServiceImpl 保持一致）
+        auto [newHash, newSalt] = HashUtil::hashPassword(newPassword);
         
         int64_t uid = std::stoll(userId);
         auto result = g_databaseService->userDAO().getById(uid);
@@ -187,17 +188,21 @@ bool UserServiceImpl::updatePassword(const std::string& userId,
             throw std::runtime_error("用户不存在");
         }
 
-        // 通过 profile_data 或直接 SQL 更新 password_hash
-        // 由于 UserDAO 可能没有专门的 updatePasswordHash 方法，
-        // 使用 DatabasePool 直接执行 SQL
+        // 同时更新 password_hash 和 salt 两个列
         auto conn = Yachiyo::Services::DatabasePool::getInstance().getConnection();
         if (conn && conn->is_open()) {
-            pqxx::work txn(*conn);
-            txn.exec_params(
-                "UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2",
-                newHash, uid
-            );
-            txn.commit();
+            try {
+                pqxx::work txn(*conn);
+                txn.exec_params(
+                    "UPDATE users SET password_hash = $1, salt = $2, updated_at = NOW() WHERE id = $3",
+                    newHash, newSalt, uid
+                );
+                txn.commit();
+                Yachiyo::Services::DatabasePool::getInstance().releaseConnection(conn);
+            } catch (...) {
+                Yachiyo::Services::DatabasePool::getInstance().releaseConnection(conn);
+                throw;
+            }
         }
 
         logger->info("密码更新成功: userId={}", userId);
@@ -216,8 +221,14 @@ bool UserServiceImpl::validatePassword(const std::string& userId, const std::str
         auto result = g_databaseService->userDAO().getById(uid);
         if (!result.success) return false;
 
-        // 使用 verifyPassword 而不是 hashPassword，因为 hashPassword 每次生成随机盐值
-        return HashUtil::verifyPassword(password, result.data.value().password_hash);
+        // 使用分离格式验证：User 模型现在包含 salt 字段
+        const auto& user = result.data.value();
+        if (!user.salt.empty()) {
+            // 分离存储格式：使用 3 参数 verifyPassword
+            return HashUtil::verifyPassword(password, user.password_hash, user.salt);
+        }
+        // 兼容旧的合并格式 (salt:hash)
+        return HashUtil::verifyPassword(password, user.password_hash);
     } catch (const std::exception& e) {
         logger->error("验证密码失败: {}", e.what());
         return false;
@@ -321,27 +332,31 @@ bool UserServiceImpl::updateUserRole(const std::string& userId, const std::strin
             throw std::runtime_error("数据库服务未初始化");
         }
 
-        // 验证管理员
+        // 验证管理员 — 使用 User.role SMALLINT 字段 (99=admin)
         int64_t aid = std::stoll(adminId);
         auto adminResult = g_databaseService->userDAO().getById(aid);
-        if (!adminResult.success || adminResult.data.value().profile_data.value("role", "user") != "admin") {
+        if (!adminResult.success || adminResult.data.value().role != 99) {
             throw std::runtime_error("没有管理员权限");
         }
 
-        std::vector<std::string> validRoles = {"user", "moderator", "admin"};
-        if (std::find(validRoles.begin(), validRoles.end(), newRole) == validRoles.end()) {
-            throw std::runtime_error("无效的角色");
+        // 将字符串角色映射为 SMALLINT (1=user, 99=admin)
+        int roleValue = 0;
+        if (newRole == "user") {
+            roleValue = 1;
+        } else if (newRole == "admin") {
+            roleValue = 99;
+        } else {
+            throw std::runtime_error("无效的角色，可选值: user, admin");
         }
 
         int64_t uid = std::stoll(userId);
         auto userResult = g_databaseService->userDAO().getById(uid);
         if (!userResult.success) throw std::runtime_error("用户不存在");
 
-        auto profileData = userResult.data.value().profile_data;
-        profileData["role"] = newRole;
-        g_databaseService->userDAO().updateProfile(uid, profileData);
+        // 更新 users.role SMALLINT 列
+        g_databaseService->userDAO().updateRole(uid, roleValue);
 
-        logger->info("用户角色更新成功: userId={}, newRole={}", userId, newRole);
+        logger->info("用户角色更新成功: userId={}, newRole={} ({})", userId, newRole, roleValue);
         return true;
     } catch (const std::exception& e) {
         logger->error("更新用户角色失败: {}", e.what());
@@ -355,7 +370,7 @@ bool UserServiceImpl::deactivateUser(const std::string& userId, const std::strin
 
         int64_t aid = std::stoll(adminId);
         auto adminResult = g_databaseService->userDAO().getById(aid);
-        if (!adminResult.success || adminResult.data.value().profile_data.value("role", "user") != "admin") {
+        if (!adminResult.success || adminResult.data.value().role != 99) {
             throw std::runtime_error("没有管理员权限");
         }
 

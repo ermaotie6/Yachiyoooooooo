@@ -8,6 +8,8 @@ interface Message {
 interface AvatarResponse {
   request_id: string
   text: string
+  original_text?: string
+  translated_text?: string
   audio_url: string
   audio_duration_ms: number
   emotions?: string[]
@@ -212,6 +214,8 @@ export function useWebSocket() {
             const response: AvatarResponse = {
               request_id: message.data.request_id || '',
               text: message.data.text || '',
+              original_text: message.data.original_text || '',
+              translated_text: message.data.translated_text || '',
               audio_url: message.data.audio_url || '',
               audio_duration_ms: message.data.audio_duration_ms || 0,
               emotions: message.data.emotions || [],
