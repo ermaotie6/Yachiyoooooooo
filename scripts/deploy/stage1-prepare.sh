@@ -60,7 +60,14 @@ fi
 # ===== 更新系统 =====
 info "更新系统包..."
 case "$DISTRO_FAMILY" in
-    arch)   pacman -Syu --noconfirm ;;
+    arch)
+        # 先刷新密钥环，防止新打包者的 PGP 签名不被信任
+        info "刷新 pacman 密钥环..."
+        pacman-key --init
+        pacman-key --populate archlinux
+        pacman -Sy --noconfirm archlinux-keyring
+        pacman -Su --noconfirm
+        ;;
     debian) apt-get update -y && apt-get upgrade -y ;;
 esac
 ok "系统更新完成"
