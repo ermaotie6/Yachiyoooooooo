@@ -46,16 +46,21 @@ $DC up -d postgres redis
 
 info "等待 PostgreSQL 就绪..."
 RETRIES=0
-MAX=30
+MAX=60
 while [ $RETRIES -lt $MAX ]; do
     if $DC exec -T postgres pg_isready -U postgres &>/dev/null; then
         break
     fi
     sleep 2
     RETRIES=$((RETRIES+1))
+    [ $((RETRIES % 10)) -eq 0 ] && info "  仍在等待 PostgreSQL... ($((RETRIES*2))s)"
 done
 if [ $RETRIES -ge $MAX ]; then
-    fail "PostgreSQL 启动超时 (60s)"
+    warn "PostgreSQL 启动超时 (120s)"
+    warn "查看日志: $DC logs --tail 30 postgres"
+    warn "常见原因: 数据卷权限 / init.sql 错误 / 内存不足"
+    $DC logs --tail 20 postgres 2>&1 || true
+    fail "PostgreSQL 未就绪，无法继续"
 fi
 ok "PostgreSQL 已就绪"
 
