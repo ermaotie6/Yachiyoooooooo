@@ -8,33 +8,34 @@
 namespace yachiyo::controllers {
 
 void BaseController::registerRoute(const std::string& path, crow::SimpleApp& app) {
-    // 注册GET请求处理器
-    CROW_ROUTE(app, path)
-    .methods("GET"_method)
-    ([this](const crow::request& req, crow::response& res) {
-        this->handleRequest(req, res);
-    });
-    
-    // 注册POST请求处理器
-    CROW_ROUTE(app, path)
-    .methods("POST"_method)
-    ([this](const crow::request& req, crow::response& res) {
-        this->handleRequest(req, res);
-    });
-    
-    // 注册PUT请求处理器
-    CROW_ROUTE(app, path)
-    .methods("PUT"_method)
-    ([this](const crow::request& req, crow::response& res) {
-        this->handleRequest(req, res);
-    });
-    
-    // 注册DELETE请求处理器
-    CROW_ROUTE(app, path)
-    .methods("DELETE"_method)
-    ([this](const crow::request& req, crow::response& res) {
-        this->handleRequest(req, res);
-    });
+    // 使用运行时路由注册，支持变量路径
+    // GET
+    app.route_dynamic(path)
+        .methods("GET"_method)
+        ([this](const crow::request& req, crow::response& res) {
+            this->handleRequest(req, res);
+        });
+
+    // POST
+    app.route_dynamic(path)
+        .methods("POST"_method)
+        ([this](const crow::request& req, crow::response& res) {
+            this->handleRequest(req, res);
+        });
+
+    // PUT
+    app.route_dynamic(path)
+        .methods("PUT"_method)
+        ([this](const crow::request& req, crow::response& res) {
+            this->handleRequest(req, res);
+        });
+
+    // DELETE
+    app.route_dynamic(path)
+        .methods("DELETE"_method)
+        ([this](const crow::request& req, crow::response& res) {
+            this->handleRequest(req, res);
+        });
 }
 
 void BaseController::handleRequest(const crow::request& req, crow::response& res) {
@@ -134,7 +135,8 @@ Yachiyo::Utils::Result<std::string> BaseController::validateToken(const crow::re
 Yachiyo::Utils::Result<void> BaseController::checkPermission(const crow::request& req, const std::string& userId) {
     // 获取请求路径
     std::string path = req.url;
-    std::string method = std::string(req.method_name());
+    // 使用 req.method（enum），避免依赖不存在的 method_name()
+    auto method = req.method;
     
     // 获取请求头中的Authorization来提取角色信息
     auto authHeader = req.get_header_value("Authorization");
@@ -177,7 +179,7 @@ Yachiyo::Utils::Result<void> BaseController::checkPermission(const crow::request
     
     // 帖子相关路由 (需要AUTH或ADMIN角色)
     if (path.find("/api/v1/posts") == 0) {
-        if ((method == "POST" || method == "PUT" || method == "DELETE")) {
+        if (method == "POST"_method || method == "PUT"_method || method == "DELETE"_method) {
             if (userRole != "USER" && userRole != "ADMIN") {
                 return Yachiyo::Utils::Result<void>::errorResult("403", "权限不足");
             }
@@ -192,7 +194,7 @@ Yachiyo::Utils::Result<void> BaseController::checkPermission(const crow::request
     }
     
     // 默认允许读操作 (GET), 写操作需要检查角色
-    if (method == "GET") {
+    if (method == "GET"_method) {
         return Yachiyo::Utils::Result<void>::successResult("权限检查通过");
     }
     
