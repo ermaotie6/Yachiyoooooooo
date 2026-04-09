@@ -19,7 +19,7 @@ static size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::stri
 
 AIServiceImpl::AIServiceImpl()
     : requestTimeout("30") {
-    logger = Utils::LogUtils::getLogger("AIServiceImpl");
+    logger = yachiyo::utils::LogUtils::getLogger("AIServiceImpl");
     logger->info("AIService 初始化完成 (默认构造)");
 }
 
@@ -28,7 +28,7 @@ AIServiceImpl::AIServiceImpl(const std::string& openaiKey,
                            const std::string& baiduKey)
     : openaiApiKey(openaiKey), azureApiKey(azureKey), baiduApiKey(baiduKey),
       requestTimeout("30") {
-    logger = Utils::LogUtils::getLogger("AIServiceImpl");
+    logger = yachiyo::utils::LogUtils::getLogger("AIServiceImpl");
     logger->info("AIService 初始化完成");
 }
 

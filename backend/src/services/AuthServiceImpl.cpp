@@ -137,11 +137,15 @@ Result<std::shared_ptr<User>> AuthServiceImpl::registerUser(
         auto [hash, salt] = hashUtil->hashPassword(password);
         
         // 5. 创建用户
+        std::vector<std::string> insertParams = {
+            username, email, hash, salt,
+            std::to_string(static_cast<int>(UserRole::USER)), "1"
+        };
         auto result = dbUtil->insert(
             "INSERT INTO users (username, email, password_hash, salt, role, status, created_at, updated_at) "
             "VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW()) "
             "RETURNING id, username, email, nickname, avatar_url, bio, role, status, created_at",
-            {username, email, hash, salt, std::to_string(static_cast<int>(Models::UserRole::USER)), "1"}
+            insertParams
         );
         
         if (result.empty()) {
@@ -157,8 +161,8 @@ Result<std::shared_ptr<User>> AuthServiceImpl::registerUser(
         user->setUsername(username);
         user->setEmail(email);
         user->setNickname(username);  // 默认昵称与用户名相同
-        user->setRole(Models::UserRole::USER);
-        user->setStatus(Models::UserStatus::ACTIVE);
+        user->setRole(UserRole::USER);
+        user->setStatus(UserStatus::ACTIVE);
         
         LOG_INFO("用户注册成功: " + username);
         return Result<std::shared_ptr<User>>::Success(user);
@@ -178,11 +182,14 @@ Result<json> AuthServiceImpl::login(
 ) {
     try {
         // 1. 查找用户
+        std::vector<std::string> queryParams = {
+            username, std::to_string(static_cast<int>(UserStatus::DISABLED))
+        };
         auto result = dbUtil->query(
             "SELECT id, username, email, password_hash, salt, role, status, "
             "       is_banned, warnings_count FROM users "
             "WHERE (username = $1 OR email = $1) AND status != $2",
-            {username, std::to_string(static_cast<int>(Models::UserStatus::DISABLED))}
+            queryParams
         );
         
         if (result.empty()) {
@@ -201,7 +208,7 @@ Result<json> AuthServiceImpl::login(
         
         // 3. 检查账户状态
         int status = std::stoi(row["status"]);
-        if (status == static_cast<int>(Models::UserStatus::BANNED)) {
+        if (status == static_cast<int>(UserStatus::BANNED)) {
             return Result<json>::Error("账户已被封禁");
         }
         
@@ -224,21 +231,22 @@ Result<json> AuthServiceImpl::login(
         auto refreshToken = jwtUtil->generateToken(refreshPayload, 604800);
         
         // 5. 更新最后登录时间
+        std::vector<std::string> updateParams = {userIp, std::to_string(userId)};
         dbUtil->execute(
             "UPDATE users SET last_login_at = NOW(), last_login_ip = $1 WHERE id = $2",
-            {userIp, std::to_string(userId)}
+            updateParams
         );
         
         // 6. 构建响应
         json response;
         response["access_token"] = accessToken;
         response["refresh_token"] = refreshToken;
-        response["user"] = {
-            {"id", userId},
-            {"username", row["username"]},
-            {"email", row["email"]},
-            {"role", role_readable}
-        };
+        json userJson;
+        userJson["id"] = userId;
+        userJson["username"] = row["username"];
+        userJson["email"] = row["email"];
+        userJson["role"] = role_readable;
+        response["user"] = userJson;
         
         LOG_INFO("用户登录成功: " + std::string(row["username"]));
         return Result<json>::Success(response);

@@ -155,6 +155,6 @@ struct RefreshTokenRequestDTO {
 namespace yachiyo::dto {
     using Yachiyo::DTO::RegisterRequestDTO;
     using Yachiyo::DTO::LoginRequestDTO;
-    using Yachiyo::DTO::TokenResponseDTO;
+    using Yachiyo::DTO::LoginResponseDTO;
     using Yachiyo::DTO::RefreshTokenRequestDTO;
 }
