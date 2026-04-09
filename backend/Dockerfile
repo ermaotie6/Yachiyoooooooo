@@ -28,7 +28,24 @@ RUN apt-get update && apt-get install -y \
     nlohmann-json3-dev \
     uuid-dev \
     pkg-config \
+    libboost-all-dev \
+    libspdlog-dev \
+    libasio-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# 从源码安装 Crow (apt 中无此包)
+RUN git clone --depth 1 --branch v1.2.0 https://github.com/CrowCpp/Crow.git /tmp/crow && \
+    cd /tmp/crow && mkdir build && cd build && \
+    cmake .. -DCROW_BUILD_EXAMPLES=OFF -DCROW_BUILD_TESTS=OFF && \
+    make install && \
+    rm -rf /tmp/crow
+
+# 从源码安装 libpqxx (apt 版本过旧)
+RUN git clone --depth 1 --branch 7.9.2 https://github.com/jtv/libpqxx.git /tmp/libpqxx && \
+    cd /tmp/libpqxx && mkdir build && cd build && \
+    cmake .. -DBUILD_SHARED_LIBS=ON -DSKIP_BUILD_TEST=ON && \
+    make -j$(nproc) && make install && \
+    rm -rf /tmp/libpqxx
 
 # 创建工作目录
 WORKDIR /app
