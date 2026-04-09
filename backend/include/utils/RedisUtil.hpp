@@ -4,6 +4,9 @@
 #include <map>
 #include <vector>
 #include <memory>
+#include <mutex>
+#include <functional>
+#include <condition_variable>
 #include <hiredis/hiredis.h>
 
 namespace Yachiyo {

@@ -25,15 +25,20 @@ struct ErrorInfo {
 template<typename T>
 class Result {
 public:
-    Result() : success(false), code(""), message("") {}
+    Result() : success_(false), code(""), message("") {}
     
     Result(bool success, const std::string& code, const std::string& message, 
            const std::optional<T>& data = std::nullopt)
-        : success(success), code(code), message(message), data(data) {}
+        : success_(success), code(code), message(message), data(data) {}
 
     // 成功响应
     static Result<T> successResult(const T& data, const std::string& message = "操作成功") {
-        return Result(true, "200", message, std::make_optional(data));
+        Result r;
+        r.success_ = true;
+        r.code = "200";
+        r.message = message;
+        r.data = data;
+        return r;
     }
 
     static Result<T> successResult(const std::string& message = "操作成功") {
@@ -76,7 +81,11 @@ public:
 
     // 失败响应 (带默认值 - 兼容 AvatarResponseService)
     static Result<T> fail(int errorCode, const std::string& message, const T& defaultData) {
-        Result r(false, std::to_string(errorCode), message, std::make_optional(defaultData));
+        Result r;
+        r.success_ = false;
+        r.code = std::to_string(errorCode);
+        r.message = message;
+        r.data = defaultData;
         return r;
     }
 
@@ -85,7 +94,7 @@ public:
     }
 
     // Getters
-    bool isSuccess() const { return success; }
+    bool isSuccess() const { return success_; }
     const std::string& getCode() const { return code; }
     const std::string& getMessage() const { return message; }
     const std::string& getErrorMsg() const { return message; }
@@ -107,7 +116,7 @@ public:
     const T& getValue() const { return value(); }
 
     // Setters
-    void setSuccess(bool value) { success = value; }
+    void setSuccess(bool value) { success_ = value; }
     void setCode(const std::string& value) { code = value; }
     void setMessage(const std::string& value) { message = value; }
     void setData(const T& value) { data = value; }
@@ -115,7 +124,7 @@ public:
     // JSON 序列化
     nlohmann::json toJson() const {
         nlohmann::json j;
-        j["success"] = success;
+        j["success"] = success_;
         j["code"] = code;
         j["message"] = message;
         if (data.has_value()) {
@@ -130,7 +139,7 @@ public:
     }
 
 private:
-    bool success;
+    bool success_;
     std::string code;
     std::string message;
     std::optional<T> data;
@@ -140,10 +149,10 @@ private:
 template<>
 class Result<void> {
 public:
-    Result() : success(false), code(""), message("") {}
+    Result() : success_(false), code(""), message("") {}
     
     Result(bool success, const std::string& code, const std::string& message)
-        : success(success), code(code), message(message) {}
+        : success_(success), code(code), message(message) {}
 
     // 成功响应
     static Result<void> successResult(const std::string& message = "操作成功") {
@@ -176,7 +185,7 @@ public:
     }
 
     // Getters
-    bool isSuccess() const { return success; }
+    bool isSuccess() const { return success_; }
     const std::string& getCode() const { return code; }
     const std::string& getMessage() const { return message; }
     const std::string& getErrorMsg() const { return message; }
@@ -185,14 +194,14 @@ public:
     ErrorInfo getError() const { return ErrorInfo(code, message); }
 
     // Setters
-    void setSuccess(bool value) { success = value; }
+    void setSuccess(bool value) { success_ = value; }
     void setCode(const std::string& value) { code = value; }
     void setMessage(const std::string& value) { message = value; }
 
     // JSON 序列化
     nlohmann::json toJson() const {
         nlohmann::json j;
-        j["success"] = success;
+        j["success"] = success_;
         j["code"] = code;
         j["message"] = message;
         return j;
@@ -204,7 +213,7 @@ public:
     }
 
 private:
-    bool success;
+    bool success_;
     std::string code;
     std::string message;
 };

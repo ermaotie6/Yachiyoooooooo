@@ -1,208 +1,127 @@
 #include "utils/LogUtils.hpp"
 #include <iostream>
-#include <fstream>
-#include <sstream>
-#include <iomanip>
-#include <chrono>
-#include <map>
-#include <mutex>
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/sinks/basic_file_sink.h>
 
-namespace Yachiyo {
-namespace Utils {
+namespace yachiyo::utils {
 
-// 全局日志记录器映射
-static std::map<std::string, std::shared_ptr<Logger>> g_loggers;
-static std::mutex g_logger_mutex;
+// 静态成员初始化
+bool LogUtils::initialized = false;
+std::string LogUtils::currentLogFile;
 
-// 日志级别字符串
-static const char* LOG_LEVEL_NAMES[] = {
-    "DEBUG",
-    "INFO",
-    "WARN",
-    "ERROR",
-    "FATAL"
-};
-
-// 颜色代码（用于控制台输出）
-static const char* LOG_COLORS[] = {
-    "\033[36m",  // DEBUG - 青色
-    "\033[32m",  // INFO - 绿色
-    "\033[33m",  // WARN - 黄色
-    "\033[31m",  // ERROR - 红色
-    "\033[35m"   // FATAL - 品红色
-};
-static const char* RESET_COLOR = "\033[0m";
-
-/**
- * @brief Logger 实现类
- */
-class LoggerImpl : public Logger {
-private:
-    std::string name;
-    LogLevel minLevel;
-    std::ofstream logFile;
-    std::mutex logMutex;
-    bool enableConsole;
-    bool enableFile;
-
-public:
-    LoggerImpl(const std::string& name, LogLevel level = LogLevel::INFO)
-        : name(name), minLevel(level), enableConsole(true), enableFile(true) {
+bool LogUtils::initialize(const std::string& logLevel, const std::string& logFile) {
+    if (initialized) {
+        return true;
     }
-
-    ~LoggerImpl() {
-        if (logFile.is_open()) {
-            logFile.close();
+    
+    try {
+        auto level = stringToLevel(logLevel);
+        
+        // 设置全局日志级别
+        spdlog::set_level(level);
+        
+        // 设置日志格式
+        spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%n] [%^%l%$] %v");
+        
+        // 如果指定了日志文件，创建文件 sink
+        if (!logFile.empty()) {
+            currentLogFile = logFile;
+            
+            // 创建一个同时输出到控制台和文件的默认 logger
+            auto consoleSink = createConsoleSink();
+            auto fileSink = createFileSink(logFile);
+            
+            auto defaultLogger = std::make_shared<spdlog::logger>(
+                "default", 
+                spdlog::sinks_init_list{consoleSink, fileSink}
+            );
+            defaultLogger->set_level(level);
+            spdlog::set_default_logger(defaultLogger);
         }
+        
+        initialized = true;
+        spdlog::info("日志系统初始化完成 (级别: {}, 文件: {})", 
+                    logLevel, logFile.empty() ? "无" : logFile);
+        return true;
+        
+    } catch (const spdlog::spdlog_ex& e) {
+        std::cerr << "日志系统初始化失败: " << e.what() << std::endl;
+        return false;
     }
+}
 
-    void setLogFile(const std::string& filePath) override {
-        std::lock_guard<std::mutex> lock(logMutex);
-        if (logFile.is_open()) {
-            logFile.close();
+std::shared_ptr<spdlog::logger> LogUtils::getLogger(const std::string& name) {
+    // 先查找已有的 logger
+    auto logger = spdlog::get(name);
+    if (logger) {
+        return logger;
+    }
+    
+    // 创建新的 logger
+    try {
+        std::vector<spdlog::sink_ptr> sinks;
+        sinks.push_back(createConsoleSink());
+        
+        if (!currentLogFile.empty()) {
+            sinks.push_back(createFileSink(currentLogFile));
         }
-        logFile.open(filePath, std::ios::app);
-    }
-
-    void setMinLevel(LogLevel level) override {
-        minLevel = level;
-    }
-
-    void setConsoleOutput(bool enable) override {
-        enableConsole = enable;
-    }
-
-    void setFileOutput(bool enable) override {
-        enableFile = enable;
-    }
-
-    void debug(const std::string& message) override {
-        log(LogLevel::DEBUG, message);
-    }
-
-    void info(const std::string& message) override {
-        log(LogLevel::INFO, message);
-    }
-
-    void warn(const std::string& message) override {
-        log(LogLevel::WARN, message);
-    }
-
-    void error(const std::string& message) override {
-        log(LogLevel::ERROR, message);
-    }
-
-    void fatal(const std::string& message) override {
-        log(LogLevel::FATAL, message);
-    }
-
-private:
-    void log(LogLevel level, const std::string& message) {
-        if (level < minLevel) {
-            return;
-        }
-
-        std::lock_guard<std::mutex> lock(logMutex);
-
-        // 获取当前时间
-        auto now = std::chrono::system_clock::now();
-        auto time = std::chrono::system_clock::to_time_t(now);
-        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            now.time_since_epoch()) % 1000;
-
-        std::stringstream timeStream;
-        timeStream << std::put_time(std::localtime(&time), "%Y-%m-%d %H:%M:%S")
-                   << "." << std::setfill('0') << std::setw(3) << ms.count();
-
-        std::string logEntry = "[" + timeStream.str() + "] [" + name + "] [" +
-                              LOG_LEVEL_NAMES[static_cast<int>(level)] + "] " +
-                              message;
-
-        // 输出到控制台
-        if (enableConsole) {
-            std::cout << LOG_COLORS[static_cast<int>(level)]
-                     << logEntry
-                     << RESET_COLOR
-                     << std::endl;
-        }
-
-        // 输出到文件
-        if (enableFile && logFile.is_open()) {
-            logFile << logEntry << std::endl;
-            logFile.flush();
-        }
-    }
-};
-
-/**
- * @brief 获取或创建日志记录器
- */
-std::shared_ptr<Logger> LogUtils::getLogger(const std::string& name) {
-    std::lock_guard<std::mutex> lock(g_logger_mutex);
-
-    auto it = g_loggers.find(name);
-    if (it != g_loggers.end()) {
-        return it->second;
-    }
-
-    // 创建新的日志记录器
-    auto logger = std::make_shared<LoggerImpl>(name, LogLevel::INFO);
-    g_loggers[name] = logger;
-
-    return logger;
-}
-
-/**
- * @brief 配置全局日志文件
- */
-void LogUtils::configureGlobalLogFile(const std::string& filePath) {
-    std::lock_guard<std::mutex> lock(g_logger_mutex);
-
-    for (auto& pair : g_loggers) {
-        pair.second->setLogFile(filePath);
+        
+        logger = std::make_shared<spdlog::logger>(name, sinks.begin(), sinks.end());
+        logger->set_level(spdlog::get_level());
+        logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%n] [%^%l%$] %v");
+        
+        // 注册 logger 以便后续查找
+        spdlog::register_logger(logger);
+        
+        return logger;
+        
+    } catch (const spdlog::spdlog_ex& e) {
+        std::cerr << "创建 logger '" << name << "' 失败: " << e.what() << std::endl;
+        // 返回默认 logger 作为 fallback
+        return spdlog::default_logger();
     }
 }
 
-/**
- * @brief 设置全局日志级别
- */
-void LogUtils::setGlobalLogLevel(LogLevel level) {
-    std::lock_guard<std::mutex> lock(g_logger_mutex);
-
-    for (auto& pair : g_loggers) {
-        pair.second->setMinLevel(level);
-    }
+void LogUtils::setGlobalLevel(const std::string& level) {
+    spdlog::set_level(stringToLevel(level));
 }
 
-/**
- * @brief 启用或禁用全局控制台输出
- */
-void LogUtils::enableGlobalConsoleOutput(bool enable) {
-    std::lock_guard<std::mutex> lock(g_logger_mutex);
-
-    for (auto& pair : g_loggers) {
-        pair.second->setConsoleOutput(enable);
-    }
+void LogUtils::flushAll() {
+    spdlog::apply_all([](std::shared_ptr<spdlog::logger> l) {
+        l->flush();
+    });
 }
 
-/**
- * @brief 启用或禁用全局文件输出
- */
-void LogUtils::enableGlobalFileOutput(bool enable) {
-    std::lock_guard<std::mutex> lock(g_logger_mutex);
-
-    for (auto& pair : g_loggers) {
-        pair.second->setFileOutput(enable);
-    }
+void LogUtils::shutdown() {
+    spdlog::shutdown();
+    initialized = false;
 }
 
-/**
- * @brief 清理所有日志记录器
- */
-void LogUtils::clearAllLoggers() {
-    std::lock_guard<std::mutex> lock(g_logger_mutex);
-    g_loggers.clear();
+spdlog::level::level_enum LogUtils::stringToLevel(const std::string& level) {
+    if (level == "trace")    return spdlog::level::trace;
+    if (level == "debug")    return spdlog::level::debug;
+    if (level == "info")     return spdlog::level::info;
+    if (level == "warn")     return spdlog::level::warn;
+    if (level == "warning")  return spdlog::level::warn;
+    if (level == "error")    return spdlog::level::err;
+    if (level == "critical") return spdlog::level::critical;
+    if (level == "off")      return spdlog::level::off;
+    
+    // 默认 info
+    return spdlog::level::info;
 }
 
-} // namespace Utils
-} // namespace Yachiyo
+std::shared_ptr<spdlog::sinks::stdout_color_sink_mt> LogUtils::createConsoleSink() {
+    auto sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    sink->set_level(spdlog::level::trace); // sink 级别设为最低，由 logger 控制
+    return sink;
+}
+
+std::shared_ptr<spdlog::sinks::basic_file_sink_mt> LogUtils::createFileSink(const std::string& filePath) {
+    auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(filePath, true);
+    sink->set_level(spdlog::level::trace);
+    return sink;
+}
+
+} // namespace yachiyo::utils

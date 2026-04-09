@@ -11,61 +11,71 @@ namespace Yachiyo {
 namespace Utils {
 
 DatabaseUtil::DatabaseUtil() 
-    : redisContext(nullptr) {
+    : redisCtx_(nullptr) {
 }
 
 DatabaseUtil::~DatabaseUtil() {
     disconnect();
 }
 
-bool DatabaseUtil::connect(const DatabaseConfig& config) {
+std::string DatabaseUtil::buildConnectionString() const {
+    std::string connStr = "host=" + config.host +
+                          " port=" + std::to_string(config.port) +
+                          " dbname=" + config.database +
+                          " user=" + config.username;
+    if (!config.password.empty()) {
+        connStr += " password=" + config.password;
+    }
+    connStr += " connect_timeout=" + std::to_string(config.connectionTimeout);
+    return connStr;
+}
+
+bool DatabaseUtil::connect(const DatabaseConfig& cfg) {
     std::lock_guard<std::mutex> lock(mutex);
     
-    this->config = config;
+    this->config = cfg;
+    connectionString_ = buildConnectionString();
     
     try {
-        // 创建连接池
-        connectionPool = std::make_shared<pqxx::connection_pool>(config.poolSize);
-        
-        // 初始化连接池中的连接
-        for (int i = 0; i < config.poolSize; ++i) {
-            auto conn = connectionPool->acquire();
-            if (!testConnection(*conn)) {
-                std::cerr << "Failed to initialize connection in pool" << std::endl;
-                return false;
-            }
-            setupConnection(*conn);
+        // 测试连接是否可用
+        pqxx::connection conn(connectionString_);
+        if (!testConnection(conn)) {
+            std::cerr << "Failed to test database connection" << std::endl;
+            return false;
         }
         
-        std::cout << "Database connected successfully with " << config.poolSize << " connections" << std::endl;
+        std::cout << "Database connected successfully to " 
+                  << config.host << ":" << config.port 
+                  << "/" << config.database << std::endl;
         return true;
     } catch (const std::exception& e) {
         std::cerr << "Database connection failed: " << e.what() << std::endl;
+        connectionString_.clear();
         return false;
     }
 }
 
-bool DatabaseUtil::connectRedis(const RedisConfig& config) {
+bool DatabaseUtil::connectRedis(const RedisConfig& cfg) {
     std::lock_guard<std::mutex> lock(mutex);
     
-    redisConfig_ = config;
+    redisConfig_ = cfg;
     
     // 断开现有连接
-    if (redisContext) {
-        redisFree(redisContext);
-        redisContext = nullptr;
+    if (redisCtx_) {
+        redisFree(redisCtx_);
+        redisCtx_ = nullptr;
     }
     
     // 设置连接超时
-    struct timeval timeout = {config.timeout, 0};
+    struct timeval timeout = {cfg.timeoutSeconds, 0};
     
     // 连接到Redis
-    redisContext = redisConnectWithTimeout(config.host.c_str(), config.port, timeout);
-    if (!redisContext || redisContext->err) {
-        if (redisContext) {
-            std::cerr << "Redis connection error: " << redisContext->errstr << std::endl;
-            redisFree(redisContext);
-            redisContext = nullptr;
+    redisCtx_ = redisConnectWithTimeout(cfg.host.c_str(), cfg.port, timeout);
+    if (!redisCtx_ || redisCtx_->err) {
+        if (redisCtx_) {
+            std::cerr << "Redis connection error: " << redisCtx_->errstr << std::endl;
+            redisFree(redisCtx_);
+            redisCtx_ = nullptr;
         } else {
             std::cerr << "Failed to allocate Redis context" << std::endl;
         }
@@ -73,48 +83,46 @@ bool DatabaseUtil::connectRedis(const RedisConfig& config) {
     }
     
     // 如果有密码，进行认证
-    if (!config.password.empty()) {
-        redisReply* reply = (redisReply*)redisCommand(redisContext, "AUTH %s", config.password.c_str());
+    if (!cfg.password.empty()) {
+        redisReply* reply = (redisReply*)redisCommand(redisCtx_, "AUTH %s", cfg.password.c_str());
         if (!reply || reply->type == REDIS_REPLY_ERROR) {
             std::cerr << "Redis authentication failed" << std::endl;
             if (reply) freeReplyObject(reply);
-            redisFree(redisContext);
-            redisContext = nullptr;
+            redisFree(redisCtx_);
+            redisCtx_ = nullptr;
             return false;
         }
         freeReplyObject(reply);
     }
     
     // 选择数据库
-    if (config.db != 0) {
-        redisReply* reply = (redisReply*)redisCommand(redisContext, "SELECT %d", config.db);
+    if (cfg.database != 0) {
+        redisReply* reply = (redisReply*)redisCommand(redisCtx_, "SELECT %d", cfg.database);
         if (!reply || reply->type == REDIS_REPLY_ERROR) {
             std::cerr << "Failed to select Redis database" << std::endl;
             if (reply) freeReplyObject(reply);
-            redisFree(redisContext);
-            redisContext = nullptr;
+            redisFree(redisCtx_);
+            redisCtx_ = nullptr;
             return false;
         }
         freeReplyObject(reply);
     }
     
-    std::cout << "Redis connected successfully to " << config.host << ":" << config.port 
-              << " (db=" << config.db << ")" << std::endl;
+    std::cout << "Redis connected successfully to " << cfg.host << ":" << cfg.port 
+              << " (db=" << cfg.database << ")" << std::endl;
     return true;
 }
 
 void DatabaseUtil::disconnect() {
     std::lock_guard<std::mutex> lock(mutex);
     
-    // 断开数据库连接
-    if (connectionPool) {
-        connectionPool.reset();
-    }
+    // 清空连接字符串，表示断开
+    connectionString_.clear();
     
     // 断开Redis连接
-    if (redisContext) {
-        redisFree(redisContext);
-        redisContext = nullptr;
+    if (redisCtx_) {
+        redisFree(redisCtx_);
+        redisCtx_ = nullptr;
     }
     
     std::cout << "All database connections closed" << std::endl;
@@ -122,38 +130,56 @@ void DatabaseUtil::disconnect() {
 
 bool DatabaseUtil::isConnected() const {
     std::lock_guard<std::mutex> lock(mutex);
-    return connectionPool != nullptr;
+    return !connectionString_.empty();
 }
 
 bool DatabaseUtil::isRedisConnected() const {
     std::lock_guard<std::mutex> lock(mutex);
-    return redisContext != nullptr;
+    return redisCtx_ != nullptr;
 }
 
 pqxx::connection DatabaseUtil::getConnection() {
-    // 仅在检查 connectionPool 时短暂持锁，acquire 本身是线程安全的
-    std::shared_ptr<pqxx::connection_pool> pool;
+    std::string connStr;
     {
         std::lock_guard<std::mutex> lock(mutex);
-        pool = connectionPool;
+        connStr = connectionString_;
     }
     
-    if (!pool) {
+    if (connStr.empty()) {
         throw std::runtime_error("Database not connected");
     }
     
     try {
-        return pool->acquire();
+        return pqxx::connection(connStr);
     } catch (const std::exception& e) {
-        throw std::runtime_error("Failed to acquire connection: " + std::string(e.what()));
+        throw std::runtime_error("Failed to create connection: " + std::string(e.what()));
     }
 }
 
-bool DatabaseUtil::executeQuery(const std::string& query) {
+bool DatabaseUtil::testConnection(pqxx::connection& conn) {
+    try {
+        pqxx::work txn(conn);
+        txn.exec("SELECT 1");
+        txn.commit();
+        return true;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+void DatabaseUtil::setupConnection(pqxx::connection& /*conn*/) {
+    // 预留: 设置连接参数 (如 search_path, timezone 等)
+}
+
+bool DatabaseUtil::isStatementPrepared(const std::string& name) {
+    return preparedStatements.find(name) != preparedStatements.end();
+}
+
+bool DatabaseUtil::executeQuery(const std::string& queryStr) {
     try {
         auto conn = getConnection();
-        pqxx::work txn(*conn);
-        txn.exec(query);
+        pqxx::work txn(conn);
+        txn.exec(queryStr);
         txn.commit();
         return true;
     } catch (const std::exception& e) {
@@ -162,11 +188,11 @@ bool DatabaseUtil::executeQuery(const std::string& query) {
     }
 }
 
-pqxx::result DatabaseUtil::executeQueryWithResult(const std::string& query) {
+pqxx::result DatabaseUtil::executeQueryWithResult(const std::string& queryStr) {
     try {
         auto conn = getConnection();
-        pqxx::work txn(*conn);
-        auto result = txn.exec(query);
+        pqxx::work txn(conn);
+        auto result = txn.exec(queryStr);
         txn.commit();
         return result;
     } catch (const std::exception& e) {
@@ -177,7 +203,7 @@ pqxx::result DatabaseUtil::executeQueryWithResult(const std::string& query) {
 bool DatabaseUtil::executeTransaction(std::function<bool(pqxx::work&)> transactionFunc) {
     try {
         auto conn = getConnection();
-        pqxx::work txn(*conn);
+        pqxx::work txn(conn);
         
         if (transactionFunc(txn)) {
             txn.commit();
@@ -201,13 +227,12 @@ std::vector<std::map<std::string, std::string>> DatabaseUtil::query(
     std::vector<std::map<std::string, std::string>> results;
     try {
         auto conn = getConnection();
-        pqxx::work txn(*conn);
+        pqxx::work txn(conn);
 
         pqxx::result res;
         if (params.empty()) {
             res = txn.exec(sql);
         } else {
-            // 使用 pqxx::params 构造参数化查询
             pqxx::params p;
             for (const auto& param : params) {
                 p.append(param);
@@ -218,7 +243,7 @@ std::vector<std::map<std::string, std::string>> DatabaseUtil::query(
 
         for (const auto& row : res) {
             std::map<std::string, std::string> rowMap;
-            for (int col = 0; col < row.size(); ++col) {
+            for (int col = 0; col < static_cast<int>(row.size()); ++col) {
                 std::string colName = res.column_name(col);
                 rowMap[colName] = row[col].is_null() ? "" : row[col].as<std::string>();
             }
@@ -234,7 +259,6 @@ std::vector<std::map<std::string, std::string>> DatabaseUtil::insert(
     const std::string& sql,
     const std::vector<std::string>& params
 ) {
-    // INSERT 和 SELECT 的执行方式相同（INSERT ... RETURNING 也返回结果集）
     return query(sql, params);
 }
 
@@ -244,7 +268,7 @@ int DatabaseUtil::execute(
 ) {
     try {
         auto conn = getConnection();
-        pqxx::work txn(*conn);
+        pqxx::work txn(conn);
 
         pqxx::result res;
         if (params.empty()) {
@@ -268,9 +292,8 @@ bool DatabaseUtil::executePreparedStatement(const std::string& name,
                                            const std::vector<std::string>& params) {
     try {
         auto conn = getConnection();
-        pqxx::work txn(*conn);
+        pqxx::work txn(conn);
         
-        // 准备语句（如果尚未准备）
         if (!isStatementPrepared(name)) {
             std::stringstream ss;
             ss << "PREPARE " << name << " AS ";
@@ -285,7 +308,6 @@ bool DatabaseUtil::executePreparedStatement(const std::string& name,
             preparedStatements.insert(name);
         }
         
-        // 执行预编译语句
         std::stringstream execCmd;
         execCmd << "EXECUTE " << name << "(";
         for (size_t i = 0; i < params.size(); ++i) {
@@ -303,28 +325,29 @@ bool DatabaseUtil::executePreparedStatement(const std::string& name,
     }
 }
 
-// Redis操作实现
+// ==================== Redis操作实现 ====================
+
 bool DatabaseUtil::redisSet(const std::string& key, const std::string& value, int expireSeconds) {
-    if (!redisContext) return false;
+    if (!redisCtx_) return false;
     
     redisReply* reply = nullptr;
     if (expireSeconds > 0) {
-        reply = (redisReply*)redisCommand(redisContext, "SET %s %s EX %d", 
+        reply = (redisReply*)redisCommand(redisCtx_, "SET %s %s EX %d", 
                                          key.c_str(), value.c_str(), expireSeconds);
     } else {
-        reply = (redisReply*)redisCommand(redisContext, "SET %s %s", 
+        reply = (redisReply*)redisCommand(redisCtx_, "SET %s %s", 
                                          key.c_str(), value.c_str());
     }
     
-    bool success = reply && reply->type != REDIS_REPLY_ERROR;
+    bool ok = reply && reply->type != REDIS_REPLY_ERROR;
     if (reply) freeReplyObject(reply);
-    return success;
+    return ok;
 }
 
 std::string DatabaseUtil::redisGet(const std::string& key) {
-    if (!redisContext) return "";
+    if (!redisCtx_) return "";
     
-    redisReply* reply = (redisReply*)redisCommand(redisContext, "GET %s", key.c_str());
+    redisReply* reply = (redisReply*)redisCommand(redisCtx_, "GET %s", key.c_str());
     if (!reply || reply->type == REDIS_REPLY_ERROR) {
         if (reply) freeReplyObject(reply);
         return "";
@@ -336,47 +359,47 @@ std::string DatabaseUtil::redisGet(const std::string& key) {
 }
 
 bool DatabaseUtil::redisDelete(const std::string& key) {
-    if (!redisContext) return false;
+    if (!redisCtx_) return false;
     
-    redisReply* reply = (redisReply*)redisCommand(redisContext, "DEL %s", key.c_str());
-    bool success = reply && reply->type != REDIS_REPLY_ERROR && reply->integer > 0;
+    redisReply* reply = (redisReply*)redisCommand(redisCtx_, "DEL %s", key.c_str());
+    bool ok = reply && reply->type != REDIS_REPLY_ERROR && reply->integer > 0;
     if (reply) freeReplyObject(reply);
-    return success;
+    return ok;
 }
 
 bool DatabaseUtil::redisExists(const std::string& key) {
-    if (!redisContext) return false;
+    if (!redisCtx_) return false;
     
-    redisReply* reply = (redisReply*)redisCommand(redisContext, "EXISTS %s", key.c_str());
+    redisReply* reply = (redisReply*)redisCommand(redisCtx_, "EXISTS %s", key.c_str());
     bool exists = reply && reply->type != REDIS_REPLY_ERROR && reply->integer > 0;
     if (reply) freeReplyObject(reply);
     return exists;
 }
 
 bool DatabaseUtil::redisExpire(const std::string& key, int seconds) {
-    if (!redisContext) return false;
+    if (!redisCtx_) return false;
     
-    redisReply* reply = (redisReply*)redisCommand(redisContext, "EXPIRE %s %d", key.c_str(), seconds);
-    bool success = reply && reply->type != REDIS_REPLY_ERROR && reply->integer > 0;
+    redisReply* reply = (redisReply*)redisCommand(redisCtx_, "EXPIRE %s %d", key.c_str(), seconds);
+    bool ok = reply && reply->type != REDIS_REPLY_ERROR && reply->integer > 0;
     if (reply) freeReplyObject(reply);
-    return success;
+    return ok;
 }
 
 // 哈希表操作
 bool DatabaseUtil::redisHSet(const std::string& key, const std::string& field, const std::string& value) {
-    if (!redisContext) return false;
+    if (!redisCtx_) return false;
     
-    redisReply* reply = (redisReply*)redisCommand(redisContext, "HSET %s %s %s", 
+    redisReply* reply = (redisReply*)redisCommand(redisCtx_, "HSET %s %s %s", 
                                                  key.c_str(), field.c_str(), value.c_str());
-    bool success = reply && reply->type != REDIS_REPLY_ERROR;
+    bool ok = reply && reply->type != REDIS_REPLY_ERROR;
     if (reply) freeReplyObject(reply);
-    return success;
+    return ok;
 }
 
 std::string DatabaseUtil::redisHGet(const std::string& key, const std::string& field) {
-    if (!redisContext) return "";
+    if (!redisCtx_) return "";
     
-    redisReply* reply = (redisReply*)redisCommand(redisContext, "HGET %s %s", 
+    redisReply* reply = (redisReply*)redisCommand(redisCtx_, "HGET %s %s", 
                                                  key.c_str(), field.c_str());
     if (!reply || reply->type == REDIS_REPLY_ERROR) {
         if (reply) freeReplyObject(reply);
@@ -389,20 +412,20 @@ std::string DatabaseUtil::redisHGet(const std::string& key, const std::string& f
 }
 
 bool DatabaseUtil::redisHDel(const std::string& key, const std::string& field) {
-    if (!redisContext) return false;
+    if (!redisCtx_) return false;
     
-    redisReply* reply = (redisReply*)redisCommand(redisContext, "HDEL %s %s", 
+    redisReply* reply = (redisReply*)redisCommand(redisCtx_, "HDEL %s %s", 
                                                  key.c_str(), field.c_str());
-    bool success = reply && reply->type != REDIS_REPLY_ERROR && reply->integer > 0;
+    bool ok = reply && reply->type != REDIS_REPLY_ERROR && reply->integer > 0;
     if (reply) freeReplyObject(reply);
-    return success;
+    return ok;
 }
 
 std::vector<std::string> DatabaseUtil::redisHGetAll(const std::string& key) {
     std::vector<std::string> result;
-    if (!redisContext) return result;
+    if (!redisCtx_) return result;
     
-    redisReply* reply = (redisReply*)redisCommand(redisContext, "HGETALL %s", key.c_str());
+    redisReply* reply = (redisReply*)redisCommand(redisCtx_, "HGETALL %s", key.c_str());
     if (!reply || reply->type == REDIS_REPLY_ERROR) {
         if (reply) freeReplyObject(reply);
         return result;
@@ -420,29 +443,29 @@ std::vector<std::string> DatabaseUtil::redisHGetAll(const std::string& key) {
 
 // 列表操作
 bool DatabaseUtil::redisLPush(const std::string& key, const std::string& value) {
-    if (!redisContext) return false;
+    if (!redisCtx_) return false;
     
-    redisReply* reply = (redisReply*)redisCommand(redisContext, "LPUSH %s %s", 
+    redisReply* reply = (redisReply*)redisCommand(redisCtx_, "LPUSH %s %s", 
                                                  key.c_str(), value.c_str());
-    bool success = reply && reply->type != REDIS_REPLY_ERROR;
+    bool ok = reply && reply->type != REDIS_REPLY_ERROR;
     if (reply) freeReplyObject(reply);
-    return success;
+    return ok;
 }
 
 bool DatabaseUtil::redisRPush(const std::string& key, const std::string& value) {
-    if (!redisContext) return false;
+    if (!redisCtx_) return false;
     
-    redisReply* reply = (redisReply*)redisCommand(redisContext, "RPUSH %s %s", 
+    redisReply* reply = (redisReply*)redisCommand(redisCtx_, "RPUSH %s %s", 
                                                  key.c_str(), value.c_str());
-    bool success = reply && reply->type != REDIS_REPLY_ERROR;
+    bool ok = reply && reply->type != REDIS_REPLY_ERROR;
     if (reply) freeReplyObject(reply);
-    return success;
+    return ok;
 }
 
 std::string DatabaseUtil::redisLPop(const std::string& key) {
-    if (!redisContext) return "";
+    if (!redisCtx_) return "";
     
-    redisReply* reply = (redisReply*)redisCommand(redisContext, "LPOP %s", key.c_str());
+    redisReply* reply = (redisReply*)redisCommand(redisCtx_, "LPOP %s", key.c_str());
     if (!reply || reply->type == REDIS_REPLY_ERROR) {
         if (reply) freeReplyObject(reply);
         return "";
@@ -454,9 +477,9 @@ std::string DatabaseUtil::redisLPop(const std::string& key) {
 }
 
 std::string DatabaseUtil::redisRPop(const std::string& key) {
-    if (!redisContext) return "";
+    if (!redisCtx_) return "";
     
-    redisReply* reply = (redisReply*)redisCommand(redisContext, "RPOP %s", key.c_str());
+    redisReply* reply = (redisReply*)redisCommand(redisCtx_, "RPOP %s", key.c_str());
     if (!reply || reply->type == REDIS_REPLY_ERROR) {
         if (reply) freeReplyObject(reply);
         return "";
@@ -469,9 +492,9 @@ std::string DatabaseUtil::redisRPop(const std::string& key) {
 
 std::vector<std::string> DatabaseUtil::redisLRange(const std::string& key, int start, int stop) {
     std::vector<std::string> result;
-    if (!redisContext) return result;
+    if (!redisCtx_) return result;
     
-    redisReply* reply = (redisReply*)redisCommand(redisContext, "LRANGE %s %d %d", 
+    redisReply* reply = (redisReply*)redisCommand(redisCtx_, "LRANGE %s %d %d", 
                                                  key.c_str(), start, stop);
     if (!reply || reply->type == REDIS_REPLY_ERROR) {
         if (reply) freeReplyObject(reply);
@@ -490,29 +513,29 @@ std::vector<std::string> DatabaseUtil::redisLRange(const std::string& key, int s
 
 // 集合操作
 bool DatabaseUtil::redisSAdd(const std::string& key, const std::string& member) {
-    if (!redisContext) return false;
+    if (!redisCtx_) return false;
     
-    redisReply* reply = (redisReply*)redisCommand(redisContext, "SADD %s %s", 
+    redisReply* reply = (redisReply*)redisCommand(redisCtx_, "SADD %s %s", 
                                                  key.c_str(), member.c_str());
-    bool success = reply && reply->type != REDIS_REPLY_ERROR;
+    bool ok = reply && reply->type != REDIS_REPLY_ERROR;
     if (reply) freeReplyObject(reply);
-    return success;
+    return ok;
 }
 
 bool DatabaseUtil::redisSRem(const std::string& key, const std::string& member) {
-    if (!redisContext) return false;
+    if (!redisCtx_) return false;
     
-    redisReply* reply = (redisReply*)redisCommand(redisContext, "SREM %s %s", 
+    redisReply* reply = (redisReply*)redisCommand(redisCtx_, "SREM %s %s", 
                                                  key.c_str(), member.c_str());
-    bool success = reply && reply->type != REDIS_REPLY_ERROR && reply->integer > 0;
+    bool ok = reply && reply->type != REDIS_REPLY_ERROR && reply->integer > 0;
     if (reply) freeReplyObject(reply);
-    return success;
+    return ok;
 }
 
 bool DatabaseUtil::redisSIsMember(const std::string& key, const std::string& member) {
-    if (!redisContext) return false;
+    if (!redisCtx_) return false;
     
-    redisReply* reply = (redisReply*)redisCommand(redisContext, "SISMEMBER %s %s", 
+    redisReply* reply = (redisReply*)redisCommand(redisCtx_, "SISMEMBER %s %s", 
                                                  key.c_str(), member.c_str());
     bool isMember = reply && reply->type != REDIS_REPLY_ERROR && reply->integer > 0;
     if (reply) freeReplyObject(reply);
@@ -521,9 +544,9 @@ bool DatabaseUtil::redisSIsMember(const std::string& key, const std::string& mem
 
 std::vector<std::string> DatabaseUtil::redisSMembers(const std::string& key) {
     std::vector<std::string> result;
-    if (!redisContext) return result;
+    if (!redisCtx_) return result;
     
-    redisReply* reply = (redisReply*)redisCommand(redisContext, "SMEMBERS %s", key.c_str());
+    redisReply* reply = (redisReply*)redisCommand(redisCtx_, "SMEMBERS %s", key.c_str());
     if (!reply || reply->type == REDIS_REPLY_ERROR) {
         if (reply) freeReplyObject(reply);
         return result;
@@ -541,19 +564,140 @@ std::vector<std::string> DatabaseUtil::redisSMembers(const std::string& key) {
 
 // 有序集合操作
 bool DatabaseUtil::redisZAdd(const std::string& key, double score, const std::string& member) {
-    if (!redisContext) return false;
+    if (!redisCtx_) return false;
     
-    redisReply* reply = (redisReply*)redisCommand(redisContext, "ZADD %s %f %s", 
+    redisReply* reply = (redisReply*)redisCommand(redisCtx_, "ZADD %s %f %s", 
                                                  key.c_str(), score, member.c_str());
-    bool success = reply && reply->type != REDIS_REPLY_ERROR;
+    bool ok = reply && reply->type != REDIS_REPLY_ERROR;
     if (reply) freeReplyObject(reply);
-    return success;
+    return ok;
 }
 
 bool DatabaseUtil::redisZRem(const std::string& key, const std::string& member) {
-    if (!redisContext) return false;
+    if (!redisCtx_) return false;
     
-    redisReply* reply = (redisReply*)redisCommand(redisContext, "ZREM %s %s", 
+    redisReply* reply = (redisReply*)redisCommand(redisCtx_, "ZREM %s %s", 
                                                  key.c_str(), member.c_str());
-    bool success = reply && reply->type != REDIS_REPLY_ERROR && reply->integer > 0;
+    bool ok = reply && reply->type != REDIS_REPLY_ERROR && reply->integer > 0;
     if (reply) freeReplyObject(reply);
+    return ok;
+}
+
+std::vector<std::string> DatabaseUtil::redisZRange(const std::string& key, int start, int stop, bool withScores) {
+    std::vector<std::string> result;
+    if (!redisCtx_) return result;
+    
+    redisReply* reply = nullptr;
+    if (withScores) {
+        reply = (redisReply*)redisCommand(redisCtx_, "ZRANGE %s %d %d WITHSCORES", 
+                                         key.c_str(), start, stop);
+    } else {
+        reply = (redisReply*)redisCommand(redisCtx_, "ZRANGE %s %d %d", 
+                                         key.c_str(), start, stop);
+    }
+    
+    if (!reply || reply->type == REDIS_REPLY_ERROR) {
+        if (reply) freeReplyObject(reply);
+        return result;
+    }
+    
+    for (size_t i = 0; i < reply->elements; ++i) {
+        if (reply->element[i]->str) {
+            result.push_back(reply->element[i]->str);
+        }
+    }
+    
+    freeReplyObject(reply);
+    return result;
+}
+
+// 发布订阅
+bool DatabaseUtil::redisPublish(const std::string& channel, const std::string& message) {
+    if (!redisCtx_) return false;
+    
+    redisReply* reply = (redisReply*)redisCommand(redisCtx_, "PUBLISH %s %s", 
+                                                 channel.c_str(), message.c_str());
+    bool ok = reply && reply->type != REDIS_REPLY_ERROR;
+    if (reply) freeReplyObject(reply);
+    return ok;
+}
+
+// 数据库管理
+bool DatabaseUtil::backupDatabase(const std::string& backupPath) {
+    try {
+        std::string cmd = "pg_dump -h " + config.host + 
+                         " -p " + std::to_string(config.port) +
+                         " -U " + config.username +
+                         " -d " + config.database +
+                         " -f " + backupPath;
+        return system(cmd.c_str()) == 0;
+    } catch (const std::exception& e) {
+        std::cerr << "Backup failed: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+bool DatabaseUtil::restoreDatabase(const std::string& backupPath) {
+    try {
+        std::string cmd = "psql -h " + config.host + 
+                         " -p " + std::to_string(config.port) +
+                         " -U " + config.username +
+                         " -d " + config.database +
+                         " -f " + backupPath;
+        return system(cmd.c_str()) == 0;
+    } catch (const std::exception& e) {
+        std::cerr << "Restore failed: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+// 连接池统计 (连接字符串模式无真正连接池，返回简化值)
+int DatabaseUtil::getActiveConnections() const {
+    return isConnected() ? 1 : 0;
+}
+
+int DatabaseUtil::getIdleConnections() const {
+    return 0;
+}
+
+int DatabaseUtil::getTotalConnections() const {
+    return isConnected() ? 1 : 0;
+}
+
+// Redis统计
+std::string DatabaseUtil::redisInfo(const std::string& section) {
+    if (!redisCtx_) return "";
+    
+    redisReply* reply = nullptr;
+    if (section.empty()) {
+        reply = (redisReply*)redisCommand(redisCtx_, "INFO");
+    } else {
+        reply = (redisReply*)redisCommand(redisCtx_, "INFO %s", section.c_str());
+    }
+    
+    if (!reply || reply->type == REDIS_REPLY_ERROR) {
+        if (reply) freeReplyObject(reply);
+        return "";
+    }
+    
+    std::string result = reply->str ? reply->str : "";
+    freeReplyObject(reply);
+    return result;
+}
+
+int64_t DatabaseUtil::redisDBSize() {
+    if (!redisCtx_) return 0;
+    
+    redisReply* reply = (redisReply*)redisCommand(redisCtx_, "DBSIZE");
+    if (!reply || reply->type == REDIS_REPLY_ERROR) {
+        if (reply) freeReplyObject(reply);
+        return 0;
+    }
+    
+    int64_t size = reply->integer;
+    freeReplyObject(reply);
+    return size;
+}
+
+} // namespace Utils
+} // namespace Yachiyo

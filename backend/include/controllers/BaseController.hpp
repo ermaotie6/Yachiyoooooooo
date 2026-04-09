@@ -257,4 +257,4 @@ private:
 } // namespace yachiyo::controllers
 
 // 命名空间别名，兼容旧代码中的 Yachiyo::Controllers 引用
-namespace Yachiyo::Controllers = yachiyo::controllers;
+namespace Yachiyo { namespace Controllers = yachiyo::controllers; }

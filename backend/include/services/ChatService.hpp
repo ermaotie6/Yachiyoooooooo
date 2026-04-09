@@ -24,6 +24,7 @@
 #include "../dto/ChatMessageDTO.hpp"
 #include "../utils/Result.hpp"
 #include "../utils/LogUtils.hpp"
+#include "AIService.hpp"
 #include <spdlog/spdlog.h>
 #include <map>
 
@@ -40,35 +41,16 @@ enum class MessageType {
     SYSTEM      // 系统消息
 };
 
-// AI 提供商类型
-enum class AIProvider {
-    OPENAI,
-    OLLAMA,
-    LOCAL
-};
-
-// 聊天消息结构
-struct ChatMessage {
-    std::string role;    // "user", "assistant", "system"
-    std::string content;
-    
-    ChatMessage(const std::string& role, const std::string& content)
-        : role(role), content(content) {}
-};
-
-// 聊天配置
+// 聊天配置 (ChatService 专用)
 struct ChatConfig {
-    AIProvider provider = AIProvider::OLLAMA;
-    std::string model = "llama2";
+    AIProvider provider = AIProvider::DEEPSEEK;
+    std::string model = "deepseek-chat";
     double temperature = 0.7;
     int maxTokens = 1000;
     
     // OpenAI 特定配置
     std::string openaiApiKey;
     std::string openaiBaseUrl = "https://api.openai.com/v1";
-    
-    // Ollama 特定配置
-    std::string ollamaBaseUrl = "http://localhost:11434";
     
     // 本地模型配置
     std::string localModelPath;

@@ -37,8 +37,8 @@ std::shared_ptr<Yachiyo::Services::WebSocketService> g_webSocketService = nullpt
 namespace yachiyo {
 
 using utils::LogUtils;
-using Services = Yachiyo::Services;
-using Utils = Yachiyo::Utils;
+namespace Services = Yachiyo::Services;
+namespace Utils = Yachiyo::Utils;
 
 // 全局应用程序实例
 std::shared_ptr<Application> Application::instance = nullptr;

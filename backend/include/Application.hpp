@@ -7,6 +7,7 @@
 #include <mutex>
 #include <iostream>
 #include <nlohmann/json.hpp>
+#include <thread>
 
 // 前向声明
 namespace yachiyo::config { class ConfigManager; }

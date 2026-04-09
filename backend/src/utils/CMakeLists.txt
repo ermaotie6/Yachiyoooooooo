@@ -5,6 +5,7 @@ add_library(utils
     HttpServer.cpp
     JsonUtils.cpp
     JwtUtil.cpp
+    Logger.cpp
     LogUtils.cpp
     OpencalwClient.cpp
     RedisUtil.cpp

@@ -19,8 +19,10 @@
 #include <memory>
 #include <mutex>
 #include <functional>
+#include <unordered_set>
 #include <hiredis/hiredis.h>
 #include <pqxx/pqxx>
+#include "RedisUtil.hpp"
 
 namespace Yachiyo {
 namespace Utils {
@@ -46,19 +48,7 @@ struct DatabaseConfig {
           poolSize(10), connectionTimeout(30), maxRetries(3), retryDelay(1000) {}
 };
 
-/**
- * @brief Redis配置结构体
- */
-struct RedisConfig {
-    std::string host;
-    int port;
-    std::string password;
-    int db;
-    int timeout; // 秒
-    
-    RedisConfig() 
-        : host("localhost"), port(6379), password(""), db(0), timeout(5) {}
-};
+// RedisConfig 定义在 RedisUtil.hpp 中，此处直接复用
 
 /**
  * @brief 数据库工具类 - 支持MySQL和PostgreSQL
@@ -247,9 +237,9 @@ private:
     // 成员变量
     DatabaseConfig config;
     RedisConfig redisConfig_;
-    std::shared_ptr<pqxx::connection_pool> connectionPool;
-    redisContext* redisContext;
+    std::string connectionString_;
     mutable std::mutex mutex;
+    ::redisContext* redisCtx_;
     
     // 已准备的语句集合
     std::unordered_set<std::string> preparedStatements;

@@ -97,5 +97,4 @@ struct PageResponseDTO {
 // 向后兼容别名
 namespace yachiyo::dto {
     using Yachiyo::DTO::ResponseDTO;
-    using Yachiyo::DTO::PaginationDTO;
 }
