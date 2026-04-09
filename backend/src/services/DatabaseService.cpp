@@ -44,11 +44,8 @@ void DatabasePool::close() {
     std::lock_guard<std::mutex> lock(mutex_);
     closed_ = true;
     while (!pool_.empty()) {
-        auto conn = pool_.front();
         pool_.pop();
-        if (conn) {
-            try { conn->disconnect(); } catch (...) {}
-        }
+        // pqxx::connection 在析构时自动关闭，无需手动 disconnect
     }
     pool_size_ = 0;
     cv_.notify_all();
@@ -474,8 +471,8 @@ Result<void> ConversationContextDAO::addMessageToHistory(int64_t context_id, con
 
         // 只保留最后 20 条消息
         if (message_history.size() > 20) {
-            message_history = json::array(
-                message_history.begin() + message_history.size() - 20,
+            message_history = json(
+                message_history.begin() + static_cast<int>(message_history.size()) - 20,
                 message_history.end()
             );
         }

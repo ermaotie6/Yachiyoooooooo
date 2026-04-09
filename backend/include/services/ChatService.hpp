@@ -194,7 +194,23 @@ public:
      * @brief 搜索消息
      */
     std::vector<DTO::ChatMessageDTO> searchMessages(const std::string& userId,
-                                                     const std::string& keyword);
+                                                     const std::string& keyword,
+                                                     int limit = 50);
+    
+    /**
+     * @brief 标记消息为已读
+     */
+    bool markAsRead(const std::string& messageId, const std::string& userId);
+    
+    /**
+     * @brief 删除聊天会话
+     */
+    bool deleteChatSession(const std::string& sessionId, const std::string& userId);
+    
+    /**
+     * @brief 清空聊天历史
+     */
+    bool clearChatHistory(const std::string& userId, const std::string& targetId);
     
     /**
      * @brief 删除消息
