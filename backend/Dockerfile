@@ -21,7 +21,6 @@ RUN apt-get update && apt-get install -y \
     wget \
     curl \
     libssl-dev \
-    libyaml-cpp-dev \
     libpq-dev \
     libcurl4-openssl-dev \
     nlohmann-json3-dev \
@@ -31,6 +30,13 @@ RUN apt-get update && apt-get install -y \
     libspdlog-dev \
     libasio-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# 从源码安装 yaml-cpp (apt 版本 CMake target 名不兼容)
+RUN git clone --depth 1 --branch 0.8.0 https://github.com/jbeder/yaml-cpp.git /tmp/yaml-cpp && \
+    cd /tmp/yaml-cpp && mkdir build && cd build && \
+    cmake .. -DYAML_BUILD_SHARED_LIBS=ON -DYAML_CPP_BUILD_TESTS=OFF && \
+    make -j$(nproc) && make install && \
+    rm -rf /tmp/yaml-cpp
 
 # 从源码安装 Crow (apt 中无此包)
 RUN git clone --depth 1 --branch v1.2.0 https://github.com/CrowCpp/Crow.git /tmp/crow && \
@@ -95,7 +101,6 @@ RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/so
 # 安装运行时依赖
 RUN apt-get update && apt-get install -y \
     libssl3 \
-    libyaml-cpp0.7 \
     libpq5 \
     libcurl4 \
     ca-certificates \
