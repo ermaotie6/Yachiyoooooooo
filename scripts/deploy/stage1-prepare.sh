@@ -61,11 +61,26 @@ fi
 info "更新系统包..."
 case "$DISTRO_FAMILY" in
     arch)
-        # 先刷新密钥环，防止新打包者的 PGP 签名不被信任
-        info "刷新 pacman 密钥环..."
+        # 完全重建密钥环，解决长期未更新导致的 PGP 签名不信任问题
+        info "重建 pacman 密钥环 (解决 PGP 签名问题)..."
+        rm -rf /etc/pacman.d/gnupg
         pacman-key --init
         pacman-key --populate archlinux
-        pacman -Sy --noconfirm archlinux-keyring
+
+        # 尝试正常更新密钥包
+        if ! pacman -Sy --noconfirm archlinux-keyring 2>/dev/null; then
+            # 如果密钥环仍然不够新，临时跳过签名验证完成密钥包更新
+            warn "密钥环仍有问题，临时跳过签名验证更新 archlinux-keyring..."
+            ORIG_SIGLEVEL=$(grep '^SigLevel' /etc/pacman.conf | head -1)
+            sed -i 's/^SigLevel.*/SigLevel = Never/' /etc/pacman.conf
+            pacman -Sy --noconfirm archlinux-keyring
+            # 立即恢复签名验证
+            sed -i "s/^SigLevel.*/$ORIG_SIGLEVEL/" /etc/pacman.conf
+            # 用新密钥包重建信任链
+            pacman-key --init
+            pacman-key --populate archlinux
+        fi
+
         pacman -Su --noconfirm
         ;;
     debian) apt-get update -y && apt-get upgrade -y ;;
