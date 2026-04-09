@@ -23,7 +23,6 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     libyaml-cpp-dev \
     libpq-dev \
-    libhiredis-dev \
     libcurl4-openssl-dev \
     nlohmann-json3-dev \
     uuid-dev \
@@ -46,6 +45,16 @@ RUN git clone --depth 1 --branch 7.9.2 https://github.com/jtv/libpqxx.git /tmp/l
     cmake .. -DBUILD_SHARED_LIBS=ON -DSKIP_BUILD_TEST=ON && \
     make -j$(nproc) && make install && \
     rm -rf /tmp/libpqxx
+
+# 从源码安装 hiredis (apt 版本无 CMake config)
+RUN git clone --depth 1 --branch v1.2.0 https://github.com/redis/hiredis.git /tmp/hiredis && \
+    cd /tmp/hiredis && mkdir build && cd build && \
+    cmake .. -DBUILD_SHARED_LIBS=ON && \
+    make -j$(nproc) && make install && \
+    rm -rf /tmp/hiredis
+
+# 刷新动态链接库缓存
+RUN ldconfig
 
 # 创建工作目录
 WORKDIR /app
@@ -88,7 +97,6 @@ RUN apt-get update && apt-get install -y \
     libssl3 \
     libyaml-cpp0.7 \
     libpq5 \
-    libhiredis0.14 \
     libcurl4 \
     ca-certificates \
     tzdata \
@@ -105,6 +113,10 @@ WORKDIR /app
 
 # 从构建阶段复制可执行文件
 COPY --from=builder /usr/local/bin/yachiyo_cpp /usr/local/bin/yachiyo_cpp
+
+# 从构建阶段复制源码编译的动态库 (hiredis, libpqxx)
+COPY --from=builder /usr/local/lib/ /usr/local/lib/
+RUN ldconfig
 
 # 复制配置文件
 COPY --from=builder /app/config /app/config
