@@ -8,6 +8,10 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV CC=/usr/bin/gcc
 ENV CXX=/usr/bin/g++
 
+# 使用国内镜像源 (解决容器内无法访问 archive.ubuntu.com 的问题)
+RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list && \
+    sed -i 's|http://security.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list
+
 # 安装构建依赖
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -57,6 +61,10 @@ FROM ubuntu:22.04 AS runtime
 # 设置环境变量
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/Shanghai
+
+# 使用国内镜像源
+RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list && \
+    sed -i 's|http://security.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list
 
 # 安装运行时依赖
 RUN apt-get update && apt-get install -y \
