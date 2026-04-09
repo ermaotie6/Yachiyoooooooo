@@ -190,7 +190,7 @@ Result<bool> MessageServiceImpl::reviewMessage(
     try {
         ReviewStatus newStatus = approved ? ReviewStatus::APPROVED : ReviewStatus::REJECTED;
         
-        dbUtil->execute(
+        int affected = dbUtil->execute(
             "UPDATE user_messages SET review_status = $1, reviewed_by = $2, "
             "reviewed_at = NOW(), review_reason = $3 WHERE id = $4",
             {
@@ -200,6 +200,9 @@ Result<bool> MessageServiceImpl::reviewMessage(
                 std::to_string(messageId)
             }
         );
+        if (affected <= 0) {
+            return Result<bool>::Error("娑堟伅涓嶅瓨鍦ㄦ垨鏈洿鏂?");
+        }
         
         logger->info("消息审查完成: {}", messageId);
         return Result<bool>::Success(true);
@@ -381,10 +384,13 @@ Result<bool> MessageServiceImpl::deleteMessage(
             }
         }
 
-        dbUtil->execute(
+        int affected = dbUtil->execute(
             "DELETE FROM user_messages WHERE id = $1",
             {std::to_string(messageId)}
         );
+        if (affected <= 0) {
+            return Result<bool>::Error("娑堟伅涓嶅瓨鍦?);
+        }
 
         logger->info("消息已删除: messageId={}, by userId={}, isAdmin={}, reason={}",
                     messageId, userId, isAdmin, reason);
@@ -403,7 +409,7 @@ Result<bool> MessageServiceImpl::hideMessage(
     const std::string& reason
 ) {
     try {
-        dbUtil->execute(
+        int affected = dbUtil->execute(
             "UPDATE user_messages SET review_status = $1, review_reason = $2 WHERE id = $3",
             {
                 std::to_string(static_cast<int>(ReviewStatus::REJECTED)),
@@ -411,6 +417,9 @@ Result<bool> MessageServiceImpl::hideMessage(
                 std::to_string(messageId)
             }
         );
+        if (affected <= 0) {
+            return Result<bool>::Error("娑堟伅涓嶅瓨鍦?);
+        }
         
         return Result<bool>::Success(true);
         

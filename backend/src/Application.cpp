@@ -398,9 +398,24 @@ void Application::initializeServices() {
         int redisPort = configManager->getInt("redis.port", 6379);
         std::string redisPassword = configManager->getString("redis.password", "");
         int redisPoolSize = configManager->getInt("redis.pool_size", 10);
-        
-        // redisPool = std::make_shared<RedisPool>(...);
-        logger->info("Redis连接初始化完成: {}:{}", redisHost, redisPort);
+
+        try {
+            Yachiyo::Utils::RedisConfig redisCfg;
+            redisCfg.host = redisHost;
+            redisCfg.port = redisPort;
+            redisCfg.password = redisPassword;
+            redisCfg.database = configManager->getInt("redis.database", 0);
+            redisCfg.maxConnections = redisPoolSize;
+            redisCfg.timeoutSeconds = configManager->getInt("redis.timeout_seconds", 5);
+
+            if (Yachiyo::Utils::RedisUtil::initializePool(redisCfg)) {
+                logger->info("Redis连接池初始化完成: {}:{} (pool={})", redisHost, redisPort, redisPoolSize);
+            } else {
+                logger->warn("Redis连接池初始化失败，系统将以无缓存模式继续运行");
+            }
+        } catch (const std::exception& e) {
+            logger->warn("Redis初始化异常: {}，系统将以无缓存模式继续运行", e.what());
+        }
     }
     
     // ==================================================================

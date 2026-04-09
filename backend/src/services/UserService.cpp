@@ -243,20 +243,53 @@ std::vector<dto::UserDTO> UserServiceImpl::searchUsers(const std::string& keywor
         logger->debug("搜索用户: keyword={}", keyword);
 
         std::vector<dto::UserDTO> users;
-        if (!g_databaseService || !g_databaseService->isInitialized() || keyword.empty()) {
+        if (!g_databaseService || !g_databaseService->isInitialized()) {
             return users;
         }
 
-        // 精确匹配用户名 / 邮箱 (TODO: UserDAO 增加 LIKE 搜索)
-        auto r1 = g_databaseService->userDAO().getByUsername(keyword);
-        if (r1.success) users.push_back(buildUserDTO(r1.data.value()));
+        page = std::max(1, page);
+        pageSize = std::clamp(pageSize, 1, 100);
+        int offset = (page - 1) * pageSize;
 
-        auto r2 = g_databaseService->userDAO().getByEmail(keyword);
-        if (r2.success) {
-            auto u = buildUserDTO(r2.data.value());
-            bool dup = false;
-            for (const auto& existing : users) { if (existing.id == u.id) { dup = true; break; } }
-            if (!dup) users.push_back(u);
+        auto conn = Yachiyo::Services::DatabasePool::getInstance().getConnection();
+        pqxx::work txn(*conn);
+
+        pqxx::result res;
+        if (keyword.empty()) {
+            res = txn.exec_params(
+                "SELECT id, username, email, password_hash, salt, nickname, avatar_url, role, status, "
+                "profile_data, preferences, created_at, updated_at, last_login_at, is_active "
+                "FROM users ORDER BY id DESC LIMIT $1 OFFSET $2",
+                pageSize, offset
+            );
+        } else {
+            std::string like = "%" + keyword + "%";
+            res = txn.exec_params(
+                "SELECT id, username, email, password_hash, salt, nickname, avatar_url, role, status, "
+                "profile_data, preferences, created_at, updated_at, last_login_at, is_active "
+                "FROM users WHERE username ILIKE $1 OR email ILIKE $1 OR nickname ILIKE $1 "
+                "ORDER BY id DESC LIMIT $2 OFFSET $3",
+                like, pageSize, offset
+            );
+        }
+        txn.commit();
+        Yachiyo::Services::DatabasePool::getInstance().releaseConnection(conn);
+
+        for (const auto& row : res) {
+            Yachiyo::Models::User u;
+            u.id = row.at("id").as<int64_t>();
+            u.username = row.at("username").as<std::string>();
+            u.email = row.at("email").as<std::string>();
+            u.password_hash = row.at("password_hash").as<std::string>();
+            u.salt = row.at("salt").is_null() ? "" : row.at("salt").as<std::string>();
+            u.nickname = row.at("nickname").is_null() ? "" : row.at("nickname").as<std::string>();
+            u.avatar_url = row.at("avatar_url").is_null() ? "" : row.at("avatar_url").as<std::string>();
+            u.role = row.at("role").is_null() ? 1 : row.at("role").as<int>();
+            u.status = row.at("status").is_null() ? 1 : row.at("status").as<int>();
+            u.profile_data = row.at("profile_data").is_null() ? nlohmann::json::object() : nlohmann::json::parse(row.at("profile_data").as<std::string>("{}"));
+            u.preferences = row.at("preferences").is_null() ? nlohmann::json::object() : nlohmann::json::parse(row.at("preferences").as<std::string>("{}"));
+            u.is_active = row.at("is_active").as<bool>();
+            users.push_back(buildUserDTO(u));
         }
 
         return users;
@@ -385,7 +418,28 @@ bool UserServiceImpl::deactivateUser(const std::string& userId, const std::strin
 
 bool UserServiceImpl::activateUser(const std::string& userId, const std::string& adminId) {
     try {
-        // TODO: UserDAO 增加 activate 方法 (SET is_active = TRUE)
+        if (!g_databaseService || !g_databaseService->isInitialized()) return false;
+
+        int64_t aid = std::stoll(adminId);
+        auto adminResult = g_databaseService->userDAO().getById(aid);
+        if (!adminResult.success || adminResult.data.value().role != 99) {
+            throw std::runtime_error("没有管理员权限");
+        }
+
+        auto conn = Yachiyo::Services::DatabasePool::getInstance().getConnection();
+        pqxx::work txn(*conn);
+        auto res = txn.exec_params(
+            "UPDATE users SET is_active = TRUE, status = 1, updated_at = NOW() WHERE id = $1",
+            std::stoll(userId)
+        );
+        txn.commit();
+        Yachiyo::Services::DatabasePool::getInstance().releaseConnection(conn);
+
+        if (res.affected_rows() <= 0) {
+            logger->warn("激活用户未生效，用户可能不存在: userId={}", userId);
+            return false;
+        }
+
         logger->info("用户激活成功: userId={}", userId);
         return true;
     } catch (const std::exception& e) {

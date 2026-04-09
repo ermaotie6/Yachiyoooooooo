@@ -1,5 +1,6 @@
 #include "services/AuthServiceImpl.hpp"
 #include "utils/Logger.hpp"
+#include "utils/RedisUtil.hpp"
 #include <ctime>
 #include <sstream>
 #include <iomanip>
@@ -281,7 +282,11 @@ Result<std::shared_ptr<User>> AuthServiceImpl::verifyToken(
 
 int64_t AuthServiceImpl::getUserIdFromToken(const std::string& token) {
     try {
-        return jwtUtil->getUserIdFromToken(token);
+        auto payload = jwtUtil->verifyTokenPayload(token);
+        if (!payload) {
+            return 0;
+        }
+        return payload->value("user_id", payload->value("sub", int64_t(0)));
     } catch (...) {
         return 0;
     }
@@ -291,7 +296,11 @@ int64_t AuthServiceImpl::getUserIdFromToken(const std::string& token) {
 
 UserRole AuthServiceImpl::getRoleFromToken(const std::string& token) {
     try {
-        std::string roleStr = jwtUtil->getRoleFromToken(token);
+        auto payload = jwtUtil->verifyTokenPayload(token);
+        if (!payload) {
+            return UserRole::USER;
+        }
+        std::string roleStr = payload->value("role", std::string("user"));
         if (roleStr == "ADMIN" || roleStr == "admin" || roleStr == "99") {
             return UserRole::ADMIN;
         }
@@ -313,9 +322,26 @@ Result<json> AuthServiceImpl::refreshToken(
         }
         
         // 从旧令牌中提取信息生成新令牌
-        int64_t userId = jwtUtil->getUserIdFromToken(refreshToken);
-        std::string username = jwtUtil->getUsernameFromToken(refreshToken);
-        std::string role = jwtUtil->getRoleFromToken(refreshToken);
+        try {
+            std::string blacklistKey = "token_blacklist:" + refreshToken;
+            if (Yachiyo::Utils::RedisUtil::cacheExists(blacklistKey)) {
+                return Result<json>::Error("refresh token revoked");
+            }
+        } catch (...) {
+            LOG_WARN("Unable to check refresh token blacklist");
+        }
+
+        auto payload = jwtUtil->verifyTokenPayload(refreshToken);
+        if (!payload) {
+            return Result<json>::Error("invalid refresh token payload");
+        }
+        if (payload->value("token_type", std::string("")) != "refresh") {
+            return Result<json>::Error("invalid token type for refresh");
+        }
+
+        int64_t userId = payload->value("user_id", payload->value("sub", int64_t(0)));
+        std::string username = payload->value("username", std::string(""));
+        std::string role = payload->value("role", std::string("user"));
         
         auto newAccessToken = jwtUtil->generateToken(userId, username, role);
         
@@ -342,7 +368,7 @@ Result<bool> AuthServiceImpl::logout(
         if (!refreshToken.empty()) {
             try {
                 std::string blacklistKey = "token_blacklist:" + refreshToken;
-                dbUtil->redisSet(blacklistKey, "1", 604800);  // 7天过期
+                Yachiyo::Utils::RedisUtil::setCache(blacklistKey, "1", 604800);  // 7天过期
             } catch (const std::exception& e) {
                 // Redis 不可用时记录警告但不阻止注销
                 // TODO: 考虑将 Redis 操作抽离到独立的 RedisCacheService

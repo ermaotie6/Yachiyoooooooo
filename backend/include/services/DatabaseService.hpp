@@ -7,6 +7,7 @@
 #include <mutex>
 #include <queue>
 #include <condition_variable>
+#include <optional>
 #include <pqxx/pqxx>
 
 namespace Yachiyo::Services {
@@ -183,10 +184,10 @@ public:
     bool isInitialized() const { return initialized_; }
 
     // DAO 访问
-    MessageDAO& messageDAO() { return message_dao_; }
-    ConversationContextDAO& contextDAO() { return context_dao_; }
-    UserDAO& userDAO() { return user_dao_; }
-    ModerationLogDAO& moderationDAO() { return moderation_dao_; }
+    MessageDAO& messageDAO() { return *message_dao_; }
+    ConversationContextDAO& contextDAO() { return *context_dao_; }
+    UserDAO& userDAO() { return *user_dao_; }
+    ModerationLogDAO& moderationDAO() { return *moderation_dao_; }
 
     // 高级操作
     Result<std::vector<Message>> buildConversationHistory(int64_t user_id, int limit = 20);
@@ -199,10 +200,10 @@ private:
     bool initialized_;
     std::shared_ptr<pqxx::connection> connection_;
 
-    MessageDAO message_dao_;
-    ConversationContextDAO context_dao_;
-    UserDAO user_dao_;
-    ModerationLogDAO moderation_dao_;
+    std::optional<MessageDAO> message_dao_;
+    std::optional<ConversationContextDAO> context_dao_;
+    std::optional<UserDAO> user_dao_;
+    std::optional<ModerationLogDAO> moderation_dao_;
 };
 
 } // namespace Yachiyo::Services

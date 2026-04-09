@@ -1,8 +1,47 @@
 #include "services/DatabaseService.hpp"
 #include <iostream>
 #include <chrono>
+#include <sstream>
+#include <iomanip>
+#include <ctime>
 
 namespace Yachiyo::Services {
+
+namespace {
+int64_t parseTimestampToEpoch(const pqxx::field& field) {
+    if (field.is_null()) {
+        return 0;
+    }
+
+    const std::string raw = field.as<std::string>();
+    try {
+        return std::stoll(raw);
+    } catch (...) {
+    }
+
+    std::string normalized = raw;
+    auto dotPos = normalized.find('.');
+    if (dotPos != std::string::npos) {
+        normalized = normalized.substr(0, dotPos);
+    }
+    auto plusPos = normalized.find('+');
+    if (plusPos != std::string::npos) {
+        normalized = normalized.substr(0, plusPos);
+    }
+    auto minusPos = normalized.find('-', 10);
+    if (minusPos != std::string::npos) {
+        normalized = normalized.substr(0, minusPos);
+    }
+
+    std::tm tm = {};
+    std::istringstream ss(normalized);
+    ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
+    if (ss.fail()) {
+        return 0;
+    }
+    return static_cast<int64_t>(std::mktime(&tm));
+}
+} // namespace
 
 // ============ DatabasePool 实现 ============
 
@@ -290,7 +329,7 @@ Message MessageDAO::parseRow(const pqxx::row& row) {
         msg.avatar_response = json::parse(row.at("avatar_response").as<std::string>());
     }
 
-    msg.created_at = row.at("created_at").as<int64_t>();
+    msg.created_at = parseTimestampToEpoch(row.at("created_at"));
     msg.is_visible = row.at("is_visible").as<bool>();
 
     return msg;
@@ -503,8 +542,8 @@ ConversationContext ConversationContextDAO::parseRow(const pqxx::row& row) {
     ctx.message_history = row.at("message_history").is_null() ? json::object() : json::parse(row.at("message_history").as<std::string>("{}"));
     ctx.user_profile = row.at("user_profile").is_null() ? json::object() : json::parse(row.at("user_profile").as<std::string>("{}"));
     ctx.message_count = row.at("message_count").as<int>();
-    ctx.created_at = row.at("created_at").is_null() ? 0 : row.at("created_at").as<int64_t>();
-    ctx.updated_at = row.at("updated_at").is_null() ? 0 : row.at("updated_at").as<int64_t>();
+    ctx.created_at = parseTimestampToEpoch(row.at("created_at"));
+    ctx.updated_at = parseTimestampToEpoch(row.at("updated_at"));
     ctx.is_active = row.at("is_active").as<bool>();
     return ctx;
 }
@@ -517,11 +556,7 @@ DatabaseService& DatabaseService::getInstance() {
 }
 
 DatabaseService::DatabaseService()
-    : initialized_(false),
-      message_dao_(nullptr),
-      context_dao_(nullptr),
-      user_dao_(nullptr),
-      moderation_dao_(nullptr) {}
+    : initialized_(false) {}
 
 bool DatabaseService::initialize(const std::string& connection_string, size_t pool_size) {
     try {
@@ -532,10 +567,10 @@ bool DatabaseService::initialize(const std::string& connection_string, size_t po
         connection_ = DatabasePool::getInstance().getConnection();
 
         // 初始化所有 DAO
-        new (&message_dao_) MessageDAO(connection_);
-        new (&context_dao_) ConversationContextDAO(connection_);
-        new (&user_dao_) UserDAO(connection_);
-        new (&moderation_dao_) ModerationLogDAO(connection_);
+        message_dao_.emplace(connection_);
+        context_dao_.emplace(connection_);
+        user_dao_.emplace(connection_);
+        moderation_dao_.emplace(connection_);
 
         initialized_ = true;
         std::cout << "[DatabaseService] Initialized successfully" << std::endl;
@@ -548,7 +583,7 @@ bool DatabaseService::initialize(const std::string& connection_string, size_t po
 }
 
 Result<std::vector<Message>> DatabaseService::buildConversationHistory(int64_t user_id, int limit) {
-    return message_dao_.getByUserId(user_id, limit, 0);
+    return message_dao_->getByUserId(user_id, limit, 0);
 }
 
 Result<json> DatabaseService::buildOpenClawContext(int64_t user_id) {
@@ -558,7 +593,7 @@ Result<json> DatabaseService::buildOpenClawContext(int64_t user_id) {
         context["timestamp"] = std::chrono::system_clock::now().time_since_epoch().count();
 
         // 获取最近的对话上下文
-        auto ctx_result = context_dao_.getActiveContext(user_id);
+        auto ctx_result = context_dao_->getActiveContext(user_id);
         if (ctx_result.success && ctx_result.data) {
             context["conversation"] = ctx_result.data->context_data;
             context["message_history"] = ctx_result.data->message_history;
@@ -819,9 +854,9 @@ User UserDAO::parseRow(const pqxx::row& row) {
     // profile_data 和 preferences 可能为 NULL，需要安全处理
     user.profile_data = row.at("profile_data").is_null() ? json::object() : json::parse(row.at("profile_data").as<std::string>("{}"));
     user.preferences = row.at("preferences").is_null() ? json::object() : json::parse(row.at("preferences").as<std::string>("{}"));
-    user.created_at = row.at("created_at").is_null() ? 0 : row.at("created_at").as<int64_t>();
-    user.updated_at = row.at("updated_at").is_null() ? 0 : row.at("updated_at").as<int64_t>();
-    user.last_login = row.at("last_login_at").is_null() ? 0 : row.at("last_login_at").as<int64_t>();
+    user.created_at = parseTimestampToEpoch(row.at("created_at"));
+    user.updated_at = parseTimestampToEpoch(row.at("updated_at"));
+    user.last_login = parseTimestampToEpoch(row.at("last_login_at"));
     user.is_active = row.at("is_active").as<bool>();
     return user;
 }
@@ -961,7 +996,7 @@ ModerationLog ModerationLogDAO::parseRow(const pqxx::row& row) {
     log.violation_details = row.at("violation_details").is_null() ? json::object() : json::parse(row.at("violation_details").as<std::string>("{}"));
     log.confidence_score = row.at("confidence_score").is_null() ? 0.0 : row.at("confidence_score").as<double>();
     log.action_taken = row.at("action_taken").is_null() ? "" : row.at("action_taken").as<std::string>();
-    log.created_at = row.at("created_at").is_null() ? 0 : row.at("created_at").as<int64_t>();
+    log.created_at = parseTimestampToEpoch(row.at("created_at"));
     return log;
 }
 

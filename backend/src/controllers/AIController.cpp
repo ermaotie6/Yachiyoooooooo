@@ -2,14 +2,49 @@
 #include "services/AIService.hpp"
 #include "utils/JsonUtils.hpp"
 #include "utils/LogUtils.hpp"
+#include "utils/JwtUtil.hpp"
+#include "config/ConfigManager.hpp"
 #include <crow.h>
 #include <sstream>
+#include <mutex>
 
 namespace yachiyo::controllers {
 
 using yachiyo::utils::LogUtils;
 namespace services = Yachiyo::Services;
 namespace utils = yachiyo::utils;
+
+namespace {
+std::shared_ptr<Yachiyo::Utils::JwtUtil> getJwtUtil() {
+    static std::shared_ptr<Yachiyo::Utils::JwtUtil> instance;
+    static std::once_flag flag;
+    std::call_once(flag, []() {
+        auto cfg = yachiyo::config::ConfigManager::getInstance();
+        std::string secret = cfg->getString("jwt.secret", "yachiyo-default-secret-change-in-production");
+        int exp = cfg->getInt("jwt.expiresIn", 24);
+        instance = std::make_shared<Yachiyo::Utils::JwtUtil>(secret, exp);
+    });
+    return instance;
+}
+
+bool verifyBearerToken(const crow::request& req, std::string& token, std::string& error) {
+    std::string authHeader = req.get_header_value("Authorization");
+    if (authHeader.empty() || authHeader.find("Bearer ") != 0) {
+        error = "missing or invalid Authorization header";
+        return false;
+    }
+
+    token = authHeader.substr(7);
+    auto jwt = getJwtUtil();
+    auto [ok, msg] = jwt->verifyToken(token);
+    if (!ok) {
+        error = "invalid or expired token";
+        return false;
+    }
+
+    return true;
+}
+} // namespace
 
 AIController::AIController() {
     logger = LogUtils::getLogger("AIController");
@@ -86,11 +121,11 @@ void AIController::registerRoutes(crow::SimpleApp& app) {
 crow::response AIController::chat(const crow::request& req) {
     try {
         // 验证认证令牌
-        std::string authHeader = req.get_header_value("Authorization");
-        if (authHeader.empty() || authHeader.find("Bearer ") != 0) {
-            return utils::JsonUtils::createErrorResponse(401, "未提供有效的认证令牌");
+        std::string token;
+        std::string authError;
+        if (!verifyBearerToken(req, token, authError)) {
+            return utils::JsonUtils::createErrorResponse(401, authError);
         }
-        std::string token = authHeader.substr(7);
 
         auto json = crow::json::load(req.body);
         if (!json) {
@@ -150,11 +185,11 @@ crow::response AIController::chat(const crow::request& req) {
 crow::response AIController::textToSpeech(const crow::request& req) {
     try {
         // 验证认证令牌
-        std::string authHeader = req.get_header_value("Authorization");
-        if (authHeader.empty() || authHeader.find("Bearer ") != 0) {
-            return utils::JsonUtils::createErrorResponse(401, "未提供有效的认证令牌");
+        std::string token;
+        std::string authError;
+        if (!verifyBearerToken(req, token, authError)) {
+            return utils::JsonUtils::createErrorResponse(401, authError);
         }
-        std::string token = authHeader.substr(7);
 
         auto json = crow::json::load(req.body);
         if (!json) {
@@ -191,11 +226,11 @@ crow::response AIController::textToSpeech(const crow::request& req) {
 crow::response AIController::speechToText(const crow::request& req) {
     try {
         // 验证认证令牌
-        std::string authHeader = req.get_header_value("Authorization");
-        if (authHeader.empty() || authHeader.find("Bearer ") != 0) {
-            return utils::JsonUtils::createErrorResponse(401, "未提供有效的认证令牌");
+        std::string token;
+        std::string authError;
+        if (!verifyBearerToken(req, token, authError)) {
+            return utils::JsonUtils::createErrorResponse(401, authError);
         }
-        std::string token = authHeader.substr(7);
 
         // 检查内容类型
         std::string contentType = req.get_header_value("Content-Type");
@@ -242,11 +277,11 @@ crow::response AIController::speechToText(const crow::request& req) {
 crow::response AIController::generateImage(const crow::request& req) {
     try {
         // 验证认证令牌
-        std::string authHeader = req.get_header_value("Authorization");
-        if (authHeader.empty() || authHeader.find("Bearer ") != 0) {
-            return utils::JsonUtils::createErrorResponse(401, "未提供有效的认证令牌");
+        std::string token;
+        std::string authError;
+        if (!verifyBearerToken(req, token, authError)) {
+            return utils::JsonUtils::createErrorResponse(401, authError);
         }
-        std::string token = authHeader.substr(7);
 
         auto json = crow::json::load(req.body);
         if (!json) {
@@ -296,11 +331,11 @@ crow::response AIController::generateImage(const crow::request& req) {
 crow::response AIController::analyzeImage(const crow::request& req) {
     try {
         // 验证认证令牌
-        std::string authHeader = req.get_header_value("Authorization");
-        if (authHeader.empty() || authHeader.find("Bearer ") != 0) {
-            return utils::JsonUtils::createErrorResponse(401, "未提供有效的认证令牌");
+        std::string token;
+        std::string authError;
+        if (!verifyBearerToken(req, token, authError)) {
+            return utils::JsonUtils::createErrorResponse(401, authError);
         }
-        std::string token = authHeader.substr(7);
 
         auto json = crow::json::load(req.body);
         if (!json) {
@@ -344,11 +379,11 @@ crow::response AIController::analyzeImage(const crow::request& req) {
 crow::response AIController::getModels(const crow::request& req) {
     try {
         // 验证认证令牌
-        std::string authHeader = req.get_header_value("Authorization");
-        if (authHeader.empty() || authHeader.find("Bearer ") != 0) {
-            return utils::JsonUtils::createErrorResponse(401, "未提供有效的认证令牌");
+        std::string token;
+        std::string authError;
+        if (!verifyBearerToken(req, token, authError)) {
+            return utils::JsonUtils::createErrorResponse(401, authError);
         }
-        std::string token = authHeader.substr(7);
 
         auto result = aiService->getAvailableModels(token);
 
@@ -387,11 +422,11 @@ crow::response AIController::getModels(const crow::request& req) {
 crow::response AIController::getChatHistory(const crow::request& req) {
     try {
         // 验证认证令牌
-        std::string authHeader = req.get_header_value("Authorization");
-        if (authHeader.empty() || authHeader.find("Bearer ") != 0) {
-            return utils::JsonUtils::createErrorResponse(401, "未提供有效的认证令牌");
+        std::string token;
+        std::string authError;
+        if (!verifyBearerToken(req, token, authError)) {
+            return utils::JsonUtils::createErrorResponse(401, authError);
         }
-        std::string token = authHeader.substr(7);
 
         // 获取查询参数
         std::string chatId = req.url_params.get("chat_id");
@@ -455,11 +490,11 @@ crow::response AIController::getChatHistory(const crow::request& req) {
 crow::response AIController::deleteChatHistory(const crow::request& req, const std::string& chatId) {
     try {
         // 验证认证令牌
-        std::string authHeader = req.get_header_value("Authorization");
-        if (authHeader.empty() || authHeader.find("Bearer ") != 0) {
-            return utils::JsonUtils::createErrorResponse(401, "未提供有效的认证令牌");
+        std::string token;
+        std::string authError;
+        if (!verifyBearerToken(req, token, authError)) {
+            return utils::JsonUtils::createErrorResponse(401, authError);
         }
-        std::string token = authHeader.substr(7);
 
         if (chatId.empty()) {
             return utils::JsonUtils::createErrorResponse(400, "聊天ID不能为空");

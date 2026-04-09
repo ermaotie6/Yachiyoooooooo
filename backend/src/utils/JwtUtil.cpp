@@ -313,6 +313,11 @@ std::pair<bool, std::string> JwtUtil::verifyToken(const std::string& token) {
 
 int64_t JwtUtil::getUserIdFromToken(const std::string& token) {
     try {
+        auto [valid, _] = verifyToken(token);
+        if (!valid) {
+            return 0;
+        }
+
         size_t first_dot = token.find('.');
         size_t second_dot = token.find('.', first_dot + 1);
 
@@ -337,6 +342,11 @@ int64_t JwtUtil::getUserIdFromToken(const std::string& token) {
 
 std::string JwtUtil::getUsernameFromToken(const std::string& token) {
     try {
+        auto [valid, _] = verifyToken(token);
+        if (!valid) {
+            return "";
+        }
+
         size_t first_dot = token.find('.');
         size_t second_dot = token.find('.', first_dot + 1);
 
@@ -361,6 +371,11 @@ std::string JwtUtil::getUsernameFromToken(const std::string& token) {
 
 std::string JwtUtil::getRoleFromToken(const std::string& token) {
     try {
+        auto [valid, _] = verifyToken(token);
+        if (!valid) {
+            return "";
+        }
+
         size_t first_dot = token.find('.');
         size_t second_dot = token.find('.', first_dot + 1);
 
@@ -385,6 +400,11 @@ std::string JwtUtil::getRoleFromToken(const std::string& token) {
 
 std::map<std::string, std::string> JwtUtil::getClaimsFromToken(const std::string& token) {
     try {
+        auto [valid, _] = verifyToken(token);
+        if (!valid) {
+            return {};
+        }
+
         size_t first_dot = token.find('.');
         size_t second_dot = token.find('.', first_dot + 1);
 

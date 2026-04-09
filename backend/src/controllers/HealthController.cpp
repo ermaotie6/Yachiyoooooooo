@@ -16,6 +16,27 @@ HealthController::~HealthController() {
 }
 
 void HealthController::registerRoutes(crow::SimpleApp& app) {
+    // v1 路由（与 Application 启动日志一致）
+    CROW_ROUTE(app, "/api/v1/health")([this]() {
+        return this->healthCheck();
+    });
+    CROW_ROUTE(app, "/api/v1/health/detailed")([this]() {
+        return this->detailedHealthCheck();
+    });
+    CROW_ROUTE(app, "/api/v1/health/ready")([this]() {
+        return this->readinessCheck();
+    });
+    CROW_ROUTE(app, "/api/v1/health/live")([this]() {
+        return this->livenessCheck();
+    });
+    CROW_ROUTE(app, "/api/v1/health/metrics")([this]() {
+        return this->metrics();
+    });
+    CROW_ROUTE(app, "/api/v1/health/version")([this]() {
+        return this->versionInfo();
+    });
+
+    // 兼容旧路由
     CROW_ROUTE(app, "/api/health")([this]() {
         return this->healthCheck();
     });
@@ -228,7 +249,7 @@ crow::response HealthController::versionInfo() {
 }
 
 std::string HealthController::getBasePath() const {
-    return "/api/health";
+    return "/api/v1/health";
 }
 
 std::string HealthController::getName() const {
