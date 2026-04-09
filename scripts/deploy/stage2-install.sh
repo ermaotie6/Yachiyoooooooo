@@ -38,7 +38,10 @@ else
     info "安装 Docker..."
     case "$DISTRO_FAMILY" in
         arch)
-            pacman -S --noconfirm --needed docker docker-compose docker-buildx
+            pacman -S --noconfirm --needed docker
+            # docker-compose 和 docker-buildx 可能是独立包或子包，容错安装
+            pacman -S --noconfirm --needed docker-compose 2>/dev/null || true
+            pacman -S --noconfirm --needed docker-buildx 2>/dev/null || true
             ;;
         debian)
             install -m 0755 -d /etc/apt/keyrings
@@ -73,12 +76,23 @@ else
 fi
 
 # ===== 验证 Docker Compose =====
+# Arch 上 docker-compose 是独立命令; Debian 上是 docker compose 插件
 if docker compose version &>/dev/null; then
     ok "Docker Compose (v2 插件): $(docker compose version --short)"
 elif command -v docker-compose &>/dev/null; then
     ok "Docker Compose (独立版): $(docker-compose --version)"
 else
-    fail "Docker Compose 未安装"
+    # 最后尝试: 通过 pip 安装 docker-compose
+    warn "Docker Compose 未检测到，尝试通过 pip 安装..."
+    if command -v pip3 &>/dev/null || command -v pip &>/dev/null; then
+        pip3 install docker-compose 2>/dev/null || pip install docker-compose 2>/dev/null || true
+    fi
+    # 再次检测
+    if command -v docker-compose &>/dev/null; then
+        ok "Docker Compose (pip): $(docker-compose --version)"
+    else
+        fail "Docker Compose 未安装，请手动安装: sudo pacman -S docker-compose 或 pip install docker-compose"
+    fi
 fi
 
 echo ""
