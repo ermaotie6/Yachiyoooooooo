@@ -61,50 +61,52 @@ fi
 info "更新系统包..."
 case "$DISTRO_FAMILY" in
     arch)
-        # ---- Arch Linux 密钥环修复 (3 级递进策略) ----
+        # ---- Arch Linux 密钥环修复 ----
         #
         # 长期未更新的 Arch 会遇到 PGP 签名不受信任的问题:
         #   新 packager 的 key 不在本地 keyring 中，导致所有包安装失败。
-        # 下面的策略从温和到激进依次尝试，确保最终能完成更新。
+        # 策略: 清缓存 → 关签名验证 → 装最新 keyring → 恢复验证 → 重建信任链
 
         info "修复 pacman 密钥环..."
 
-        # 第 1 步: 清除旧密钥环并重建
+        # 第 1 步: 清除缓存的旧包 (旧包携带旧签名，会导致验证失败)
+        pacman -Scc --noconfirm 2>/dev/null || true
+        ok "包缓存已清除"
+
+        # 第 2 步: 删除旧密钥环
         rm -rf /etc/pacman.d/gnupg
+
+        # 第 3 步: 备份 pacman.conf，临时关闭签名验证
+        cp /etc/pacman.conf /etc/pacman.conf.bak.yachiyo
+        sed -i 's/^SigLevel\s*=.*/SigLevel = Never/' /etc/pacman.conf
+
+        # 第 4 步: 强制刷新数据库 + 安装最新 keyring (跳过签名)
+        pacman -Syy --noconfirm archlinux-keyring
+        ok "archlinux-keyring 已更新"
+
+        # 第 5 步: 立即恢复 pacman.conf
+        mv /etc/pacman.conf.bak.yachiyo /etc/pacman.conf
+
+        # 第 6 步: 用新 keyring 重建完整信任链
         pacman-key --init
         pacman-key --populate archlinux
         ok "密钥环已重建"
 
-        # 第 2 步: 先同步数据库
-        pacman -Sy
-
-        # 第 3 步: 尝试正常安装 archlinux-keyring
-        if pacman -S --noconfirm archlinux-keyring 2>/dev/null; then
-            ok "archlinux-keyring 更新成功"
-        else
-            # 第 4 步: 正常方式失败 → 临时关闭签名验证
-            warn "常规更新失败，临时关闭签名验证以完成 keyring 更新..."
-
-            # 备份 pacman.conf
-            cp /etc/pacman.conf /etc/pacman.conf.bak.yachiyo
-
-            # 将所有 SigLevel 行替换为 Never (包括 [options] 及各仓库段)
-            sed -i 's/^SigLevel\s*=.*/SigLevel = Never/' /etc/pacman.conf
-
-            # 强制刷新数据库并安装最新 keyring
-            pacman -Syy --noconfirm archlinux-keyring
-
-            # 立即恢复 pacman.conf
-            mv /etc/pacman.conf.bak.yachiyo /etc/pacman.conf
-
-            # 用新 keyring 再次重建信任链
-            rm -rf /etc/pacman.d/gnupg
-            pacman-key --init
-            pacman-key --populate archlinux
-            ok "archlinux-keyring 已通过降级验证方式更新"
+        # 第 7 步: 尝试导入可能缺失的 packager key
+        # (某些新 packager 的 key 可能不在 archlinux-keyring 包中)
+        MISSING_KEYS=$(pacman -Su --print 2>&1 | grep -oP 'PGP 公钥\s+\K[0-9A-F]+' || true)
+        if [ -n "$MISSING_KEYS" ]; then
+            info "导入额外的 packager 密钥: $MISSING_KEYS"
+            for KEY in $MISSING_KEYS; do
+                pacman-key --recv-keys "$KEY" --keyserver keyserver.ubuntu.com 2>/dev/null \
+                    || pacman-key --recv-keys "$KEY" 2>/dev/null \
+                    || true
+                pacman-key --lsign-key "$KEY" 2>/dev/null || true
+            done
+            ok "额外密钥已导入并信任"
         fi
 
-        # 第 5 步: 全系统升级 (此时 keyring 已是最新)
+        # 第 8 步: 全系统升级
         pacman -Su --noconfirm
         ;;
     debian) apt-get update -y && apt-get upgrade -y ;;
