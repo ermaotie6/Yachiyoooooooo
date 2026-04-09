@@ -98,8 +98,8 @@ crow::response AIController::chat(const crow::request& req) {
         }
 
         std::string message = json["message"].s();
-        std::string model = json.has("model") ? json["model"].s() : "gpt-3.5-turbo";
-        std::string chatId = json.has("chat_id") ? json["chat_id"].s() : "";
+        std::string model = json.has("model") ? std::string(json["model"].s()) : std::string("gpt-3.5-turbo");
+        std::string chatId = json.has("chat_id") ? std::string(json["chat_id"].s()) : std::string("");
         double temperature = json.has("temperature") ? json["temperature"].d() : 0.7;
         int maxTokens = json.has("max_tokens") ? static_cast<int>(json["max_tokens"].i()) : 1000;
         
@@ -162,7 +162,7 @@ crow::response AIController::textToSpeech(const crow::request& req) {
         }
 
         std::string text = json["text"].s();
-        std::string voice = json.has("voice") ? json["voice"].s() : "alloy";
+        std::string voice = json.has("voice") ? std::string(json["voice"].s()) : std::string("alloy");
         double speed = json.has("speed") ? json["speed"].d() : 1.0;
         
         if (text.empty()) {
@@ -254,9 +254,9 @@ crow::response AIController::generateImage(const crow::request& req) {
         }
 
         std::string prompt = json["prompt"].s();
-        std::string size = json.has("size") ? json["size"].s() : "1024x1024";
+        std::string size = json.has("size") ? std::string(json["size"].s()) : std::string("1024x1024");
         int n = json.has("n") ? static_cast<int>(json["n"].i()) : 1;
-        std::string style = json.has("style") ? json["style"].s() : "vivid";
+        std::string style = json.has("style") ? std::string(json["style"].s()) : std::string("vivid");
         
         if (prompt.empty()) {
             return utils::JsonUtils::createErrorResponse(400, "提示词不能为空");
@@ -278,9 +278,9 @@ crow::response AIController::generateImage(const crow::request& req) {
             crow::json::wvalue img;
             img["url"] = result.imageUrls[i];
             img["revised_prompt"] = result.revisedPrompts[i];
-            images[i] = img;
+            images[i] = std::move(img);
         }
-        response["data"]["images"] = images;
+        response["data"]["images"] = std::move(images);
         response["data"]["created"] = result.created;
         
         auto resp = crow::response(response);
@@ -308,8 +308,8 @@ crow::response AIController::analyzeImage(const crow::request& req) {
         }
 
         std::string imageUrl = json["image_url"].s();
-        std::string imageBase64 = json.has("image_base64") ? json["image_base64"].s() : "";
-        std::string prompt = json.has("prompt") ? json["prompt"].s() : "描述这张图片";
+        std::string imageBase64 = json.has("image_base64") ? std::string(json["image_base64"].s()) : std::string("");
+        std::string prompt = json.has("prompt") ? std::string(json["prompt"].s()) : std::string("描述这张图片");
         
         if (imageUrl.empty() && imageBase64.empty()) {
             return utils::JsonUtils::createErrorResponse(400, "必须提供图像URL或Base64数据");
@@ -371,7 +371,7 @@ crow::response AIController::getModels(const crow::request& req) {
             model["supports_vision"] = result.models[i].supportsVision;
             model["supports_audio"] = result.models[i].supportsAudio;
             model["is_available"] = result.models[i].isAvailable;
-            response["data"]["models"][i] = model;
+            response["data"]["models"][i] = std::move(model);
         }
         
         auto resp = crow::response(response);
@@ -436,10 +436,10 @@ crow::response AIController::getChatHistory(const crow::request& req) {
                 msg["content"] = result.chats[i].messages[j].content;
                 msg["tokens"] = result.chats[i].messages[j].tokens;
                 msg["created_at"] = result.chats[i].messages[j].createdAt;
-                chat["messages"][j] = msg;
+                chat["messages"][j] = std::move(msg);
             }
             
-            response["data"]["chats"][i] = chat;
+            response["data"]["chats"][i] = std::move(chat);
         }
         
         auto resp = crow::response(response);

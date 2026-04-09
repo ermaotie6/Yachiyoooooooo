@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MessageService.hpp"
+#include "AuthService.hpp"
 #include "../utils/RedisUtil.hpp"
 #include "../utils/DatabaseUtil.hpp"
 #include <memory>

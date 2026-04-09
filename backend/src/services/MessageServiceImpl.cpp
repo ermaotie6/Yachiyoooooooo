@@ -235,10 +235,10 @@ Result<std::vector<std::shared_ptr<Message>>> MessageServiceImpl::getUserMessage
         
         for (const auto& row : result) {
             auto msg = std::make_shared<Message>();
-            msg->setMessageId(std::stoll(row["id"]));
-            msg->setUserId(std::stoll(row["user_id"]));
-            msg->setOriginalMessage(row["original_message"]);
-            msg->setReviewStatus(static_cast<ReviewStatus>(std::stoi(row["review_status"])));
+            msg->setMessageId(std::stoll(row.at("id")));
+            msg->setUserId(std::stoll(row.at("user_id")));
+            msg->setOriginalMessage(row.at("original_message"));
+            msg->setReviewStatus(static_cast<ReviewStatus>(std::stoi(row.at("review_status"))));
             messages.push_back(msg);
         }
         
@@ -273,9 +273,9 @@ Result<std::vector<std::shared_ptr<Message>>> MessageServiceImpl::getPendingMess
         
         for (const auto& row : result) {
             auto msg = std::make_shared<Message>();
-            msg->setMessageId(std::stoll(row["id"]));
-            msg->setUserId(std::stoll(row["user_id"]));
-            msg->setOriginalMessage(row["original_message"]);
+            msg->setMessageId(std::stoll(row.at("id")));
+            msg->setUserId(std::stoll(row.at("user_id")));
+            msg->setOriginalMessage(row.at("original_message"));
             messages.push_back(msg);
         }
         
@@ -310,9 +310,9 @@ Result<std::vector<std::shared_ptr<Message>>> MessageServiceImpl::getHighRiskMes
         
         for (const auto& row : result) {
             auto msg = std::make_shared<Message>();
-            msg->setMessageId(std::stoll(row["id"]));
-            msg->setUserId(std::stoll(row["user_id"]));
-            msg->setOriginalMessage(row["original_message"]);
+            msg->setMessageId(std::stoll(row.at("id")));
+            msg->setUserId(std::stoll(row.at("user_id")));
+            msg->setOriginalMessage(row.at("original_message"));
             messages.push_back(msg);
         }
         
@@ -375,7 +375,7 @@ Result<bool> MessageServiceImpl::deleteMessage(
             if (result.empty()) {
                 return Result<bool>::Error("消息不存在");
             }
-            int64_t ownerId = std::stoll(result[0]["user_id"]);
+            int64_t ownerId = std::stoll(result[0].at("user_id"));
             if (ownerId != userId) {
                 return Result<bool>::Error("权限不足，只能删除自己的消息");
             }
@@ -483,8 +483,8 @@ Result<std::pair<bool, double>> MessageServiceImpl::checkBlockedKeywords(const s
         bool foundKeyword = false;
         
         for (const auto& row : result) {
-            std::string keyword = row["keyword"];
-            int severity = std::stoi(row["severity"]);
+            std::string keyword = row.at("keyword");
+            int severity = std::stoi(row.at("severity"));
             
             // 关键词匹配 (消息和关键词均已转小写，英文大小写不敏感)
             if (lowerMessage.find(keyword) != std::string::npos) {
@@ -495,11 +495,11 @@ Result<std::pair<bool, double>> MessageServiceImpl::checkBlockedKeywords(const s
             }
         }
         
-        return Result<std::pair<bool, double>>::Success({foundKeyword, maxScore});
+        return Result<std::pair<bool, double>>::Success(std::make_pair(foundKeyword, maxScore));
         
     } catch (const std::exception& e) {
         logger->error("敏感词检查异常: {}", e.what());
-        return Result<std::pair<bool, double>>::Success({false, 0.0});
+        return Result<std::pair<bool, double>>::Success(std::make_pair(false, 0.0));
     }
 }
 
@@ -530,7 +530,7 @@ Result<std::pair<bool, double>> MessageServiceImpl::aiContentReview(const std::s
                 
                 logger->debug("DeepSeek 审核完成: verdict={}, riskScore={}",
                              modResp.overallVerdict, riskScore);
-                return Result<std::pair<bool, double>>::Success({isAbusive, riskScore});
+                return Result<std::pair<bool, double>>::Success(std::make_pair(isAbusive, riskScore));
             } else {
                 logger->warn("DeepSeek 审核调用失败: {}，回退到启发式审查",
                             modResult.getError().message);
@@ -582,11 +582,11 @@ Result<std::pair<bool, double>> MessageServiceImpl::aiContentReview(const std::s
         isAbusive = (riskScore > 0.6);
         
         // 返回 {是否滥用, 风险评分}
-        return Result<std::pair<bool, double>>::Success({isAbusive, riskScore});
+        return Result<std::pair<bool, double>>::Success(std::make_pair(isAbusive, riskScore));
         
     } catch (const std::exception& e) {
         logger->error("AI内容审查异常: {}", e.what());
-        return Result<std::pair<bool, double>>::Success({false, 0.0});
+        return Result<std::pair<bool, double>>::Success(std::make_pair(false, 0.0));
     }
 }
 

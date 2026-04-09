@@ -4,6 +4,7 @@
 #include "../dto/UserDTO.hpp"
 #include "../utils/Result.hpp"
 #include "../utils/LogUtils.hpp"
+#include "../utils/HashUtil.hpp"
 #include <string>
 #include <vector>
 #include <memory>
