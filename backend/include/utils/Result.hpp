@@ -33,7 +33,7 @@ public:
 
     // 成功响应
     static Result<T> successResult(const T& data, const std::string& message = "操作成功") {
-        return Result(true, "200", message, data);
+        return Result(true, "200", message, std::make_optional(data));
     }
 
     static Result<T> successResult(const std::string& message = "操作成功") {
@@ -76,7 +76,7 @@ public:
 
     // 失败响应 (带默认值 - 兼容 AvatarResponseService)
     static Result<T> fail(int errorCode, const std::string& message, const T& defaultData) {
-        Result r(false, std::to_string(errorCode), message, defaultData);
+        Result r(false, std::to_string(errorCode), message, std::make_optional(defaultData));
         return r;
     }
 
