@@ -275,23 +275,23 @@ Result<void> MessageDAO::delete_(int64_t message_id) {
 
 Message MessageDAO::parseRow(const pqxx::row& row) {
     Message msg;
-    msg.id = row["id"].as<int64_t>();
-    msg.user_id = row["user_id"].as<int64_t>();
-    msg.content = row["content"].as<std::string>();
-    msg.language = row["language"].as<std::string>();
-    msg.character_count = row["character_count"].as<int>();
-    msg.review_status = row["review_status"].as<std::string>();
+    msg.id = row.at("id").as<int64_t>();
+    msg.user_id = row.at("user_id").as<int64_t>();
+    msg.content = row.at("content").as<std::string>();
+    msg.language = row.at("language").as<std::string>();
+    msg.character_count = row.at("character_count").as<int>();
+    msg.review_status = row.at("review_status").as<std::string>();
 
-    if (!row["moderation_result"].is_null()) {
-        msg.moderation_result = json::parse(row["moderation_result"].as<std::string>());
+    if (!row.at("moderation_result").is_null()) {
+        msg.moderation_result = json::parse(row.at("moderation_result").as<std::string>());
     }
 
-    if (!row["avatar_response"].is_null()) {
-        msg.avatar_response = json::parse(row["avatar_response"].as<std::string>());
+    if (!row.at("avatar_response").is_null()) {
+        msg.avatar_response = json::parse(row.at("avatar_response").as<std::string>());
     }
 
-    msg.created_at = row["created_at"].as<int64_t>();
-    msg.is_visible = row["is_visible"].as<bool>();
+    msg.created_at = row.at("created_at").as<int64_t>();
+    msg.is_visible = row.at("is_visible").as<bool>();
 
     return msg;
 }
@@ -495,17 +495,17 @@ Result<void> ConversationContextDAO::addMessageToHistory(int64_t context_id, con
 
 ConversationContext ConversationContextDAO::parseRow(const pqxx::row& row) {
     ConversationContext ctx;
-    ctx.id = row["id"].as<int64_t>();
-    ctx.user_id = row["user_id"].as<int64_t>();
-    ctx.session_id = row["session_id"].is_null() ? "" : row["session_id"].as<std::string>();
-    ctx.conversation_id = row["conversation_id"].is_null() ? "" : row["conversation_id"].as<std::string>();
-    ctx.context_data = row["context_data"].is_null() ? json::object() : json::parse(row["context_data"].as<std::string>("{}"));
-    ctx.message_history = row["message_history"].is_null() ? json::object() : json::parse(row["message_history"].as<std::string>("{}"));
-    ctx.user_profile = row["user_profile"].is_null() ? json::object() : json::parse(row["user_profile"].as<std::string>("{}"));
-    ctx.message_count = row["message_count"].as<int>();
-    ctx.created_at = row["created_at"].is_null() ? 0 : row["created_at"].as<int64_t>();
-    ctx.updated_at = row["updated_at"].is_null() ? 0 : row["updated_at"].as<int64_t>();
-    ctx.is_active = row["is_active"].as<bool>();
+    ctx.id = row.at("id").as<int64_t>();
+    ctx.user_id = row.at("user_id").as<int64_t>();
+    ctx.session_id = row.at("session_id").is_null() ? "" : row.at("session_id").as<std::string>();
+    ctx.conversation_id = row.at("conversation_id").is_null() ? "" : row.at("conversation_id").as<std::string>();
+    ctx.context_data = row.at("context_data").is_null() ? json::object() : json::parse(row.at("context_data").as<std::string>("{}"));
+    ctx.message_history = row.at("message_history").is_null() ? json::object() : json::parse(row.at("message_history").as<std::string>("{}"));
+    ctx.user_profile = row.at("user_profile").is_null() ? json::object() : json::parse(row.at("user_profile").as<std::string>("{}"));
+    ctx.message_count = row.at("message_count").as<int>();
+    ctx.created_at = row.at("created_at").is_null() ? 0 : row.at("created_at").as<int64_t>();
+    ctx.updated_at = row.at("updated_at").is_null() ? 0 : row.at("updated_at").as<int64_t>();
+    ctx.is_active = row.at("is_active").as<bool>();
     return ctx;
 }
 
@@ -807,22 +807,22 @@ Result<void> UserDAO::delete_(int64_t user_id) {
 
 User UserDAO::parseRow(const pqxx::row& row) {
     User user;
-    user.id = row["id"].as<int64_t>();
-    user.username = row["username"].as<std::string>();
-    user.email = row["email"].as<std::string>();
-    user.password_hash = row["password_hash"].as<std::string>();
-    user.salt = row["salt"].is_null() ? "" : row["salt"].as<std::string>();
-    user.nickname = row["nickname"].is_null() ? "" : row["nickname"].as<std::string>();
-    user.avatar_url = row["avatar_url"].is_null() ? "" : row["avatar_url"].as<std::string>();
-    user.role = row["role"].is_null() ? 1 : row["role"].as<int>();
-    user.status = row["status"].is_null() ? 1 : row["status"].as<int>();
+    user.id = row.at("id").as<int64_t>();
+    user.username = row.at("username").as<std::string>();
+    user.email = row.at("email").as<std::string>();
+    user.password_hash = row.at("password_hash").as<std::string>();
+    user.salt = row.at("salt").is_null() ? "" : row.at("salt").as<std::string>();
+    user.nickname = row.at("nickname").is_null() ? "" : row.at("nickname").as<std::string>();
+    user.avatar_url = row.at("avatar_url").is_null() ? "" : row.at("avatar_url").as<std::string>();
+    user.role = row.at("role").is_null() ? 1 : row.at("role").as<int>();
+    user.status = row.at("status").is_null() ? 1 : row.at("status").as<int>();
     // profile_data 和 preferences 可能为 NULL，需要安全处理
-    user.profile_data = row["profile_data"].is_null() ? json::object() : json::parse(row["profile_data"].as<std::string>("{}"));
-    user.preferences = row["preferences"].is_null() ? json::object() : json::parse(row["preferences"].as<std::string>("{}"));
-    user.created_at = row["created_at"].is_null() ? 0 : row["created_at"].as<int64_t>();
-    user.updated_at = row["updated_at"].is_null() ? 0 : row["updated_at"].as<int64_t>();
-    user.last_login = row["last_login_at"].is_null() ? 0 : row["last_login_at"].as<int64_t>();
-    user.is_active = row["is_active"].as<bool>();
+    user.profile_data = row.at("profile_data").is_null() ? json::object() : json::parse(row.at("profile_data").as<std::string>("{}"));
+    user.preferences = row.at("preferences").is_null() ? json::object() : json::parse(row.at("preferences").as<std::string>("{}"));
+    user.created_at = row.at("created_at").is_null() ? 0 : row.at("created_at").as<int64_t>();
+    user.updated_at = row.at("updated_at").is_null() ? 0 : row.at("updated_at").as<int64_t>();
+    user.last_login = row.at("last_login_at").is_null() ? 0 : row.at("last_login_at").as<int64_t>();
+    user.is_active = row.at("is_active").as<bool>();
     return user;
 }
 
@@ -952,16 +952,16 @@ Result<std::vector<ModerationLog>> ModerationLogDAO::getHighRiskMessages(double 
 
 ModerationLog ModerationLogDAO::parseRow(const pqxx::row& row) {
     ModerationLog log;
-    log.id = row["id"].as<int64_t>();
-    log.message_id = row["message_id"].as<int64_t>();
-    log.user_id = row["user_id"].as<int64_t>();
-    log.violation_type = row["violation_type"].is_null() ? "" : row["violation_type"].as<std::string>();
-    log.severity_score = row["severity_score"].is_null() ? 0.0 : row["severity_score"].as<double>();
-    log.is_violation = row["is_violation"].is_null() ? false : row["is_violation"].as<bool>();
-    log.violation_details = row["violation_details"].is_null() ? json::object() : json::parse(row["violation_details"].as<std::string>("{}"));
-    log.confidence_score = row["confidence_score"].is_null() ? 0.0 : row["confidence_score"].as<double>();
-    log.action_taken = row["action_taken"].is_null() ? "" : row["action_taken"].as<std::string>();
-    log.created_at = row["created_at"].is_null() ? 0 : row["created_at"].as<int64_t>();
+    log.id = row.at("id").as<int64_t>();
+    log.message_id = row.at("message_id").as<int64_t>();
+    log.user_id = row.at("user_id").as<int64_t>();
+    log.violation_type = row.at("violation_type").is_null() ? "" : row.at("violation_type").as<std::string>();
+    log.severity_score = row.at("severity_score").is_null() ? 0.0 : row.at("severity_score").as<double>();
+    log.is_violation = row.at("is_violation").is_null() ? false : row.at("is_violation").as<bool>();
+    log.violation_details = row.at("violation_details").is_null() ? json::object() : json::parse(row.at("violation_details").as<std::string>("{}"));
+    log.confidence_score = row.at("confidence_score").is_null() ? 0.0 : row.at("confidence_score").as<double>();
+    log.action_taken = row.at("action_taken").is_null() ? "" : row.at("action_taken").as<std::string>();
+    log.created_at = row.at("created_at").is_null() ? 0 : row.at("created_at").as<int64_t>();
     return log;
 }
 

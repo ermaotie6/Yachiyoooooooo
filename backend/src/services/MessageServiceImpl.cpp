@@ -342,11 +342,11 @@ Result<json> MessageServiceImpl::getStatistics() {
         json stats;
         if (!result.empty()) {
             auto row = result[0];
-            stats["total_messages"] = std::stoll(row["total_messages"]);
-            stats["approved_count"] = std::stoll(row["approved_count"]);
-            stats["rejected_count"] = std::stoll(row["rejected_count"]);
-            stats["pending_count"] = std::stoll(row["pending_count"]);
-            stats["spam_count"] = std::stoll(row["spam_count"]);
+            stats["total_messages"] = std::stoll(row.at("total_messages"));
+            stats["approved_count"] = std::stoll(row.at("approved_count"));
+            stats["rejected_count"] = std::stoll(row.at("rejected_count"));
+            stats["pending_count"] = std::stoll(row.at("pending_count"));
+            stats["spam_count"] = std::stoll(row.at("spam_count"));
         }
         
         return Result<json>::Success(stats);

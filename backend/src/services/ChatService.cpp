@@ -325,10 +325,10 @@ std::vector<dto::ChatMessageDTO> ChatServiceImpl::searchMessages(const std::stri
 
                 for (const auto& row : result) {
                     dto::ChatMessageDTO msg;
-                    msg.id = std::to_string(row["id"].as<int64_t>());
-                    msg.senderId = std::to_string(row["user_id"].as<int64_t>());
+                    msg.id = std::to_string(row.at("id").as<int64_t>());
+                    msg.senderId = std::to_string(row.at("user_id").as<int64_t>());
                     msg.receiverId = userId;
-                    msg.content = row["original_message"].as<std::string>();
+                    msg.content = row.at("original_message").as<std::string>();
                     msg.isRead = true;
                     msg.messageType = "text";
                     messages.push_back(msg);
