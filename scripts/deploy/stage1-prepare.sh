@@ -61,26 +61,50 @@ fi
 info "更新系统包..."
 case "$DISTRO_FAMILY" in
     arch)
-        # 完全重建密钥环，解决长期未更新导致的 PGP 签名不信任问题
-        info "重建 pacman 密钥环 (解决 PGP 签名问题)..."
+        # ---- Arch Linux 密钥环修复 (3 级递进策略) ----
+        #
+        # 长期未更新的 Arch 会遇到 PGP 签名不受信任的问题:
+        #   新 packager 的 key 不在本地 keyring 中，导致所有包安装失败。
+        # 下面的策略从温和到激进依次尝试，确保最终能完成更新。
+
+        info "修复 pacman 密钥环..."
+
+        # 第 1 步: 清除旧密钥环并重建
         rm -rf /etc/pacman.d/gnupg
         pacman-key --init
         pacman-key --populate archlinux
+        ok "密钥环已重建"
 
-        # 尝试正常更新密钥包
-        if ! pacman -Sy --noconfirm archlinux-keyring 2>/dev/null; then
-            # 如果密钥环仍然不够新，临时跳过签名验证完成密钥包更新
-            warn "密钥环仍有问题，临时跳过签名验证更新 archlinux-keyring..."
-            ORIG_SIGLEVEL=$(grep '^SigLevel' /etc/pacman.conf | head -1)
-            sed -i 's/^SigLevel.*/SigLevel = Never/' /etc/pacman.conf
-            pacman -Sy --noconfirm archlinux-keyring
-            # 立即恢复签名验证
-            sed -i "s/^SigLevel.*/$ORIG_SIGLEVEL/" /etc/pacman.conf
-            # 用新密钥包重建信任链
+        # 第 2 步: 先同步数据库
+        pacman -Sy
+
+        # 第 3 步: 尝试正常安装 archlinux-keyring
+        if pacman -S --noconfirm archlinux-keyring 2>/dev/null; then
+            ok "archlinux-keyring 更新成功"
+        else
+            # 第 4 步: 正常方式失败 → 临时关闭签名验证
+            warn "常规更新失败，临时关闭签名验证以完成 keyring 更新..."
+
+            # 备份 pacman.conf
+            cp /etc/pacman.conf /etc/pacman.conf.bak.yachiyo
+
+            # 将所有 SigLevel 行替换为 Never (包括 [options] 及各仓库段)
+            sed -i 's/^SigLevel\s*=.*/SigLevel = Never/' /etc/pacman.conf
+
+            # 强制刷新数据库并安装最新 keyring
+            pacman -Syy --noconfirm archlinux-keyring
+
+            # 立即恢复 pacman.conf
+            mv /etc/pacman.conf.bak.yachiyo /etc/pacman.conf
+
+            # 用新 keyring 再次重建信任链
+            rm -rf /etc/pacman.d/gnupg
             pacman-key --init
             pacman-key --populate archlinux
+            ok "archlinux-keyring 已通过降级验证方式更新"
         fi
 
+        # 第 5 步: 全系统升级 (此时 keyring 已是最新)
         pacman -Su --noconfirm
         ;;
     debian) apt-get update -y && apt-get upgrade -y ;;
