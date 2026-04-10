@@ -9,8 +9,12 @@ WORKDIR /app
 # 复制 package.json 和 package-lock.json
 COPY package*.json ./
 
-# 安装依赖
-RUN npm ci --prefer-offline --no-audit
+# 安装依赖：如果存在 package-lock.json 使用 npm ci，否则回退到 npm install
+RUN if [ -f package-lock.json ]; then \
+            npm ci --prefer-offline --no-audit; \
+        else \
+            npm install --no-audit; \
+        fi
 
 # 复制源代码
 COPY . .
