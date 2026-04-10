@@ -103,6 +103,7 @@ RUN apt-get update && apt-get install -y \
     libssl3 \
     libpq5 \
     libcurl4 \
+    libspdlog-dev \
     ca-certificates \
     tzdata \
     && rm -rf /var/lib/apt/lists/*
