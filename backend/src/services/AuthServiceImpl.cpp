@@ -199,8 +199,8 @@ Result<json> AuthServiceImpl::login(
         
         // 2. 验证密码
         auto row = result[0];
-        std::string passwordHash = row.at("password_hash").as<std::string>();
-        std::string salt = row.at("salt").as<std::string>();
+        std::string passwordHash = row.at("password_hash");
+        std::string salt = row.at("salt");
         
         // 数据库分开存储 hash 和 salt，直接用分离格式验证
         if (!Yachiyo::Utils::HashUtil::verifyPassword(password, passwordHash, salt)) {
@@ -208,16 +208,16 @@ Result<json> AuthServiceImpl::login(
         }
         
         // 3. 检查账户状态
-        int status = std::stoi(row.at("status").as<std::string>());
+        int status = std::stoi(row.at("status"));
         if (status == static_cast<int>(UserStatus::BANNED)) {
             return Result<json>::Error("账户已被封禁");
         }
         
-        int64_t userId = std::stoll(row.at("id").as<std::string>());
+        int64_t userId = std::stoll(row.at("id"));
         
         // 4. 生成令牌
-        std::string username_val = row.at("username").as<std::string>();
-        std::string role_val = row.at("role").as<std::string>();
+        std::string username_val = row.at("username");
+        std::string role_val = row.at("role");
         // 将 SMALLINT 角色值转换为可读字符串，供 JWT 和前端使用
         std::string role_readable = (role_val == "99") ? "admin" : "user";
         
@@ -244,12 +244,12 @@ Result<json> AuthServiceImpl::login(
         response["refresh_token"] = refreshToken;
         json userJson;
         userJson["id"] = userId;
-        userJson["username"] = row.at("username").as<std::string>();
-        userJson["email"] = row.at("email").as<std::string>();
+        userJson["username"] = row.at("username");
+        userJson["email"] = row.at("email");
         userJson["role"] = role_readable;
         response["user"] = userJson;
         
-        LOG_INFO("用户登录成功: " + row.at("username").as<std::string>());
+        LOG_INFO("用户登录成功: " + row.at("username"));
         return Result<json>::Success(response);
         
     } catch (const std::exception& e) {
@@ -404,37 +404,37 @@ Result<std::shared_ptr<User>> AuthServiceImpl::getUserById(int64_t userId) {
         auto user = std::make_shared<User>();
         
         user->setId(std::to_string(userId));
-        user->setUsername(row.at("username").as<std::string>());
-        user->setEmail(row.at("email").as<std::string>());
-        user->setNickname(row.at("nickname").as<std::string>());
-        user->setAvatar(row.at("avatar_url").as<std::string>());
-        user->setBio(row.at("bio").as<std::string>());
-        user->setRole(static_cast<UserRole>(std::stoi(row.at("role").as<std::string>())));
-        user->setStatus(static_cast<UserStatus>(std::stoi(row.at("status").as<std::string>())));
-        user->setMessagesSent(std::stoll(row.at("messages_sent").as<std::string>()));
-        user->setMessagesApproved(std::stoll(row.at("messages_approved").as<std::string>()));
-        user->setMessagesRejected(std::stoll(row.at("messages_rejected").as<std::string>()));
-        user->setWarningsCount(std::stoi(row.at("warnings_count").as<std::string>()));
+        user->setUsername(row.at("username"));
+        user->setEmail(row.at("email"));
+        user->setNickname(row.at("nickname"));
+        user->setAvatar(row.at("avatar_url"));
+        user->setBio(row.at("bio"));
+        user->setRole(static_cast<UserRole>(std::stoi(row.at("role"))));
+        user->setStatus(static_cast<UserStatus>(std::stoi(row.at("status"))));
+        user->setMessagesSent(std::stoll(row.at("messages_sent")));
+        user->setMessagesApproved(std::stoll(row.at("messages_approved")));
+        user->setMessagesRejected(std::stoll(row.at("messages_rejected")));
+        user->setWarningsCount(std::stoi(row.at("warnings_count")));
 
-        if (row.at("is_banned").as<std::string>() == "true") {
+        if (row.at("is_banned") == "true") {
             time_t banUntil = 0;
-            if (!row.at("ban_until").as<std::string>().empty()) {
+            if (!row.at("ban_until").empty()) {
                 // 解析 PostgreSQL TIMESTAMP 格式 ("YYYY-MM-DD HH:MM:SS")
                 struct tm tm = {};
-                std::istringstream ss(row.at("ban_until").as<std::string>());
+                std::istringstream ss(row.at("ban_until"));
                 ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
                 if (!ss.fail()) {
                     banUntil = mktime(&tm);
                 } else {
                     // 兼容: 如果是纯数字时间戳则回退到 stoll
                     try {
-                        banUntil = std::stoll(row.at("ban_until").as<std::string>());
+                        banUntil = std::stoll(row.at("ban_until"));
                     } catch (...) {
-                        LOG_WARN("无法解析 ban_until: {}", row.at("ban_until").as<std::string>());
+                        LOG_WARN("无法解析 ban_until: {}", row.at("ban_until"));
                     }
                 }
             }
-            user->setBanned(true, row.at("ban_reason").as<std::string>(), banUntil);
+            user->setBanned(true, row.at("ban_reason"), banUntil);
         }
         
         return Result<std::shared_ptr<User>>::Success(user);
@@ -460,7 +460,7 @@ Result<std::shared_ptr<User>> AuthServiceImpl::getUserByUsername(
             return Result<std::shared_ptr<User>>::Error("用户不存在");
         }
         
-        int64_t userId = std::stoll(result[0]["id"]);
+        int64_t userId = std::stoll(result[0].at("id"));
         return getUserById(userId);
         
     } catch (const std::exception& e) {
