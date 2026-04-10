@@ -187,7 +187,7 @@ Yachiyo::Utils::Result<void> BaseController::checkPermission(const crow::request
     }
     
     // 用户相关路由 (某些操作仅限自己或管理员)
-    if (path.find("/api/v1/users/") == 0 && method != "GET") {
+    if (path.find("/api/v1/users/") == 0 && method != "GET"_method) {
         if (userRole != "ADMIN") {
             return Yachiyo::Utils::Result<void>::errorResult("403", "权限不足");
         }
