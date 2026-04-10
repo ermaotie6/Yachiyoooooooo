@@ -1,6 +1,6 @@
 <template>
   <el-dialog
-    v-model="visible"
+    v-model="localVisible"
     title="用户认证"
     width="400px"
     @close="$emit('close')"
@@ -61,7 +61,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
@@ -73,7 +73,13 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'update:visible'])
+
+// local writable binding for dialog visibility (prop is read-only)
+const localVisible = computed({
+  get: () => props.visible,
+  set: (val: boolean) => emit('update:visible', val)
+})
 
 const router = useRouter()
 const authStore = useAuthStore()
