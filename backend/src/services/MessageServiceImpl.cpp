@@ -201,7 +201,7 @@ Result<bool> MessageServiceImpl::reviewMessage(
             }
         );
         if (affected <= 0) {
-            return Result<bool>::Error("娑堟伅涓嶅瓨鍦ㄦ垨鏈洿鏂?");
+            return Result<bool>::Error("消息不存在或已被删除");
         }
         
         logger->info("消息审查完成: {}", messageId);
@@ -389,7 +389,7 @@ Result<bool> MessageServiceImpl::deleteMessage(
             {std::to_string(messageId)}
         );
         if (affected <= 0) {
-            return Result<bool>::Error("娑堟伅涓嶅瓨鍦?);
+            return Result<bool>::Error("消息不存在或已被删除");
         }
 
         logger->info("消息已删除: messageId={}, by userId={}, isAdmin={}, reason={}",
@@ -418,7 +418,7 @@ Result<bool> MessageServiceImpl::hideMessage(
             }
         );
         if (affected <= 0) {
-            return Result<bool>::Error("娑堟伅涓嶅瓨鍦?);
+            return Result<bool>::Error("消息不存在或已被删除");
         }
         
         return Result<bool>::Success(true);
