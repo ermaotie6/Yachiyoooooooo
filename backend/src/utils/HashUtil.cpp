@@ -3,21 +3,41 @@
 #include <chrono>
 #include <sstream>
 #include <iomanip>
-#include <openssl/sha.h>
+#include <openssl/evp.h>
+#include <stdexcept>
 
 namespace Yachiyo {
 namespace Utils {
 
 std::string HashUtil::sha256(const std::string& input) {
-    unsigned char hash[SHA256_DIGEST_LENGTH];
-    SHA256_CTX sha256;
-    SHA256_Init(&sha256);
-    SHA256_Update(&sha256, input.c_str(), input.size());
-    SHA256_Final(hash, &sha256);
-    
+    unsigned char md_value[EVP_MAX_MD_SIZE];
+    unsigned int md_len = 0;
+
+    EVP_MD_CTX* mdctx = EVP_MD_CTX_new();
+    if (!mdctx) {
+        throw std::runtime_error("EVP_MD_CTX_new failed");
+    }
+
+    if (EVP_DigestInit_ex(mdctx, EVP_sha256(), nullptr) != 1) {
+        EVP_MD_CTX_free(mdctx);
+        throw std::runtime_error("EVP_DigestInit_ex failed");
+    }
+
+    if (EVP_DigestUpdate(mdctx, input.data(), input.size()) != 1) {
+        EVP_MD_CTX_free(mdctx);
+        throw std::runtime_error("EVP_DigestUpdate failed");
+    }
+
+    if (EVP_DigestFinal_ex(mdctx, md_value, &md_len) != 1) {
+        EVP_MD_CTX_free(mdctx);
+        throw std::runtime_error("EVP_DigestFinal_ex failed");
+    }
+
+    EVP_MD_CTX_free(mdctx);
+
     std::stringstream ss;
-    for(int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
-        ss << std::hex << std::setw(2) << std::setfill('0') << (int)hash[i];
+    for (unsigned int i = 0; i < md_len; ++i) {
+        ss << std::hex << std::setw(2) << std::setfill('0') << (int)md_value[i];
     }
     return ss.str();
 }
