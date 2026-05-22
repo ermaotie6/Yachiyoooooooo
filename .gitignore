@@ -13,40 +13,6 @@ CMakeFiles/
 Makefile
 *.cmake
 
-# 临时清理脚本
-move_files.py
-cleanup.ps1
-__check.txt
-_moved.txt
-__git_commit.ps1
-__git_commit.bat
-__git_log.txt
-__pwd.txt
-
-# 冗余文档 (已归档或待归档到 docs/archive/)
-CLEANUP_AND_CONSOLIDATE.md
-DELIVERY_CHECKLIST.md
-DELIVERY_SUMMARY_2026-04-03.md
-DEPLOYMENT_RESOURCES.md
-FINAL_DELIVERY_REPORT_2026-04-03.md
-FULL_README.md
-GITHUB_PUSH_EXECUTION_FINAL_SUMMARY.md
-GITHUB_PUSH_FINAL_GUIDE.md
-GITHUB_PUSH_GUIDE.md
-GIT_WORKFLOW_GUIDE.md
-PHASE2_COMPLETION_SUMMARY.md
-PROJECT_READY_FOR_DEPLOYMENT.md
-QUICKSTART.md
-PUSH_EXECUTION_REPORT_2026-04-03.md
-REQUIREMENTS_CHECK_FINAL_SUMMARY_2026-04-03.md
-REQUIREMENTS_IMPLEMENTATION_CHECK_2026-04-03.md
-SESSION_COMPLETION_SUMMARY.md
-TASK_COMPLETION_REPORT.md
-THREE_KEY_QUESTIONS_DETAILED_ANSWERS_2026-04-03.md
-push.bat
-push.sh
-git_push_report.py
-
 # IDE 配置
 .vscode/
 .idea/
@@ -54,15 +20,12 @@ git_push_report.py
 *.swo
 *~
 .DS_Store
-*.sublime-project
-*.sublime-workspace
 
 # 依赖和包管理
 node_modules/
 npm-debug.log
 package-lock.json
 yarn.lock
-.npm
 dist/
 .pnp
 
@@ -97,13 +60,6 @@ temp/
 Thumbs.db
 desktop.ini
 
-# 编辑器生成的文件
-*.swp
-*.swo
-*~
-.vimrc
-.clang-format
-
 # 机密信息
 secrets/
 *.key
@@ -117,18 +73,6 @@ private/
 *.rar
 *.7z
 
-# 构建输出
-dist/
-build/
-out/
-
-# 特定于语言的
-__pycache__/
-*.pyc
-*.pyo
-*.egg-info/
-.Python
-
 # 测试覆盖率
 coverage/
 .coverage
@@ -141,3 +85,4 @@ docker-compose.override.yml
 # 本地开发
 local.conf
 *.local
+sovits-models/

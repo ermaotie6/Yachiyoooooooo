@@ -60,8 +60,10 @@ struct OpenClawResponse {
     std::string requestId;
     bool success = false;
     std::string text;
-    std::vector<std::string> emotions;           // 表情提示词
-    std::vector<std::string> actions;            // 基本动作命令
+    std::vector<std::string> emotions;
+    std::vector<std::string> actions;
+    std::string translatedText;
+    std::string moderation;              // "pass" | "block"  (OpenClaw 内置审查)
     int processingTimeMs = 0;
     std::string errorMessage;
     
@@ -74,6 +76,12 @@ struct OpenClawResponse {
         j["emotions"] = emotions;
         j["actions"] = actions;
         j["processing_time_ms"] = processingTimeMs;
+        if (!translatedText.empty()) {
+            j["translated_text"] = translatedText;
+        }
+        if (!moderation.empty()) {
+            j["moderation"] = moderation;
+        }
         if (!errorMessage.empty()) {
             j["error"] = errorMessage;
         }
@@ -92,6 +100,8 @@ struct OpenClawResponse {
         if (j.contains("actions")) {
             resp.actions = j["actions"].get<std::vector<std::string>>();
         }
+        if (j.contains("translated_text")) resp.translatedText = j["translated_text"];
+        if (j.contains("moderation")) resp.moderation = j["moderation"];
         if (j.contains("processing_time_ms")) resp.processingTimeMs = j["processing_time_ms"];
         if (j.contains("error")) resp.errorMessage = j["error"];
         return resp;

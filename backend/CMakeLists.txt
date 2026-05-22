@@ -46,6 +46,8 @@ add_subdirectory(src/mappers)
 add_subdirectory(src/config)
 add_subdirectory(src/services)
 add_subdirectory(src/controllers)
+add_subdirectory(src/core)
+add_subdirectory(src/handlers)
 
 # 测试支持
 if(GTest_FOUND)
@@ -64,6 +66,8 @@ add_executable(yachiyo_cpp
 # 链接库
 target_link_libraries(yachiyo_cpp
     PRIVATE
+    handlers
+    core
     controllers
     services
     models

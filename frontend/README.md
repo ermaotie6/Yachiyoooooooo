@@ -6,17 +6,16 @@ Vue 3 + TypeScript + Vite 构建的 AI 虚拟形象直播平台前端。
 
 ## 技术栈
 
-| 依赖 | 版本 | 用途 |
-| --- | --- | --- |
-| Vue 3 | ^3.3.0 | Composition API 框架 |
-| TypeScript | ^5.0.0 | 类型系统 |
-| Vite | ^4.3.0 | 构建工具 + 开发服务器 |
-| Element Plus | ^2.3.0 | UI 组件库 |
-| Pinia | ^2.1.0 | 状态管理 |
-| Vue Router | ^4.2.0 | 路由 |
-| Axios | ^1.4.0 | HTTP 客户端 (Token 自动刷新) |
-| pixi.js | ^7.3.0 | 2D 渲染引擎 |
-| pixi-live2d-display | ^0.4.0 | Live2D 模型渲染 |
+| 依赖 | 用途 |
+|------|------|
+| Vue 3 (Composition API) | 框架 |
+| TypeScript | 类型系统 |
+| Vite | 构建工具 + 开发服务器 |
+| Element Plus | UI 组件库 |
+| Pinia | 状态管理 |
+| Vue Router | 路由 |
+| Axios | HTTP 客户端 (Token 自动刷新) |
+| pixi.js + pixi-live2d-display | Live2D 渲染 |
 
 ---
 
@@ -26,7 +25,6 @@ Vue 3 + TypeScript + Vite 构建的 AI 虚拟形象直播平台前端。
 npm install
 npm run dev     # http://localhost:5173
 npm run build   # 生产构建
-npm run preview # 预览构建结果
 ```
 
 ---
@@ -36,78 +34,75 @@ npm run preview # 预览构建结果
 ```
 src/
 ├── api/
-│   └── client.ts              # Axios 实例 (Token 拦截器 + 401 自动刷新)
+│   └── client.ts                  # Axios (Token 拦截 + 401 自动刷新)
 ├── components/
-│   ├── AuthDialog.vue         # 登录/注册对话框
-│   └── Live2DComponent.vue    # Live2D 渲染组件 (pixi-live2d-display)
+│   ├── AuthDialog.vue             # 登录/注册对话框
+│   ├── Live2DComponent.vue        # Live2D 渲染 (pixi-live2d-display)
+│   └── live/
+│       ├── AvatarStage.vue        # 虚拟形象 + 字幕 + 状态指示
+│       └── ChatPanel.vue          # 消息列表 + 输入框 + emoji 选择
 ├── composables/
-│   ├── useWebSocket.ts        # WebSocket 连接管理 + 消息处理
-│   └── useAudioPlayer.ts      # Web Audio API 音频播放 + 口型同步
+│   ├── useWebSocket.ts            # WebSocket 连接 + 消息收发
+│   ├── useAudioPlayer.ts          # Web Audio API 播放 + 口型同步
+│   ├── useChatMessages.ts         # 消息列表状态管理
+│   └── useSubtitle.ts             # 字幕渐进显示逻辑
 ├── views/
-│   ├── Home.vue               # 首页
-│   ├── LiveStream.vue         # 直播间 ⭐ (Live2D + 弹幕 + 字幕 + 音频)
-│   ├── Chat.vue               # AI 文字聊天 (HTTP API)
-│   ├── Posts.vue              # 内容列表
-│   ├── PostDetail.vue         # 内容详情
-│   ├── Profile.vue            # 个人资料
-│   ├── Admin.vue              # 管理后台
-│   └── Admin/
-│       ├── Moderation.vue     # 内容审核
-│       ├── MessageManagement.vue  # 消息管理
-│       └── UserManagement.vue     # 用户管理
-├── router/                    # 路由配置 (含认证守卫)
+│   ├── Home.vue                   # 首页
+│   ├── LiveStream.vue             # 直播间 ⭐ (编排层, ~200行)
+│   ├── Chat.vue                   # AI 文字聊天
+│   ├── Profile.vue                # 个人资料
+│   └── Admin/                     # 管理后台
+├── router/                        # 路由配置 (含认证守卫)
 ├── stores/
-│   ├── auth.ts                # Pinia 认证状态 (token 管理)
-│   └── post.ts                # 内容状态
-├── types/
-│   └── index.ts               # TypeScript 类型定义
-├── styles/                    # 全局样式
-├── App.vue                    # 根组件 (导航栏 + 路由)
-└── main.ts                    # 入口 (createApp + 插件)
+│   └── auth.ts                    # Pinia 认证状态
+├── styles/                        # 全局样式
+├── App.vue                        # 根组件
+└── main.ts                        # 入口
 ```
 
 ---
 
-## 核心页面
+## 核心页面：LiveStream.vue
 
-### LiveStream.vue（直播间）
+直播间通过 WebSocket 与后端实时通信：
 
-核心页面，包含：
+1. **发送弹幕** → `useWebSocket.sendUserMessage()`
+2. **接收广播** → 其他用户的消息 (`user_broadcast`)
+3. **接收回复** → AI 回复 (`avatar_response`) → 文本 + 字幕 + 音频 + Live2D 动画
+4. **字幕** → `useSubtitle` 根据音频时长逐字刻出
+5. **口型同步** → `useAudioPlayer` 通过 `AnalyserNode` 驱动 `ParamMouthOpenY`
 
-- **Live2DComponent** — pixi-live2d-display 渲染虚拟形象
-- **字幕覆盖层** — 与 TTS 音频同步显示翻译后文本
-- **弹幕输入框** — 50 字限制
-- **实时消息框** — 所有用户弹幕（昵称 + 文本）
-- **音频播放** — useAudioPlayer 通过 Web Audio API 播放 + AnalyserNode 驱动口型
+### 组件关系
 
-### 认证流程
+```
+LiveStream.vue (编排, 200行)
+  ├── AvatarStage.vue     ← Live2DComponent + 字幕覆盖层 + 连接状态
+  └── ChatPanel.vue       ← 消息列表 + 输入框 + emoji 选择器
+       ├── useChatMessages  (消息状态)
+       └── useSubtitle      (字幕逻辑)
+```
 
-- Token 存储: `localStorage` + Pinia store
+---
+
+## 认证流程
+
+- Token 存储: `localStorage` + Pinia
 - 请求拦截器: 自动附加 `Authorization: Bearer <token>`
 - 响应拦截器: 401 → 自动 `/auth/refresh` → 重试
-- 路由守卫: 未登录 → 重定向首页 + 弹出登录框
+- 路由守卫: 需认证页面未登录 → 重定向首页 + 弹登录框
 
 ---
 
 ## Live2D 开发模式
 
-`vite.config.ts` 中的 `serve-live2d-resources` 插件自动代理 `/resources/live2d/*` 到项目根目录的 `resources/live2d/`，开发时无需复制模型文件到 `public/`。
+`vite.config.ts` 插件自动代理 `/resources/live2d/*` 到项目根目录，开发时无需复制模型文件。
 
 ---
 
 ## 可替换资源
 
-| 资源 | 路径 | 说明 |
-| --- | --- | --- |
-| Logo | `public/images/logo.svg` | 直接替换 |
-| 背景图 | `public/images/bg.jpg` | 放入即生效 |
-| Live2D 模型 | `../resources/live2d/` | 替换模型文件 |
-
----
-
-## 相关文档
-
-- [项目 README](../README.md)
-- [架构设计](../docs/架构设计.md) — 前端页面说明、Live2D 集成
-- [开发指南](../docs/开发指南.md) — 前端开发规范、添加新页面
-- [API 参考](../docs/API参考.md) — HTTP API 端点
+| 资源 | 路径 | 替换方式 |
+|------|------|---------|
+| Logo | `public/images/logo.svg` | 直接替换文件 |
+| 背景图 | `public/images/bg.jpg` | 直接替换文件 |
+| Live2D 模型 | `../resources/live2d/` | 替换模型文件目录 |

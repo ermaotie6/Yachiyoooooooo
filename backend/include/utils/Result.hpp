@@ -54,7 +54,7 @@ public:
         return successResult(message);
     }
 
-    // 成功响应 (小写别名 - 兼容 TranslationService 等)
+    // 成功响应 (小写别名)
     static Result<T> success(const T& data, const std::string& message = "操作成功") {
         return successResult(data, message);
     }

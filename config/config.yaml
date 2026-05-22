@@ -93,38 +93,28 @@ live2d:
     idle: "m_idle"
 
 # ============ 内容审核配置 ============
+# AI 语义审核已收归 OpenClaw System Prompt 统一处理
 moderation:
   enabled: true
-  use_deepseek: true
-  deepseek_api_key: "${DEEPSEEK_API_KEY}"  # 从环境变量读取
-  deepseek_api_endpoint: "https://api.deepseek.com"
-  
-  # 审核策略
-  quick_check_enabled: true         # 敏感词快速检查
-  ai_moderation_enabled: true       # AI 审核
-  contextual_check_enabled: true    # 上下文检查
-  
-  # 违规阈值 (0-1)
-  thresholds:
-    violence: 0.8
-    adult: 0.9
-    harassment: 0.7
-    spam: 0.6
-    hate: 0.7
-    profanity: 0.8
-  
-  # 敏感词库路径
   keywords_path: "./resources/keywords/sensitive_words.txt"
 
-# ============ OpenClaw 桥接服务配置 ============
-# 架构: C++ 后端 ↔ Node.js 桥接服务 ↔ OpenClaw
-# C++ 后端通过桥接服务间接与 OpenClaw 通信
+# ============ OpenClaw 网关直连配置 ============
+# 架构 (优化后): C++ 后端 —HTTP POST—→ OpenClaw Gateway /v1/chat/completions
 openclaw:
   enabled: true
   
-  # 桥接服务地址 (Node.js bridge 的接收端口)
-  # 架构: C++ 后端 → 桥接服务(:8765) → OpenClaw(:8000) → 同步返回
-  bridge_endpoint: "http://localhost:8765"
+  # OpenClaw Gateway API 端点
+  # Docker 内用 host.docker.internal，宿主机用 localhost
+  api_endpoint: "http://host.docker.internal:8100"
+  
+  # Gateway 认证令牌 (从环境变量 OPENCLAW_GATEWAY_TOKEN 注入)
+  auth_token: "${OPENCLAW_GATEWAY_TOKEN}"
+  
+  # 使用的模型 (通过 x-openclaw-model header 覆盖)
+  model: "deepseek/deepseek-v4-flash"
+  
+  # System Prompt 文件路径 (容器内路径)
+  system_prompt_path: "/app/config/yachiyo_system_prompt.txt"
   
   # 请求超时 (秒)
   request_timeout: 30
@@ -134,22 +124,10 @@ openclaw:
   response_cache_ttl: 300            # 响应缓存 5 分钟
 
 # ============ 翻译配置 ============
+# 翻译已收归 OpenClaw System Prompt 统一处理 (translation 字段)
 translation:
   enabled: true
   default_language: "zh"
-  
-  # 翻译服务（按优先级排序）
-  services:
-    - name: "baidu"
-      appid: "${BAIDU_TRANSLATE_APPID}"
-      api_key: "${BAIDU_TRANSLATE_API_KEY}"
-      endpoint: "https://fanyi-api.baidu.com/api/trans/vip/translate"
-      priority: 1
-    
-    - name: "deepseek"
-      api_key: "${DEEPSEEK_API_KEY}"
-      endpoint: "https://api.deepseek.com"
-      priority: 2
 
 # ============ JWT 认证配置 ============
 jwt:
@@ -194,9 +172,3 @@ performance:
 # ============ 环境变量映射 ============
 # 从环境变量中读取敏感信息
 # 在 Docker 或生产环境中配置：
-# - DB_PASSWORD: PostgreSQL 密码
-# - JWT_SECRET_KEY: JWT 签名密钥
-# - SOVITS_API_KEY: GPT-SoVITS API 密钥
-# - DEEPSEEK_API_KEY: DeepSeek API 密钥
-# - BAIDU_TRANSLATE_APPID: 百度翻译 APPID
-# - BAIDU_TRANSLATE_API_KEY: 百度翻译密钥

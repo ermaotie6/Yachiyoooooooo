@@ -1,5 +1,4 @@
 #include "services/MessageServiceImpl.hpp"
-#include "services/DeepSeekModerationService.hpp"
 #include "utils/LogUtils.hpp"
 #include "utils/RedisUtil.hpp"
 #include <ctime>
@@ -100,24 +99,9 @@ Result<std::shared_ptr<Message>> MessageServiceImpl::sendMessage(
             }
         }
         
-        // 第4层: AI内容审查
-        auto aiResult = aiContentReview(message);
-        if (aiResult.isSuccess()) {
-            auto [isAbusive, aiScore] = aiResult.value();
-            if (isAbusive) {
-                msg->setIsAbusive(true);
-                msg->setSpamScore(std::max(msg->getSpamScore(), aiScore));
-                if (!alreadyRejected) {
-                    if (aiScore > 0.9) {
-                        msg->setReviewStatus(ReviewStatus::REJECTED);
-                        msg->setReviewReason("AI审查不通过");
-                        alreadyRejected = true;
-                    } else {
-                        msg->setReviewStatus(ReviewStatus::MANUAL_REVIEW);
-                    }
-                }
-            }
-        }
+        // 第4层: AI内容审查 — 已收归 OpenClaw System Prompt 统一处理
+        //        OpenClaw 在生成回复的同时判断 moderation (pass/block)
+        //        规则层的速率限制/IP/关键词审查仍在此处保留
         
         // 第5层: 行为分析
         auto behaviorResult = behaviorAnalysis(userId, userIp);
@@ -508,93 +492,6 @@ Result<std::pair<bool, double>> MessageServiceImpl::checkBlockedKeywords(const s
         
     } catch (const std::exception& e) {
         logger->error("敏感词检查异常: {}", e.what());
-        return Result<std::pair<bool, double>>::Success(std::make_pair(false, 0.0));
-    }
-}
-
-Result<std::pair<bool, double>> MessageServiceImpl::aiContentReview(const std::string& message) {
-    try {
-        // Layer 4: AI 内容审查
-        // 优先调用 DeepSeekModerationService (调用 DeepSeek Chat API)，
-        // 若未配置或调用失败则回退到启发式审查。
-        
-        if (moderationService) {
-            // 使用 DeepSeek 内容审查服务
-            ModerationRequest modReq;
-            modReq.content = message;
-            auto modResult = moderationService->moderate(modReq);
-            
-            if (modResult.isSuccess()) {
-                auto modResp = modResult.getValue();
-                double riskScore = static_cast<double>(modResp.overallRiskScore);
-                bool isAbusive = false;
-                
-                if (modResp.overallVerdict == "block") {
-                    isAbusive = true;
-                    riskScore = std::max(riskScore, 0.95);
-                } else if (modResp.overallVerdict == "review") {
-                    // 风险评分 >= 阈值时标记为可能辱骂
-                    isAbusive = (riskScore >= AI_REVIEW_THRESHOLD);
-                }
-                
-                logger->debug("DeepSeek 审核完成: verdict={}, riskScore={}",
-                             modResp.overallVerdict, riskScore);
-                return Result<std::pair<bool, double>>::Success(std::make_pair(isAbusive, riskScore));
-            } else {
-                logger->warn("DeepSeek 审核调用失败: {}，回退到启发式审查",
-                            modResult.getError().message);
-            }
-        }
-        
-        // 回退: 基于启发式方法的 AI 内容审查
-        double riskScore = 0.0;
-        bool isAbusive = false;
-        
-        // 检查1: 全大写内容 (可能的大喊)
-        int upperCount = 0;
-        for (char c : message) {
-            if (std::isupper(c)) upperCount++;
-        }
-        if (upperCount > message.length() * 0.5) {
-            riskScore += 0.1;
-        }
-        
-        // 检查2: 重复字符 (垃圾/情绪表达)
-        for (size_t i = 0; i + 2 < message.length(); ++i) {
-            if (message[i] == message[i+1] && message[i+1] == message[i+2]) {
-                riskScore += 0.15;
-                break;
-            }
-        }
-        
-        // 检查3: 特殊字符密度
-        int specialCount = 0;
-        for (char c : message) {
-            if (!std::isalnum(c) && c != ' ') specialCount++;
-        }
-        if (specialCount > message.length() * 0.3) {
-            riskScore += 0.2;
-        }
-        
-        // 检查4: 消息长度异常
-        if (message.length() < 2) {
-            riskScore += 0.1;
-        }
-        if (message.length() > 400) {
-            riskScore += 0.05;
-        }
-        
-        // 限制评分在0-1范围
-        riskScore = std::min(1.0, riskScore);
-        
-        // 如果评分超过0.6，标记为可能辱骂
-        isAbusive = (riskScore > 0.6);
-        
-        // 返回 {是否滥用, 风险评分}
-        return Result<std::pair<bool, double>>::Success(std::make_pair(isAbusive, riskScore));
-        
-    } catch (const std::exception& e) {
-        logger->error("AI内容审查异常: {}", e.what());
         return Result<std::pair<bool, double>>::Success(std::make_pair(false, 0.0));
     }
 }

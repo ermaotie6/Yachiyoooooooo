@@ -54,7 +54,7 @@ struct AppConfig {
     
     // JWT配置
     struct JWTConfig {
-        std::string secret = "yachiyo-cpp-secret-key-change-in-production";
+        std::string secret;
         int expirationHours = 24;
         std::string issuer = "yachiyo-cpp";
         std::string audience = "yachiyo-users";

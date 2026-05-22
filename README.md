@@ -1,87 +1,40 @@
-﻿# Yachiyo — AI 虚拟形象直播平台
+# Yachiyo — AI 虚拟形象直播平台
 
-<p align="center">
-  <b>AI驱动的虚拟形象直播互动平台</b><br/>
-  C++20 后端 · Vue 3 前端 · Node.js 桥接 · Live2D · Docker 一键部署
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/C++-20-blue?logo=cplusplus" alt="C++20" />
-  <img src="https://img.shields.io/badge/Vue-3-green?logo=vue.js" alt="Vue 3" />
-  <img src="https://img.shields.io/badge/Node.js-18-green?logo=node.js" alt="Node.js 18" />
-  <img src="https://img.shields.io/badge/PostgreSQL-15-blue?logo=postgresql" alt="PostgreSQL 15" />
-  <img src="https://img.shields.io/badge/Redis-7-red?logo=redis" alt="Redis 7" />
-  <img src="https://img.shields.io/badge/Docker-Compose-blue?logo=docker" alt="Docker" />
-  <img src="https://img.shields.io/badge/License-MIT-yellow" alt="License" />
-</p>
+AI 驱动的 Live2D 虚拟主播直播互动系统。用户通过弹幕与 AI 驱动的虚拟形象实时交互——发送弹幕后，系统完成内容审核、AI 对话、翻译（日语）、语音合成、Live2D 动作控制，最终通过 WebSocket 推送到前端。
 
 ---
 
-## 项目简介
+## 系统架构
 
-Yachiyo（八千代辉夜姬）是一个 AI 虚拟形象直播互动平台。用户通过弹幕与 AI 驱动的 Live2D 虚拟形象实时交互——发送弹幕后，系统完成内容审核、AI 对话、翻译（日语）、语音合成（GPT-SoVITS）、Live2D 表情/动作控制，最终通过 WebSocket 将文本、音频和动画指令推送到前端。
+```
+用户浏览器 ──WebSocket──→ C++ Backend (:8080/:9001)
+                              │
+                              ├─ OpenClaw Gateway (AI 对话 + 审查 + 翻译，一站式)
+                              ├─ GPT-SoVITS (日语语音合成，可选)
+                              ├─ PostgreSQL (数据持久化)
+                              └─ Redis (缓存 + 速率限制)
+```
 
-**对话推理由外部服务 OpenClaw 完成**（通过 Node.js 桥接中转）。本项目的职责是：
+**核心特点**：
+- **一个 API 完成所有 AI 工作**：OpenClaw System Prompt 内置内容审查、角色对话、日语翻译，不再依赖独立的审核/翻译 API
+- **GPT-SoVITS 可选**：未部署时只推文字+动画，不影响核心体验
+- **6 层规则审查**：速率限制、IP 黑名单、敏感词过滤、行为分析等规则层仍在后端执行
 
-1. **接收弹幕** → 6 层内容审核
-2. **转发到 OpenClaw** → 获取 AI 回复 + 情感 + 动作
-3. **后处理** → 翻译日语 → GPT-SoVITS 语音合成 → Live2D 动画
-4. **实时推送** → WebSocket 广播文本、音频、动画指令
-
----
-
-## 功能概览
-
-| 模块 | 说明 | 状态 |
-| --- | --- | --- |
-| 用户认证 | JWT 注册/登录/刷新，SHA-256+Salt 加密 | ✅ |
-| 弹幕审核 | 6 层审核（速率限制 + IP + 关键词 + AI语义 + 行为分析 + 综合评分） | ✅ |
-| OpenClaw 对接 | 通过 Bridge 转发弹幕，接收回复 + 情感 + 动作 | ✅ 框架就绪 |
-| 翻译服务 | 百度翻译（主）+ DeepSeek LLM（备），自动降级 | ✅ |
-| TTS 语音合成 | GPT-SoVITS 日语语音 + 情感参考音频 | ✅ 框架就绪 |
-| Live2D 驱动 | 情感→表情映射 + 动作→Motion + Web Audio 口型同步 | ✅ |
-| WebSocket | 全链路实时推送，用户消息 + AI 回复广播 | ✅ |
-| 消息持久化 | PostgreSQL 存储消息、审核状态、对话上下文 | ✅ |
-| Redis 缓存 | 速率限制、Token 黑名单、翻译/TTS 缓存 | ✅ |
-| 监控 | Prometheus + Grafana | ✅ |
+完整架构说明见 [docs/架构设计.md](docs/架构设计.md)。
 
 ---
 
 ## 技术栈
 
-### 后端 (C++20)
-
-| 组件 | 技术 |
-| --- | --- |
-| HTTP 框架 | [Crow](https://github.com/CrowCpp/Crow) |
-| 数据库 | PostgreSQL 15 ([libpqxx](https://github.com/jtv/libpqxx)) |
-| 缓存 | Redis 7 ([hiredis](https://github.com/redis/hiredis)) |
-| JSON | [nlohmann/json](https://github.com/nlohmann/json) |
-| 配置 | [yaml-cpp](https://github.com/jbeder/yaml-cpp) |
-| 日志 | [spdlog](https://github.com/gabime/spdlog) |
-| HTTP 客户端 | libcurl |
-| 加密 | OpenSSL (JWT + SHA-256) |
-| 构建 | CMake 3.20+ |
-| 测试 | Google Test |
-
-### 前端 (Vue 3 + TypeScript)
-
-| 组件 | 技术 |
-| --- | --- |
-| 框架 | Vue 3 (Composition API) + Vite |
-| UI | Element Plus |
-| 状态管理 | Pinia |
+| 层 | 技术 |
+|----|------|
+| 后端 | C++20, Crow Framework, libpqxx, hiredis, spdlog, nlohmann/json |
+| 前端 | Vue 3 + TypeScript + Vite + Element Plus + Pinia |
 | Live2D | pixi.js + pixi-live2d-display |
-| 语音 | Web Audio API |
-
-### 基础设施
-
-| 组件 | 技术 |
-| --- | --- |
-| 容器 | Docker Compose 3.8 (10 个服务) |
-| 反向代理 | Nginx |
-| 监控 | Prometheus + Grafana |
-| 管理工具 | pgAdmin + Redis Commander |
+| AI | OpenClaw Gateway (OpenAI-compatible API) |
+| TTS | GPT-SoVITS (可选) |
+| DB | PostgreSQL 15 + Redis 7 |
+| 部署 | Docker Compose + Nginx |
 
 ---
 
@@ -90,91 +43,132 @@ Yachiyo（八千代辉夜姬）是一个 AI 虚拟形象直播互动平台。用
 ### 前置要求
 
 - Docker 20.10+ & Docker Compose v2
-- Git
+- OpenClaw Gateway (自带或部署在可访问的地址)
 
-### Docker Compose 启动（推荐）
+### 1. 克隆
 
 ```bash
-# 1. 克隆
-git clone https://github.com/ermaotie6/yachiyoooooooo.git
+git clone <repo-url>
 cd yachiyoooooooo
-
-# 2. 创建 .env
-cat > .env << 'EOF'
-JWT_SECRET_KEY=your-random-secret-at-least-32-chars
-DEEPSEEK_API_KEY=sk-your-deepseek-key
-BAIDU_TRANSLATE_APPID=20150630000000001
-BAIDU_TRANSLATE_API_KEY=your-baidu-translate-key
-DB_PASSWORD=postgres
-EOF
-
-# 3. 启动
-docker compose up -d
-
-# 4. 验证（首次构建 C++ 后端约 5-15 分钟）
-docker compose logs -f backend
-curl http://localhost:8080/api/v1/health
-
-# 5. 访问
-#   前端:     http://localhost
-#   pgAdmin:  http://localhost:5050
-#   Grafana:  http://localhost:3001
 ```
 
-### 本地开发
+### 2. 配置
 
 ```bash
-# 启动基础设施
-docker compose up -d postgres redis
+cat > .env << 'EOF'
+# 必填
+JWT_SECRET_KEY=your-random-secret-at-least-32-chars
+DB_PASSWORD=your-database-password
 
-# 后端
-cd backend && mkdir -p build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=20
-make -j$(nproc)
-./yachiyo_cpp --config-dir ../config --env dev --port 8080
+# OpenClaw Gateway (必填 — 核心 AI 服务)
+OPENCLAW_GATEWAY_TOKEN=your-openclaw-token
+OPENCLAW_ENDPOINT=http://host.docker.internal:8100
+OPENCLAW_MODEL=deepseek/deepseek-v4-flash
 
-# 前端
-cd frontend && npm install && npm run dev
-
-# 桥接
-cd bridge && npm install && node src/index.js
+# GPT-SoVITS (可选 — 语音合成)
+SOVITS_ENDPOINT=http://localhost:5000
+EOF
 ```
 
-> 后端编译依赖详见 [开发指南](docs/开发指南.md)。
+### 3. 启动
+
+```bash
+# 最小部署（不含 TTS）
+docker compose up -d postgres redis backend frontend nginx
+
+# 含 GPT-SoVITS（需要先部署 TTS 服务）
+docker compose up -d
+```
+
+### 4. 验证
+
+```bash
+curl http://localhost:8080/api/v1/health
+# → {"status":"ok","version":"1.0.0"}
+
+curl http://localhost:3000
+# → Vue SPA 页面
+```
+
+---
+
+## 外部服务对接
+
+### OpenClaw Gateway（必选）
+
+本项目的 AI 核心——处理内容审查、角色对话、日语翻译三项职责。
+
+**System Prompt** 位于 `backend/config/yachiyo_system_prompt.txt`，要求 OpenClaw 返回 JSON：
+
+```json
+{"text":"中文回复","emotion":"happy","action":"wave","translation":"日文翻译","moderation":"pass"}
+```
+
+### GPT-SoVITS（可选）
+
+日语语音合成。需要预先训练好模型（参考 `docs/GPT-SoVITS部署指南.md`）。
+
+**部署步骤**：
+
+```bash
+# 1. 安装 GPT-SoVITS
+cd /opt && git clone https://github.com/RVC-Boss/GPT-SoVITS.git
+cd GPT-SoVITS && python -m venv venv && source venv/bin/activate
+pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements.txt
+
+# 2. 放置模型文件 (从训练机拷贝)
+cp your-model.pth GPT-SoVITS/models/
+cp your-model.ckpt GPT-SoVITS/models/
+cp your-ref.wav GPT-SoVITS/reference/
+
+# 3. 放置预训练基础模型
+# 下载 s1bert25hz-*.ckpt, s2D488k.pth, s2G488k.pth
+# 放入 GPT_SoVITS/pretrained_models/
+
+# 4. 启动 API
+python api.py \
+  -s models/your-model.pth \
+  -g models/your-model.ckpt \
+  -dr reference/your-ref.wav \
+  -dt "参考音频对应的文本" -dl "ja" \
+  -a 0.0.0.0 -p 5000
+
+# 5. 验证
+curl http://localhost:5000/
+```
+
+未部署 GPT-SoVITS 时，系统自动跳过语音合成，只返回文字+动画。
 
 ---
 
 ## 项目结构
 
 ```
-Yachiyo/
 ├── backend/                 # C++20 后端
-│   ├── CMakeLists.txt
-│   ├── Dockerfile
-│   ├── config/              # Docker 部署配置
+│   ├── config/              # Docker 部署配置 + System Prompt
 │   ├── include/             # 头文件
 │   │   ├── controllers/     # 路由控制器
 │   │   ├── services/        # 业务服务
-│   │   ├── models/          # 数据模型
+│   │   ├── core/            # ServiceRegistry (管线装配)
+│   │   ├── handlers/        # WebSocketMessageHandler (消息处理)
 │   │   ├── dto/             # 数据传输对象
 │   │   └── utils/           # 工具类
 │   ├── src/                 # 源文件
-│   └── tests/               # Google Test 测试
+│   └── tests/               # Google Test
 │
 ├── frontend/                # Vue 3 前端
-│   ├── src/
-│   │   ├── views/           # 页面组件 (LiveStream.vue ⭐)
-│   │   ├── components/      # 复用组件 (Live2DComponent.vue)
-│   │   ├── composables/     # 组合式函数 (useWebSocket.ts)
-│   │   └── stores/          # Pinia 状态管理
-│   └── vite.config.ts
+│   └── src/
+│       ├── views/           # 页面 (LiveStream.vue)
+│       ├── components/      # 组件 (AvatarStage, ChatPanel, Live2DComponent)
+│       ├── composables/     # 组合式函数 (useWebSocket, useSubtitle 等)
+│       └── stores/          # Pinia 状态管理
 │
-├── bridge/                  # Node.js 桥接 (JSON 转发到 OpenClaw)
 ├── resources/live2d/        # Live2D 模型文件
-├── database/init.sql        # 数据库初始化
-├── config/config.yaml       # 本地开发配置
+├── database/init.sql        # PostgreSQL 初始化
+├── config/                  # 本地开发配置
+├── docker-compose.yml       # Docker 服务编排
 ├── nginx.conf               # Nginx 反向代理
-├── docker-compose.yml       # 10 服务编排
 └── docs/                    # 项目文档
 ```
 
@@ -182,30 +176,41 @@ Yachiyo/
 
 ## 环境变量
 
-| 变量 | 说明 | 必填 | 默认值 |
-| --- | --- | --- | --- |
-| `JWT_SECRET_KEY` | JWT 签名密钥 (≥32字符) | ✅ | - |
-| `DB_PASSWORD` | PostgreSQL 密码 | ✅ | - |
-| `DEEPSEEK_API_KEY` | DeepSeek API Key | 选填 | - |
-| `BAIDU_TRANSLATE_APPID` | 百度翻译 APPID | 选填 | - |
-| `BAIDU_TRANSLATE_API_KEY` | 百度翻译密钥 | 选填 | - |
-| `DB_HOST` | PostgreSQL 地址 | 选填 | `localhost` |
-| `REDIS_HOST` | Redis 地址 | 选填 | `localhost` |
-| `OPENCLAW_BRIDGE_ENDPOINT` | 桥接服务地址 | 选填 | `http://localhost:8765` |
+| 变量 | 必填 | 说明 |
+|------|------|------|
+| `JWT_SECRET_KEY` | ✅ | JWT 签名密钥 (≥32字符) |
+| `DB_PASSWORD` | ✅ | PostgreSQL 密码 |
+| `OPENCLAW_GATEWAY_TOKEN` | ✅ | OpenClaw 认证令牌 |
+| `OPENCLAW_ENDPOINT` | 选 | OpenClaw 地址，默认 `http://host.docker.internal:8100` |
+| `OPENCLAW_MODEL` | 选 | AI 模型，默认 `deepseek/deepseek-v4-flash` |
+| `SOVITS_ENDPOINT` | 选 | GPT-SoVITS 地址，默认 `http://localhost:5000` |
+
+---
+
+## API 端点
+
+| 端点 | 方法 | 认证 | 说明 |
+|------|------|------|------|
+| `/api/v1/health` | GET | ❌ | 健康检查 |
+| `/api/v1/auth/register` | POST | ❌ | 用户注册 |
+| `/api/v1/auth/login` | POST | ❌ | 用户登录 |
+| `/api/v1/auth/refresh` | POST | ❌ | 刷新 Token |
+| `/api/v1/auth/me` | GET | ✅ JWT | 获取当前用户 |
+| `/api/v1/messages` | GET | ✅ JWT | 获取消息历史 |
+| `/api/v2/ai` | POST | ✅ JWT | AI 文字聊天 |
+| `ws://host:9001/ws` | WS | ✅ Token | 直播间 WebSocket |
 
 ---
 
 ## 文档索引
 
 | 文档 | 说明 |
-| --- | --- |
-| [架构设计](docs/架构设计.md) | 系统架构、业务流程、WebSocket 协议、审核系统、Live2D 集成 |
-| [API 参考](docs/API参考.md) | HTTP API 端点、数据库表结构、Redis 数据结构 |
-| [开发指南](docs/开发指南.md) | 环境搭建、代码规范、调试技巧、Git 工作流 |
-| [部署指南](docs/部署指南.md) | Docker / 裸机部署、HTTPS、安全加固 |
-| [外部服务对接指南](docs/外部服务对接指南.md) | OpenClaw / GPT-SoVITS / 翻译 / 审核对接 |
-| [GPT-SoVITS 部署指南](docs/GPT-SoVITS部署指南.md) | TTS 训练 (Windows) + 部署 (Linux) |
-| [功能状态](docs/功能状态.md) | 功能模块实现状态跟踪 |
+|------|------|
+| [架构设计](docs/架构设计.md) | 系统架构、管线流程、WebSocket 协议、前端架构 |
+| [外部服务对接](docs/外部服务对接指南.md) | OpenClaw/GPT-SoVITS 配置、环境变量一览 |
+| [GPT-SoVITS 部署](docs/GPT-SoVITS部署指南.md) | 训练→部署完整流程 |
+| [全链路分析](docs/全链路运行思路分析.md) | 数据流、降级策略、故障排查 |
+| [Live2D 缺失分析](docs/Live2D缺失分析与修复.md) | Live2D 表情/动作文件现状与修复方案 |
 
 ---
 

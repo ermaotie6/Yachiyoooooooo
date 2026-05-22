@@ -11,8 +11,10 @@
 
 // 前向声明
 namespace yachiyo::config { class ConfigManager; }
-namespace yachiyo::utils { class CrowHttpServer; class LogUtils; }
-namespace yachiyo::services { class IAuthService; class IMessageService; class DeepSeekModerationService; }
+namespace yachiyo::utils { class CrowHttpServer; }
+namespace yachiyo::core { struct PipelineContext; class ServiceRegistry; }
+namespace yachiyo::handlers { class WebSocketMessageHandler; }
+namespace yachiyo::services { class IAuthService; class IMessageService; }
 namespace Yachiyo::Utils { class DatabaseUtil; class HashUtil; class JwtUtil; }
 namespace spdlog { class logger; }
 
@@ -139,13 +141,11 @@ private:
     std::chrono::system_clock::time_point startTime;
     std::thread wsThread_;  // WebSocket 服务线程（可 join）
 
-    // 共享服务实例 — 在 initializeServices() 中创建，在 initializeControllers() 中复用
-    std::shared_ptr<Yachiyo::Utils::DatabaseUtil> sharedDbUtil;
-    std::shared_ptr<Yachiyo::Utils::HashUtil> sharedHashUtil;
-    std::shared_ptr<Yachiyo::Utils::JwtUtil> sharedJwtUtil;
-    std::shared_ptr<yachiyo::services::IAuthService> sharedAuthService;
-    std::shared_ptr<yachiyo::services::IMessageService> sharedMessageService;
-    std::shared_ptr<yachiyo::services::DeepSeekModerationService> sharedModerationService;
+    // 管线上下文 — 由 ServiceRegistry 创建，持有所有管线服务
+    std::shared_ptr<yachiyo::core::PipelineContext> pipeline_;    
+    
+    // WebSocket 消息处理器
+    std::shared_ptr<yachiyo::handlers::WebSocketMessageHandler> wsHandler_;
 };
 
 } // namespace yachiyo

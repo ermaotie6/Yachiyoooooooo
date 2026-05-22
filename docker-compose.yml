@@ -8,7 +8,7 @@ services:
     environment:
       POSTGRES_DB: yachiyo
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres_dev_only}
     ports:
       - "5432:5432"
     volumes:
@@ -60,7 +60,7 @@ services:
       - DB_PORT=5432
       - DB_NAME=yachiyo
       - DB_USER=postgres
-      - DB_PASSWORD=postgres
+      - DB_PASSWORD=${DB_PASSWORD:-postgres_dev_only}
       # WebSocket
       - WEBSOCKET_HOST=0.0.0.0
       - WEBSOCKET_PORT=9001
@@ -68,18 +68,18 @@ services:
       - REDIS_HOST=redis
       # JWT
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-production-secret-key-change-me}
-      # AI / 翻译 / 审核
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
-      - BAIDU_TRANSLATE_APPID=${BAIDU_TRANSLATE_APPID:-}
-      - BAIDU_TRANSLATE_API_KEY=${BAIDU_TRANSLATE_API_KEY:-}
-      # OpenClaw 桥接
-      - OPENCLAW_BRIDGE_ENDPOINT=http://bridge:8765
+      # OpenClaw Gateway 直连 (审查+翻译由 OpenClaw 统一处理)
+      - OPENCLAW_ENDPOINT=${OPENCLAW_ENDPOINT:-http://host.docker.internal:8100}
+      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-}
+      - OPENCLAW_MODEL=${OPENCLAW_MODEL:-deepseek/deepseek-v4-flash}
       # 运行环境
       - APP_LOG_LEVEL=INFO
       - ENVIRONMENT=production
     volumes:
       - ./backend/config:/app/config
       - yachiyo_logs:/app/logs
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - yachiyo-network
     healthcheck:
@@ -130,33 +130,6 @@ services:
       - backend
       - frontend
 
-  # OpenClaw 桥接服务 (Node.js)
-  # 职责: 接收 C++ 后端 JSON → 转发 OpenClaw → 返回 JSON
-  bridge:
-    build:
-      context: ./bridge
-      dockerfile: Dockerfile
-    container_name: yachiyo-bridge
-    restart: unless-stopped
-    ports:
-      - "8765:8765"
-    environment:
-      - BRIDGE_PORT=8765
-      - OPENCLAW_ENDPOINT=${OPENCLAW_ENDPOINT:-http://host.docker.internal:8000}
-      - OPENCLAW_API_KEY=${OPENCLAW_API_KEY:-}
-      - REQUEST_TIMEOUT_MS=30000
-      - LOG_LEVEL=info
-    volumes:
-      - bridge_logs:/app/logs
-    networks:
-      - yachiyo-network
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8765/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-
   # pgAdmin - PostgreSQL 管理工具
   pgadmin:
     image: dpage/pgadmin4:latest
@@ -166,7 +139,7 @@ services:
       - "5050:80"
     environment:
       - PGADMIN_DEFAULT_EMAIL=admin@yachiyo.com
-      - PGADMIN_DEFAULT_PASSWORD=admin
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PASSWORD:-admin_dev_only}
     volumes:
       - pgadmin_data:/var/lib/pgadmin
     networks:
@@ -214,7 +187,7 @@ services:
     ports:
       - "3001:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin_dev_only}
     volumes:
       - grafana_data:/var/lib/grafana
     networks:
@@ -243,6 +216,4 @@ volumes:
   grafana_data:
     driver: local
   pgadmin_data:
-    driver: local
-  bridge_logs:
     driver: local

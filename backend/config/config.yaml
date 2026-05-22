@@ -92,49 +92,44 @@ live2d:
     idle: "m_idle"
 
 # ============ 内容审核配置 ============
+# AI 语义审核已收归 OpenClaw System Prompt 统一处理
+# 规则层 (速率限制/IP黑名单/敏感词) 仍由 MessageServiceImpl 执行
 moderation:
   enabled: true
-  use_deepseek: true
-  deepseek_api_key: "${DEEPSEEK_API_KEY}"
-  deepseek_api_endpoint: "${DEEPSEEK_ENDPOINT:https://api.deepseek.com}"
-  quick_check_enabled: true
-  ai_moderation_enabled: true
-  contextual_check_enabled: true
-  thresholds:
-    violence: 0.8
-    adult: 0.9
-    harassment: 0.7
-    spam: 0.6
-    hate: 0.7
-    profanity: 0.8
   keywords_path: "./resources/keywords/sensitive_words.txt"
 
-# ============ OpenClaw 桥接服务配置 ============
+# ============ OpenClaw 网关直连配置 ============
+# 架构: C++ 后端 —HTTP POST—→ OpenClaw Gateway /v1/chat/completions
 openclaw:
   enabled: true
-  bridge_endpoint: "${OPENCLAW_BRIDGE_ENDPOINT:http://localhost:8765}"
+  
+  # OpenClaw Gateway API 端点
+  # Docker 内用 host.docker.internal，宿主机用 localhost
+  api_endpoint: "${OPENCLAW_ENDPOINT:http://host.docker.internal:8100}"
+  
+  # Gateway 认证令牌
+  auth_token: "${OPENCLAW_GATEWAY_TOKEN}"
+  
+  # 使用的模型
+  model: "${OPENCLAW_MODEL:deepseek/deepseek-v4-flash}"
+  
+  # System Prompt 文件路径 (容器内路径)
+  system_prompt_path: "/app/config/yachiyo_system_prompt.txt"
+  
+  # 请求超时 (秒)
   request_timeout: 30
   response_cache_enabled: true
   response_cache_ttl: 300
 
 # ============ 翻译配置 ============
+# 翻译已收归 OpenClaw System Prompt 统一处理 (translation 字段)
 translation:
   enabled: true
   default_language: "zh"
-  services:
-    - name: "baidu"
-      appid: "${BAIDU_TRANSLATE_APPID}"
-      api_key: "${BAIDU_TRANSLATE_API_KEY}"
-      endpoint: "https://fanyi-api.baidu.com/api/trans/vip/translate"
-      priority: 1
-    - name: "deepseek"
-      api_key: "${DEEPSEEK_API_KEY}"
-      endpoint: "${DEEPSEEK_ENDPOINT:https://api.deepseek.com}"
-      priority: 2
 
 # ============ JWT 认证配置 ============
 jwt:
-  secret: "${JWT_SECRET_KEY:yachiyo-cpp-secret-key-change-in-production}"
+  secret: "${JWT_SECRET_KEY}"
   algorithm: "HS256"
   expiration_hours: 24
   refresh_expiration_days: 7
@@ -148,30 +143,9 @@ avatar:
   model_path: "resources/live2d"
 
 # ============ AI 服务配置 ============
+# AI 对话/审查/翻译 统一由 OpenClaw Gateway 处理
+# 以下配置仅供 AIController 备用 (非核心管线)
 ai:
-  deepseek:
-    api_key: "${DEEPSEEK_API_KEY}"
-    base_url: "https://api.deepseek.com"
-    model: "deepseek-chat"
-    temperature: 0.7
-    max_tokens: 4000
-  openai:
-    api_key: ""
-    base_url: "https://api.openai.com/v1"
-    model: "gpt-3.5-turbo"
-    temperature: 0.7
-    max_tokens: 1000
-  qianwen:
-    api_key: ""
-    base_url: "https://dashscope.aliyuncs.com/api/v1"
-    model: "qwen-turbo"
-    temperature: 0.7
-    max_tokens: 2000
-  ollama:
-    base_url: ""
-    model: "llama2"
-    temperature: 0.7
-    max_tokens: 1000
 
 # ============ 日志配置 ============
 logging:

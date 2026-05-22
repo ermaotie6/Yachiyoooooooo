@@ -7,7 +7,6 @@ add_library(utils
     JwtUtil.cpp
     Logger.cpp
     LogUtils.cpp
-    OpencalwClient.cpp
     RedisUtil.cpp
 )
 

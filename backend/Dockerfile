@@ -106,6 +106,7 @@ RUN apt-get update && apt-get install -y \
     libspdlog-dev \
     ca-certificates \
     tzdata \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # 设置时区

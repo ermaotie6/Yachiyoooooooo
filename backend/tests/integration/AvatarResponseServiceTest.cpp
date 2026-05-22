@@ -105,7 +105,7 @@ TEST_F(AvatarResponseServiceIntegrationTest, BatchProcess_BridgeOffline) {
     
     // 应该返回成功（即使所有子消息都失败了，batchProcess 本身成功）
     EXPECT_TRUE(result.isSuccess());
-    // 结果可能为空（因为所有子消息处理都因 bridge 离线而失败）
+    // 结果可能为空（因为外部服务离线）
     // 重要的是没有崩溃
 }
 

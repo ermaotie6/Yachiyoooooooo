@@ -10,6 +10,10 @@
 		"DisplayInfo": "yachiyo.cdi3.json",
 		"Expressions": [
 			{
+				"Name": "f_default",
+				"File": "f_default.exp3.json"
+			},
+			{
 				"Name": "f_smile",
 				"File": "f_smile.exp3.json"
 			},
@@ -18,14 +22,42 @@
 				"File": "f_sad.exp3.json"
 			},
 			{
+				"Name": "f_angry",
+				"File": "f_angry.exp3.json"
+			},
+			{
+				"Name": "f_surprised",
+				"File": "f_surprised.exp3.json"
+			},
+			{
 				"Name": "f_squint",
 				"File": "f_squint.exp3.json"
 			},
 			{
 				"Name": "f_cry",
 				"File": "f_cry.exp3.json"
+			},
+			{
+				"Name": "f_confused",
+				"File": "f_confused.exp3.json"
+			},
+			{
+				"Name": "f_thinking",
+				"File": "f_thinking.exp3.json"
 			}
-		]
+		],
+		"Motions": {
+			"Idle": [
+				{"File": "motions/m_idle.motion3.json", "FadeInTime": 0.5, "FadeOutTime": 0.5}
+			],
+			"TapBody": [
+				{"File": "motions/m_greet.motion3.json", "FadeInTime": 0.5, "FadeOutTime": 0.5},
+				{"File": "motions/m_wave.motion3.json", "FadeInTime": 0.5, "FadeOutTime": 0.5},
+				{"File": "motions/m_nod.motion3.json", "FadeInTime": 0.5, "FadeOutTime": 0.5},
+				{"File": "motions/m_shake.motion3.json", "FadeInTime": 0.5, "FadeOutTime": 0.5},
+				{"File": "motions/m_think.motion3.json", "FadeInTime": 0.5, "FadeOutTime": 0.5}
+			]
+		}
 	},
 	"Groups": [
 		{

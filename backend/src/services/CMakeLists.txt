@@ -5,12 +5,10 @@ add_library(services
     AvatarResponseService.cpp
     ChatService.cpp
     DatabaseService.cpp
-    DeepSeekModerationService.cpp
     GPTSoVITSService.cpp
     Live2DAnimationService.cpp
     MessageServiceImpl.cpp
     OpenClawGateway.cpp
-    TranslationService.cpp
     UserService.cpp
     WebSocketService.cpp
 )

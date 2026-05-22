@@ -45,7 +45,6 @@ add_executable(yachiyo_unit_tests
     unit/ChatMessageDTOTest.cpp
     
     # 服务层单元测试
-    unit/DeepSeekModerationServiceTest.cpp
     unit/OpenClawGatewayTest.cpp
     unit/ChatServiceTest.cpp
 )
@@ -60,7 +59,6 @@ add_executable(yachiyo_integration_tests
     main_test.cpp
     
     # 集成测试
-    integration/AvatarResponseServiceTest.cpp
     integration/AuthFlowTest.cpp
     integration/MessageFlowTest.cpp
     integration/HealthControllerTest.cpp

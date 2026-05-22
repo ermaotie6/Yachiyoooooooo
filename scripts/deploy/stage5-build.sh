@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 # Yachiyo 部署 — 阶段 5: 构建启动
-# 分步启动: PG → Redis → 后端 → 前端 → Nginx → Bridge
+# 分步启动: PG → Redis → 后端 → 前端 → Nginx
 # 用法: sudo bash scripts/deploy/stage5-build.sh
 # ============================================================
 
@@ -118,7 +118,7 @@ else
     warn "前端可能仍在构建中"
 fi
 
-# ===== 步骤 4: 启动 Nginx 和 Bridge =====
+# ===== 步骤 4: 启动 Nginx =====
 info "[4/4] 启动 Nginx 反向代理..."
 $DC up -d nginx
 sleep 2
@@ -128,9 +128,6 @@ if curl -sf http://localhost &>/dev/null; then
 else
     warn "Nginx 可能未就绪，但不影响继续"
 fi
-
-info "启动桥接服务 (OpenClaw 代理)..."
-$DC up -d bridge 2>/dev/null && ok "Bridge 已启动" || warn "Bridge 服务启动失败 (可选服务，不影响核心功能)"
 
 # ===== 显示状态 =====
 echo ""
