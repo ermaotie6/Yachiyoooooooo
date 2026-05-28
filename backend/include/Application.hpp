@@ -109,11 +109,6 @@ private:
     void initializeDatabase();
 
     /**
-     * @brief 初始化AI服务
-     */
-    void initializeAIServices();
-
-    /**
      * @brief 初始化其他服务 (WebSocket, Redis等)
      */
     void initializeServices();

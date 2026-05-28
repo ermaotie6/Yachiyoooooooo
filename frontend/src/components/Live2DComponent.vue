@@ -1,16 +1,11 @@
 <template>
   <div ref="containerRef" class="live2d-container">
-    <!-- PIXI Canvas 会自动挂载到这里 -->
-
-    <!-- 模型加载提示 -->
     <div v-if="!isModelLoaded" class="loading-overlay">
       <div class="loading-content">
         <div class="spinner"></div>
         <p>加载虚拟形象中...</p>
       </div>
     </div>
-
-    <!-- 错误提示 -->
     <div v-if="loadError" class="error-overlay">
       <div class="error-content">
         <p>⚠️ 虚拟形象加载失败</p>
@@ -24,13 +19,9 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import * as PIXI from 'pixi.js'
-import { Live2DModel, MotionPreloadStrategy } from 'pixi-live2d-display'
+import { Live2DModel, MotionPreloadStrategy } from 'pixi-live2d-display/cubism4'
 
-// ============ 注册 Live2D Ticker ============
-// pixi-live2d-display 需要 PIXI.Ticker 来驱动更新
 Live2DModel.registerTicker(PIXI.Ticker)
-
-// ============ Props ============
 
 interface Props {
   modelPath?: string
@@ -43,8 +34,6 @@ const props = withDefaults(defineProps<Props>(), {
   width: 400,
   height: 600
 })
-
-// ============ 状态管理 ============
 
 const containerRef = ref<HTMLDivElement | null>(null)
 const isModelLoaded = ref(false)
@@ -60,403 +49,319 @@ let audioSyncRAF: number | null = null
 let targetMouthOpenY = 0
 let currentMouthOpenY = 0
 
-// ============ 核心方法 ============
+// ============ 空闲动画 ============
+let idleRAF: number | null = null
+let idleTime = 0
+let lastIdleFrame = 0
 
-/**
- * 初始化 PIXI Application
- */
+// 眨眼
+let nextBlinkAt = 3000
+let blinkStartTime = 0
+let isBlinking = false
+const BLINK_DURATION = 150
+const BLINK_HOLD = 30
+const BLINK_RECOVER = 100
+const BLINK_TOTAL = BLINK_DURATION + BLINK_HOLD + BLINK_RECOVER
+const BLINK_INTERVAL_MIN = 2500
+const BLINK_INTERVAL_MAX = 6000
+
+// 参数动画（动作降级：无需 .motion3.json 文件）
+interface ParamTween {
+  paramId: string
+  baseValue: number
+  amplitude: number
+  frequency: number
+  phaseOffset: number
+}
+let activeParamTweens: ParamTween[] = []
+let paramTweenStartTime = 0
+let paramTweenDuration = 0
+let paramTweenPriority = 0
+
+// ============ 工具函数 ============
+const easeInOutSine = (t: number): number => -(Math.cos(Math.PI * t) - 1) / 2
+const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3)
+const easeInCubic = (t: number): number => t * t * t
+
+const setParam = (paramId: string, value: number): void => {
+  if (!model) return
+  try {
+    const coreModel = (model as any).internalModel?.coreModel
+    if (coreModel) coreModel.setParameterValueById(paramId, value)
+  } catch { /* ignore */ }
+}
+
+const setParams = (entries: [string, number][]): void => {
+  if (!model) return
+  try {
+    const coreModel = (model as any).internalModel?.coreModel
+    if (coreModel) for (const [id, val] of entries) coreModel.setParameterValueById(id, val)
+  } catch { /* ignore */ }
+}
+
+// ============ 空闲动画循环 ============
+const startIdleLoop = () => {
+  if (idleRAF !== null) return
+
+  const tick = (timestamp: number) => {
+    if (!model) { idleRAF = requestAnimationFrame(tick); return }
+
+    if (lastIdleFrame === 0) lastIdleFrame = timestamp
+    const dt = timestamp - lastIdleFrame
+    lastIdleFrame = timestamp
+    idleTime += dt
+
+    // 眨眼
+    if (isBlinking) {
+      const elapsed = timestamp - blinkStartTime
+      if (elapsed < BLINK_DURATION) {
+        const t = elapsed / BLINK_DURATION
+        setParams([['ParamEyeLOpen', 1 - easeInCubic(t)], ['ParamEyeROpen', 1 - easeInCubic(t)]])
+      } else if (elapsed < BLINK_DURATION + BLINK_HOLD) {
+        setParams([['ParamEyeLOpen', 0], ['ParamEyeROpen', 0]])
+      } else if (elapsed < BLINK_TOTAL) {
+        const t = (elapsed - BLINK_DURATION - BLINK_HOLD) / BLINK_RECOVER
+        setParams([['ParamEyeLOpen', easeOutCubic(t)], ['ParamEyeROpen', easeOutCubic(t)]])
+      } else {
+        isBlinking = false
+        setParams([['ParamEyeLOpen', 1], ['ParamEyeROpen', 1]])
+        nextBlinkAt = idleTime + BLINK_INTERVAL_MIN + Math.random() * (BLINK_INTERVAL_MAX - BLINK_INTERVAL_MIN)
+      }
+    } else if (idleTime >= nextBlinkAt && activeParamTweens.length === 0) {
+      isBlinking = true
+      blinkStartTime = timestamp
+    }
+
+    // 呼吸 — 身体轻微前后
+    if (activeParamTweens.length === 0 || paramTweenPriority < 2) {
+      setParam('ParamAngle_BodyZ', Math.sin(idleTime * 0.0012) * 0.03)
+    }
+
+    // 头部微晃
+    if (activeParamTweens.length === 0) {
+      setParams([
+        ['ParamAngleX', Math.sin(idleTime * 0.0005 + 0.7) * 0.04],
+        ['ParamAngleY', Math.cos(idleTime * 0.0007 + 1.3) * 0.03],
+        ['ParamAngleZ', Math.sin(idleTime * 0.0006) * 0.02]
+      ])
+    }
+
+    // 参数动画（动作降级）
+    if (activeParamTweens.length > 0) {
+      const elapsed = timestamp - paramTweenStartTime
+      const progress = Math.min(1, elapsed / paramTweenDuration)
+      const eased = easeInOutSine(progress)
+      const decay = progress > 0.7 ? 1 - ((progress - 0.7) / 0.3) : 1
+
+      for (const tween of activeParamTweens) {
+        const osc = Math.sin(eased * tween.frequency * Math.PI * 2 * paramTweenDuration / 1000 + tween.phaseOffset)
+        setParam(tween.paramId, tween.baseValue + tween.amplitude * osc * decay)
+      }
+
+      if (progress >= 1) {
+        for (const tween of activeParamTweens) setParam(tween.paramId, tween.baseValue)
+        activeParamTweens = []
+        paramTweenStartTime = 0
+        paramTweenDuration = 0
+        paramTweenPriority = 0
+      }
+    }
+
+    idleRAF = requestAnimationFrame(tick)
+  }
+  idleRAF = requestAnimationFrame(tick)
+  console.log('[Live2D] Idle loop started (blink + breathe + sway)')
+}
+
+const stopIdleLoop = () => {
+  if (idleRAF !== null) { cancelAnimationFrame(idleRAF); idleRAF = null }
+  lastIdleFrame = 0
+}
+
+// ============ 动作映射（参数降级方案） ============
+// 每个动作定义一组参数的振荡配置。模型无需 .motion3.json 也能动。
+const MOTION_PARAM_MAP: Record<string, (duration: number) => ParamTween[]> = {
+  'Tap Body': () => [
+    { paramId: 'ParamAngle_BodyX', baseValue: 0, amplitude: 0.25, frequency: 2.5, phaseOffset: 0 },
+    { paramId: 'ParamAngle_BodyY', baseValue: 0, amplitude: 0.12, frequency: 2.5, phaseOffset: Math.PI / 4 }
+  ],
+  'Nod': () => [
+    { paramId: 'ParamAngleX', baseValue: 0, amplitude: 0.18, frequency: 2.0, phaseOffset: 0 }
+  ],
+  'Shake': () => [
+    { paramId: 'ParamAngleY', baseValue: 0, amplitude: 0.22, frequency: 3.0, phaseOffset: 0 }
+  ],
+  'Think': () => [
+    { paramId: 'ParamAngleZ', baseValue: 0.08, amplitude: 0.04, frequency: 1.2, phaseOffset: 0 },
+    { paramId: 'ParamAngleX', baseValue: -0.05, amplitude: 0.03, frequency: 0.8, phaseOffset: Math.PI / 3 }
+  ],
+  'Idle': () => []
+}
+
+// ============ PIXI 初始化 ============
 const initPixiApp = (): boolean => {
   const container = containerRef.value
-  if (!container) {
-    loadError.value = '容器元素不可用'
-    return false
-  }
-
+  if (!container) { loadError.value = '容器元素不可用'; return false }
   const rect = container.getBoundingClientRect()
-  const width = rect.width || props.width
-  const height = rect.height || props.height
-
   app = new PIXI.Application({
-    width,
-    height,
-    backgroundAlpha: 0, // 透明背景
+    width: rect.width || props.width,
+    height: rect.height || props.height,
+    backgroundAlpha: 0,
     antialias: true,
     resolution: window.devicePixelRatio || 1,
     autoDensity: true
   })
-
-  // 将 PIXI canvas 挂载到容器
   container.appendChild(app.view as HTMLCanvasElement)
-
-  console.log('[Live2D] PIXI Application initialized:', width, 'x', height)
   return true
 }
 
-/**
- * 加载 Live2D 模型
- */
 const loadModel = async () => {
   if (!app) return
-
   try {
-    console.log('[Live2D] Loading model from:', props.modelPath)
-    loadError.value = null
-
     model = await Live2DModel.from(props.modelPath, {
       motionPreload: MotionPreloadStrategy.IDLE,
-      autoInteract: false // 我们自己控制交互
+      autoInteract: false
     })
-
-    if (!model) {
-      throw new Error('模型加载返回 null')
-    }
-
-    // 调整模型大小使其适应容器
+    if (!model) throw new Error('模型加载返回 null')
     fitModelToStage()
-
-    // 添加模型到舞台
     app.stage.addChild(model as unknown as PIXI.DisplayObject)
-
     isModelLoaded.value = true
     loadError.value = null
-
-    // 启动嘴部同步循环
     startMouthSyncLoop()
-
-    console.log('[Live2D] Model loaded successfully')
+    startIdleLoop()
+    console.log('[Live2D] Model loaded + idle started')
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
-    loadError.value = msg
-    console.error('[Live2D] Error loading model:', error)
+    loadError.value = error instanceof Error ? error.message : String(error)
   }
 }
 
-/**
- * 调整模型大小以适应舞台
- */
 const fitModelToStage = () => {
   if (!model || !app) return
-
-  const stageWidth = app.screen.width
-  const stageHeight = app.screen.height
-
-  // 计算缩放比例，保持纵横比
-  const scaleX = stageWidth / model.width
-  const scaleY = stageHeight / model.height
-  const scale = Math.min(scaleX, scaleY) * 0.9 // 留一点边距
-
+  const scale = Math.min(app.screen.width / model.width, app.screen.height / model.height) * 0.9
   model.scale.set(scale)
-
-  // 居中显示
-  model.x = (stageWidth - model.width * scale) / 2
-  model.y = (stageHeight - model.height * scale) / 2
+  model.x = (app.screen.width - model.width * scale) / 2
+  model.y = (app.screen.height - model.height * scale) / 2
 }
 
-/**
- * 嘴部同步循环 — 平滑过渡 mouthOpenY
- */
 const startMouthSyncLoop = () => {
   const tick = () => {
     if (!model) return
-
-    // 平滑插值
     currentMouthOpenY += (targetMouthOpenY - currentMouthOpenY) * 0.3
-
-    // 设置 Live2D 参数
-    try {
-      const coreModel = (model as any).internalModel?.coreModel
-      if (coreModel) {
-        // Cubism 4 参数名
-        coreModel.setParameterValueById('ParamMouthOpenY', currentMouthOpenY)
-      }
-    } catch {
-      // 静默忽略参数设置错误
-    }
-
+    setParam('ParamMouthOpenY', currentMouthOpenY)
     mouthSyncRAF = requestAnimationFrame(tick)
   }
   tick()
 }
 
-/**
- * 处理容器大小变化
- */
 const handleResize = () => {
   if (!app || !containerRef.value) return
-
-  const rect = containerRef.value.getBoundingClientRect()
-  app.renderer.resize(rect.width, rect.height)
+  app.renderer.resize(containerRef.value.getBoundingClientRect().width, containerRef.value.getBoundingClientRect().height)
   fitModelToStage()
 }
 
-/**
- * 重试加载
- */
 const retryLoad = () => {
-  loadError.value = null
-  isModelLoaded.value = false
-  if (model && app) {
-    app.stage.removeChild(model as unknown as PIXI.DisplayObject)
-    model.destroy()
-    model = null
-  }
+  loadError.value = null; isModelLoaded.value = false; stopIdleLoop()
+  if (model && app) { app.stage.removeChild(model as unknown as PIXI.DisplayObject); model.destroy(); model = null }
   loadModel()
 }
 
 // ============ 对外接口 ============
 
-/**
- * 设置表情
- * @param expressionName 表情名称 (例: "f_smile", "f_sad")
- * @param _durationMs 持续时间 (Live2D SDK 自动管理过渡)
- */
 const setExpression = (expressionName: string, _durationMs?: number) => {
-  if (!model) {
-    console.warn('[Live2D] Model not loaded, cannot set expression:', expressionName)
-    return
-  }
-
-  try {
-    model.expression(expressionName)
-    console.log('[Live2D] Expression set:', expressionName)
-  } catch (error) {
-    console.warn('[Live2D] Failed to set expression:', expressionName, error)
-  }
+  if (!model) return
+  try { model.expression(expressionName) } catch { /* ignore */ }
 }
 
 /**
- * 播放动作
- * @param motionName 动作名/组名 (例: "m_greet", "idle")
- * @param priority 优先级 (0=idle, 1=normal, 2=force)
+ * 播放动作（无需 .motion3.json 的降级方案）
+ *
+ * 优先尝试原生 motion API（如果将来有 motion3.json 则自动生效），
+ * 没有 motion 文件时降级为直接操作 Live2D 参数模拟动作效果。
+ *
+ * 支持的动作名: "Tap Body"(挥手) | "Nod"(点头) | "Shake"(摇头) | "Think"(思考) | "Idle"(恢复默认)
  */
 const playMotion = (motionName: string, priority: number = 1) => {
-  if (!model) {
-    console.warn('[Live2D] Model not loaded, cannot play motion:', motionName)
+  if (!model) return
+  if (activeParamTweens.length > 0 && priority <= paramTweenPriority) return
+
+  // 先尝试原生 motion
+  try { model.motion(motionName, undefined, priority); return } catch { /* 降级 */ }
+
+  const mapper = MOTION_PARAM_MAP[motionName]
+  if (!mapper) return
+
+  if (motionName === 'Idle') {
+    activeParamTweens = []; paramTweenStartTime = 0; paramTweenDuration = 0; paramTweenPriority = 0
     return
   }
 
-  try {
-    // pixi-live2d-display 的 motion(group, index, priority)
-    // motionName 作为 group 名称
-    model.motion(motionName, undefined, priority)
-    console.log('[Live2D] Motion played:', motionName, 'priority:', priority)
-  } catch (error) {
-    console.warn('[Live2D] Failed to play motion:', motionName, error)
-  }
+  let duration = 2000
+  if (motionName === 'Nod') duration = 1800
+  else if (motionName === 'Shake') duration = 1500
+  else if (motionName === 'Think') duration = 2500
+
+  const tweens = mapper(duration)
+  if (!tweens.length) return
+
+  activeParamTweens = tweens
+  paramTweenStartTime = performance.now()
+  paramTweenDuration = duration
+  paramTweenPriority = priority
+  console.log('[Live2D] Motion (param fallback):', motionName, 'duration:', duration)
 }
 
-/**
- * 实时嘴部同步
- * @param value 0~1 的开合度
- */
-const setSyncMouthOpenY = (value: number) => {
-  targetMouthOpenY = Math.max(0, Math.min(1, value))
-}
+const setSyncMouthOpenY = (value: number) => { targetMouthOpenY = Math.max(0, Math.min(1, value)) }
 
-/**
- * 眼睛跟踪 — 让模型看向某个方向
- * @param x -1 (左) ~ 1 (右)
- * @param y -1 (上) ~ 1 (下)
- */
 const setEyeTrackingTarget = (x: number, y: number) => {
   if (!model) return
-
-  try {
-    const coreModel = (model as any).internalModel?.coreModel
-    if (coreModel) {
-      coreModel.setParameterValueById('ParamEyeBallX', Math.max(-1, Math.min(1, x)))
-      coreModel.setParameterValueById('ParamEyeBallY', Math.max(-1, Math.min(1, y)))
-    }
-  } catch {
-    // 静默忽略
-  }
+  setParams([['ParamEyeBallX', Math.max(-1, Math.min(1, x))], ['ParamEyeBallY', Math.max(-1, Math.min(1, y))]])
 }
 
-/**
- * 设置眼睑开度
- * @param left 左眼 0~1
- * @param right 右眼 0~1
- */
 const setEyeOpen = (left: number, right: number) => {
   if (!model) return
-
-  try {
-    const coreModel = (model as any).internalModel?.coreModel
-    if (coreModel) {
-      coreModel.setParameterValueById('ParamEyeLOpen', Math.max(0, Math.min(1, left)))
-      coreModel.setParameterValueById('ParamEyeROpen', Math.max(0, Math.min(1, right)))
-    }
-  } catch {
-    // 静默忽略
-  }
+  setParams([['ParamEyeLOpen', Math.max(0, Math.min(1, left))], ['ParamEyeROpen', Math.max(0, Math.min(1, right))]])
 }
 
-/**
- * 从音频数据更新口型（用于 TTS 播放时的口型同步）
- * @param analyserNode Web Audio API AnalyserNode
- */
 const syncMouthFromAudio = (analyserNode: AnalyserNode) => {
   const dataArray = new Uint8Array(analyserNode.fftSize)
-
   const update = () => {
     analyserNode.getByteTimeDomainData(dataArray)
-
-    // 计算音量 RMS
     let sum = 0
-    for (let i = 0; i < dataArray.length; i++) {
-      const val = (dataArray[i] - 128) / 128
-      sum += val * val
-    }
-    const rms = Math.sqrt(sum / dataArray.length)
-
-    // 映射到嘴部开合 (0~1)
-    setSyncMouthOpenY(Math.min(1, rms * 4))
-
+    for (let i = 0; i < dataArray.length; i++) { const v = (dataArray[i] - 128) / 128; sum += v * v }
+    setSyncMouthOpenY(Math.min(1, Math.sqrt(sum / dataArray.length) * 4))
     audioSyncRAF = requestAnimationFrame(update)
   }
   update()
 }
 
 // ============ 生命周期 ============
-
 onMounted(async () => {
   if (!initPixiApp()) return
-
-  // 监听容器大小变化
-  if (containerRef.value) {
-    resizeObserver = new ResizeObserver(handleResize)
-    resizeObserver.observe(containerRef.value)
-  }
-
+  if (containerRef.value) { resizeObserver = new ResizeObserver(handleResize); resizeObserver.observe(containerRef.value) }
   await loadModel()
 })
 
 onUnmounted(() => {
-  // 停止嘴部同步
-  if (mouthSyncRAF !== null) {
-    cancelAnimationFrame(mouthSyncRAF)
-    mouthSyncRAF = null
-  }
-
-  // 停止音频同步
-  if (audioSyncRAF !== null) {
-    cancelAnimationFrame(audioSyncRAF)
-    audioSyncRAF = null
-  }
-
-  // 断开 ResizeObserver
-  if (resizeObserver) {
-    resizeObserver.disconnect()
-    resizeObserver = null
-  }
-
-  // 销毁模型
-  if (model) {
-    model.destroy()
-    model = null
-  }
-
-  // 销毁 PIXI 应用
-  if (app) {
-    app.destroy(true, { children: true, texture: true, baseTexture: true })
-    app = null
-  }
+  stopIdleLoop()
+  if (mouthSyncRAF) { cancelAnimationFrame(mouthSyncRAF); mouthSyncRAF = null }
+  if (audioSyncRAF) { cancelAnimationFrame(audioSyncRAF); audioSyncRAF = null }
+  if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null }
+  if (model) { model.destroy(); model = null }
+  if (app) { app.destroy(true, { children: true, texture: true, baseTexture: true }); app = null }
 })
 
-// ============ 暴露方法 ============
-
-defineExpose({
-  setExpression,
-  playMotion,
-  setSyncMouthOpenY,
-  setEyeTrackingTarget,
-  setEyeOpen,
-  syncMouthFromAudio,
-  retryLoad
-})
+defineExpose({ setExpression, playMotion, setSyncMouthOpenY, setEyeTrackingTarget, setEyeOpen, syncMouthFromAudio, retryLoad })
 </script>
 
 <style scoped>
-.live2d-container {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  background: transparent;
-  overflow: hidden;
-}
-
-/* PIXI 自动创建的 canvas */
-.live2d-container :deep(canvas) {
-  width: 100% !important;
-  height: 100% !important;
-  display: block;
-}
-
-.loading-overlay,
-.error-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(5px);
-  z-index: 10;
-}
-
-.loading-content,
-.error-content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 15px;
-  color: white;
-}
-
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 4px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.loading-content p,
-.error-content p {
-  font-size: 16px;
-  font-weight: 500;
-  margin: 0;
-}
-
-.error-content small {
-  font-size: 12px;
-  opacity: 0.8;
-  text-align: center;
-  max-width: 300px;
-}
-
-.retry-btn {
-  padding: 8px 20px;
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background 0.2s;
-}
-
-.retry-btn:hover {
-  background: rgba(255, 255, 255, 0.25);
-}
+.live2d-container { position: relative; width: 100%; height: 100%; background: transparent; overflow: hidden; }
+.live2d-container :deep(canvas) { width: 100% !important; height: 100% !important; display: block; }
+.loading-overlay, .error-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.5); backdrop-filter: blur(5px); z-index: 10; }
+.loading-content, .error-content { display: flex; flex-direction: column; align-items: center; gap: 15px; color: white; }
+.spinner { width: 40px; height: 40px; border: 4px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-content p, .error-content p { font-size: 16px; font-weight: 500; margin: 0; }
+.error-content small { font-size: 12px; opacity: 0.8; text-align: center; max-width: 300px; }
+.retry-btn { padding: 8px 20px; border: 1px solid rgba(255,255,255,0.5); border-radius: 6px; background: rgba(255,255,255,0.1); color: white; cursor: pointer; font-size: 14px; transition: background 0.2s; }
+.retry-btn:hover { background: rgba(255,255,255,0.25); }
 </style>

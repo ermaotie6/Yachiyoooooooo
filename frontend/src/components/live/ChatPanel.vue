@@ -40,6 +40,9 @@
     <!-- 消息输入区域 -->
     <div class="input-section">
       <div class="input-wrapper">
+        <div v-if="!isLoggedIn" class="login-hint" @click="$emit('loginRequired')">
+          🔐 请先登录后再发送消息
+        </div>
         <textarea
           v-model="inputValue"
           placeholder="输入你的消息（最多50字）..."
@@ -111,12 +114,14 @@ const props = defineProps<{
   isProcessing: boolean
   connectionError: string | null
   disabled: boolean
+  isLoggedIn: boolean
 }>()
 
 const emit = defineEmits<{
   send: []
   clear: []
   'update:inputValue': [value: string]
+  loginRequired: []
 }>()
 
 const historyRef = ref<HTMLElement | null>(null)
@@ -171,10 +176,12 @@ defineExpose({ historyRef, inputValue, clearInput: () => { inputValue.value = ''
   border-radius: 15px;
   overflow: hidden;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+  min-height: 0;
 }
 
 .message-history {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 15px;
 }
@@ -293,12 +300,27 @@ defineExpose({ historyRef, inputValue, clearInput: () => { inputValue.value = ''
 }
 
 .input-section {
+  flex-shrink: 0;
   border-top: 1px solid #eee;
   padding: 12px 15px;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
+
+.login-hint {
+  padding: 10px 12px;
+  background: #fff3e0;
+  border: 1px dashed #ff9800;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #e65100;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.login-hint:hover { background: #ffe0b2; }
 
 .input-wrapper {
   flex: 1;
@@ -313,9 +335,8 @@ defineExpose({ historyRef, inputValue, clearInput: () => { inputValue.value = ''
   border-radius: 8px;
   font-family: inherit;
   font-size: 14px;
-  resize: vertical;
-  max-height: 100px;
-  min-height: 40px;
+  resize: none;
+  height: 60px;
   transition: border-color 0.3s;
 }
 
@@ -368,20 +389,20 @@ defineExpose({ historyRef, inputValue, clearInput: () => { inputValue.value = ''
 
 .emoji-panel {
   position: absolute;
-  bottom: 50px;
-  right: 0;
-  width: 280px;
-  max-height: 200px;
+  bottom: 48px;
+  left: 0;
+  width: 340px;
+  max-height: 260px;
   overflow-y: auto;
   background: white;
   border: 1px solid #e0e0e0;
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-  padding: 10px;
+  padding: 12px;
   display: grid;
   grid-template-columns: repeat(8, 1fr);
-  gap: 4px;
-  z-index: 100;
+  gap: 6px;
+  z-index: 999;
   animation: emojiSlideIn 0.2s ease-out;
 }
 
@@ -391,18 +412,18 @@ defineExpose({ historyRef, inputValue, clearInput: () => { inputValue.value = ''
 }
 
 .emoji-item {
-  width: 32px;
-  height: 32px;
+  width: 38px;
+  height: 38px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  font-size: 24px;
   cursor: pointer;
   border-radius: 6px;
   transition: background 0.15s;
 }
 
-.emoji-item:hover { background: #f0f0f0; transform: scale(1.15); }
+.emoji-item:hover { background: #f0f0f0; transform: scale(1.2); }
 
 .send-button, .clear-button {
   padding: 12px 24px;
@@ -431,6 +452,7 @@ defineExpose({ historyRef, inputValue, clearInput: () => { inputValue.value = ''
 }
 
 .connection-hint {
+  flex-shrink: 0;
   padding: 10px;
   text-align: center;
   font-size: 12px;
@@ -448,5 +470,9 @@ defineExpose({ historyRef, inputValue, clearInput: () => { inputValue.value = ''
   .input-section { padding: 10px; gap: 5px; }
   .message-input { padding: 8px; font-size: 13px; }
   .send-button { padding: 8px 16px; font-size: 12px; }
+  .emoji-panel {
+    width: 280px;
+    grid-template-columns: repeat(7, 1fr);
+  }
 }
 </style>

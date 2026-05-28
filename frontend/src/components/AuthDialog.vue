@@ -106,8 +106,7 @@ const loginRules = reactive<FormRules>({
     { min: 3, max: 20, message: '用户名长度在 3 到 20 个字符', trigger: 'blur' }
   ],
   password: [
-    { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 8, message: '密码至少 8 个字符', trigger: 'blur' }
+    { required: true, message: '请输入密码', trigger: 'blur' }
   ]
 })
 
@@ -117,34 +116,6 @@ const validateConfirmPassword = (_rule: any, value: string, callback: Function) 
   } else {
     callback()
   }
-}
-
-const validatePassword = (_rule: any, value: string, callback: Function) => {
-  if (!value) {
-    callback(new Error('请输入密码'))
-    return
-  }
-  if (value.length < 8) {
-    callback(new Error('密码至少 8 个字符'))
-    return
-  }
-  if (!/[A-Z]/.test(value)) {
-    callback(new Error('密码需包含至少一个大写字母'))
-    return
-  }
-  if (!/[a-z]/.test(value)) {
-    callback(new Error('密码需包含至少一个小写字母'))
-    return
-  }
-  if (!/[0-9]/.test(value)) {
-    callback(new Error('密码需包含至少一个数字'))
-    return
-  }
-  if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(value)) {
-    callback(new Error('密码需包含至少一个特殊字符'))
-    return
-  }
-  callback()
 }
 
 const registerRules = reactive<FormRules>({
@@ -157,8 +128,7 @@ const registerRules = reactive<FormRules>({
     { type: 'email', message: '请输入正确的邮箱地址', trigger: 'blur' }
   ],
   password: [
-    { required: true, message: '请输入密码', trigger: 'blur' },
-    { validator: validatePassword, trigger: 'blur' }
+    { required: true, message: '请输入密码', trigger: 'blur' }
   ],
   confirmPassword: [
     { required: true, message: '请再次输入密码', trigger: 'blur' },
@@ -176,7 +146,7 @@ const handleLogin = async () => {
       emit('close')
       // 如果有 redirect 参数，跳转到目标页面；否则默认跳转到直播页面
       const redirect = router.currentRoute.value.query.redirect as string
-      router.push(redirect || '/livestream')
+      router.push(redirect || '/')
     } catch (error: any) {
       ElMessage.error(error.response?.data?.msg || error.response?.data?.message || '登录失败')
     }

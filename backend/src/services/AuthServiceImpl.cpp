@@ -53,17 +53,8 @@ bool AuthServiceImpl::isValidEmail(const std::string& email) const {
 }
 
 bool AuthServiceImpl::isValidPassword(const std::string& password) const {
-    if (password.length() < 8 || password.length() > 128) return false;
-    
-    bool hasUpper = false, hasLower = false, hasDigit = false, hasSpecial = false;
-    for (char c : password) {
-        if (std::isupper(c)) hasUpper = true;
-        else if (std::islower(c)) hasLower = true;
-        else if (std::isdigit(c)) hasDigit = true;
-        else hasSpecial = true;
-    }
-    
-    return hasUpper && hasLower && hasDigit && hasSpecial;
+    // 只限制长度，不限制字符类型
+    return password.length() >= 1 && password.length() <= 128;
 }
 
 bool AuthServiceImpl::isUserBlacklisted(const std::string& identifier) const {
@@ -102,7 +93,7 @@ Result<std::shared_ptr<User>> AuthServiceImpl::registerUser(
         
         if (!isValidPassword(password)) {
             return Result<std::shared_ptr<User>>::Error(
-                "密码无效。必须8-128字符，且包含大写字母、小写字母、数字和特殊字符"
+                "密码无效。必须1-128字符"
             );
         }
         

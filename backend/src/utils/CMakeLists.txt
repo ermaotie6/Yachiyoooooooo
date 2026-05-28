@@ -36,4 +36,5 @@ target_link_libraries(utils
         yaml-cpp::yaml-cpp
         Crow::Crow
         CURL::libcurl
+        crypt
 )

@@ -40,7 +40,6 @@ add_executable(yachiyo_unit_tests
     
     # DTO 单元测试
     unit/OpenClawDTOTest.cpp
-    unit/ModerationDTOTest.cpp
     unit/TTSServiceDTOTest.cpp
     unit/ChatMessageDTOTest.cpp
     

@@ -71,6 +71,12 @@ echo -e "${BLUE}GPT-SoVITS 语音合成 (可选，不部署则留空):${NC}"
 read -p "  TTS 服务端点 [http://localhost:5000]: " SOVITS_ENDPOINT
 SOVITS_ENDPOINT="${SOVITS_ENDPOINT:-http://localhost:5000}"
 
+# ===== 域名 (用于 SSL 证书自动配置) =====
+echo ""
+echo -e "${BLUE}域名 (可选 — 用于 HTTPS/SSL 自动配置):${NC}"
+read -p "  HTTPS 域名 [留空跳过]: " DOMAIN
+echo ""
+
 # ===== 生成 .env =====
 cat > "$ENV_FILE" <<ENVEOF
 # ============================================================
@@ -91,6 +97,9 @@ OPENCLAW_MODEL=${OC_MODEL}
 
 # ===== GPT-SoVITS 语音合成 (可选) =====
 SOVITS_ENDPOINT=${SOVITS_ENDPOINT}
+
+# ===== 域名 (用于 HTTPS/SSL) =====
+YACHIYO_DOMAIN=${DOMAIN}
 
 # ===== 部署模式 =====
 ENVIRONMENT=production

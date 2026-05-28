@@ -8,9 +8,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV CC=/usr/bin/gcc
 ENV CXX=/usr/bin/g++
 
-# 使用国内镜像源 (解决容器内无法访问 archive.ubuntu.com 的问题)
-RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list && \
-    sed -i 's|http://security.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list
+# 使用国内镜像源 (清华源，阿里云容器内不稳定)
+RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list && \
+    sed -i 's|http://security.ubuntu.com|http://mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list
 
 # 安装构建依赖
 RUN apt-get update && apt-get install -y \
@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y \
     wget \
     curl \
     libssl-dev \
+    libcrypt-dev \
     libpq-dev \
     libcurl4-openssl-dev \
     nlohmann-json3-dev \
@@ -95,8 +96,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/Shanghai
 
 # 使用国内镜像源
-RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list && \
-    sed -i 's|http://security.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list
+RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list && \
+    sed -i 's|http://security.ubuntu.com|http://mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list
 
 # 安装运行时依赖
 RUN apt-get update && apt-get install -y \

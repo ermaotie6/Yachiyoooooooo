@@ -12,10 +12,13 @@
       :is-connected="isConnected"
       :is-processing="isProcessing"
       :connection-error="connectionError"
+      :is-logged-in="authStore.isLoggedIn"
       :disabled="!isConnected || isProcessing"
-      @send="sendMessage"
+      @send="handleSendOrLogin"
       @clear="handleClear"
+      @login-required="authDialogVisible = true"
     />
+    <AuthDialog v-model:visible="authDialogVisible" />
   </div>
 </template>
 
@@ -28,6 +31,7 @@ import { useSubtitle } from '@/composables/useSubtitle'
 import { useAuthStore } from '@/stores/auth'
 import AvatarStage from '@/components/live/AvatarStage.vue'
 import ChatPanel from '@/components/live/ChatPanel.vue'
+import AuthDialog from '@/components/AuthDialog.vue'
 
 const authStore = useAuthStore()
 const ws = useWebSocket()
@@ -37,6 +41,7 @@ const subtitle = useSubtitle()
 
 const avatarRef = ref<InstanceType<typeof AvatarStage> | null>(null)
 const chatRef = ref<InstanceType<typeof ChatPanel> | null>(null)
+const authDialogVisible = ref(false)
 
 const isConnected = ref(false)
 const isProcessing = ref(false)
@@ -49,6 +54,14 @@ const currentUser = computed(() => ({
 }))
 
 const connectionStatus = computed(() => isConnected.value ? 'connected' as const : 'disconnected' as const)
+
+const handleSendOrLogin = () => {
+  if (!authStore.isLoggedIn) {
+    authDialogVisible.value = true
+    return
+  }
+  sendMessage()
+}
 
 const sendMessage = async () => {
   const input = chatRef.value?.inputValue
@@ -103,6 +116,11 @@ const handleAvatarResponse = async (response: any) => {
       subtitle.clear()
       avatarRef.value?.live2d?.setExpression('f_smile', 500)
     }, 5000)
+  }
+
+  // 服务降级提示
+  if (!response.audio_url && response.text) {
+    chat.addSystemMessage('🔇 语音合成不可用，仅显示文字回复')
   }
 }
 
@@ -172,10 +190,10 @@ onUnmounted(async () => {
 <style scoped>
 .live-stream-container {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 3fr 1fr;
   gap: 20px;
   padding: 20px;
-  height: 100vh;
+  height: 100%;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   background-image: url('/images/bg.jpg'), url('/images/bg.svg');
   background-size: cover;

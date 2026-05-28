@@ -1,8 +1,13 @@
 #include "controllers/HealthController.hpp"
 #include "Application.hpp"
+#include "services/WebSocketService.hpp"
 #include "utils/JsonUtils.hpp"
 #include <chrono>
 #include <ctime>
+#include <fstream>
+#include <sstream>
+
+extern std::shared_ptr<Yachiyo::Services::WebSocketService> g_webSocketService;
 
 namespace yachiyo {
 namespace controllers {
@@ -174,42 +179,51 @@ crow::response HealthController::livenessCheck() {
 
 crow::response HealthController::metrics() {
     try {
-        // 收集和返回应用指标
-        // 实际项目中应该收集更详细的指标
-        
         auto app = Application::getInstance();
+        auto now = std::chrono::system_clock::now();
         auto uptime = std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::system_clock::now() - app->getStartTime()
+            now - app->getStartTime()
         ).count();
-        
+
         crow::json::wvalue metrics;
-        
+
         // 系统指标
         crow::json::wvalue system;
-        system["uptime_seconds"] = uptime;
-        system["start_time"] = std::chrono::system_clock::to_time_t(app->getStartTime());
+        system["uptime_seconds"] = static_cast<int64_t>(uptime);
+        system["start_time"] = static_cast<int64_t>(
+            std::chrono::system_clock::to_time_t(app->getStartTime()));
         metrics["system"] = std::move(system);
-        
-        // HTTP指标（模拟）
-        crow::json::wvalue http;
-        http["total_requests"] = 0; // 实际项目中应该统计请求数
-        http["active_connections"] = 0;
-        http["requests_per_second"] = 0.0;
-        metrics["http"] = std::move(http);
-        
-        // 内存指标（模拟）
+
+        // WebSocket 连接数 (真实数据)
+        crow::json::wvalue ws;
+        ws["active_connections"] = static_cast<int>(
+            ::g_webSocketService ? ::g_webSocketService->getClientCount() : 0);
+        metrics["websocket"] = std::move(ws);
+
+        // 内存指标 — 从 /proc/self/status 读取真实值
         crow::json::wvalue memory;
-        memory["used_mb"] = 0; // 实际项目中应该获取真实内存使用
-        memory["total_mb"] = 0;
-        memory["free_mb"] = 0;
+        long vmRSS_kb = 0, vmSize_kb = 0;
+        std::ifstream statusFile("/proc/self/status");
+        std::string line;
+        while (std::getline(statusFile, line)) {
+            if (line.rfind("VmRSS:", 0) == 0) {
+                std::istringstream iss(line.substr(6));
+                iss >> vmRSS_kb;
+            } else if (line.rfind("VmSize:", 0) == 0) {
+                std::istringstream iss(line.substr(7));
+                iss >> vmSize_kb;
+            }
+            if (vmRSS_kb > 0 && vmSize_kb > 0) break;
+        }
+        memory["used_mb"] = static_cast<double>(vmRSS_kb) / 1024.0;
+        memory["virtual_mb"] = static_cast<double>(vmSize_kb) / 1024.0;
         metrics["memory"] = std::move(memory);
-        
+
         return crow::response(200, metrics);
     } catch (const std::exception& e) {
         crow::json::wvalue error;
         error["error"] = e.what();
-        error["timestamp"] = std::time(nullptr);
-        
+        error["timestamp"] = static_cast<int64_t>(std::time(nullptr));
         return crow::response(500, error);
     }
 }

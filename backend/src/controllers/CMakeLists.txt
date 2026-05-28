@@ -1,5 +1,4 @@
 add_library(controllers
-    AIController.cpp
     AuthController.cpp
     BaseController.cpp
     HealthController.cpp

@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # 编译选项
-add_compile_options(-Wall -Wextra -Wpedantic -O2)
+add_compile_options(-Wall -Wextra -Wpedantic -Wno-unused-parameter -O2)
 
 # 查找依赖
 find_package(Threads REQUIRED)

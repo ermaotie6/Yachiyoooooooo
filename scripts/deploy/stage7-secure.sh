@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 # ============================================================
 # Yachiyo 部署 — 阶段 7: HTTPS 与安全加固
-# SSL 证书部署 + Nginx SSL 启用 + 安全检查
+# SSL 证书部署 + Nginx SSL 自动配置 + 安全检查
 # 用法: sudo bash scripts/deploy/stage7-secure.sh
+#
+# 优化说明:
+#   - SSL 证书和域名在 deploy 脚本执行时填写（不需要提前手改 nginx.conf）
+#   - 自动用 sed 取消 nginx.conf 中 SSL 相关注释
+#   - 自动设置 server_name 为你的域名
+#   - 自动启用 HTTP→HTTPS 重定向
 # ============================================================
 
 set -euo pipefail
@@ -34,6 +40,41 @@ else
 fi
 
 # ═════════════════════════════════════
+# 步骤 0: 询问域名
+# ═════════════════════════════════════
+echo -e "${BLUE}[步骤 0] 域名配置${NC}"
+echo ""
+
+if grep -q "yachiyo\.com" "$NGINX_CONF" 2>/dev/null && \
+   ! grep -q "^[[:space:]]*server_name[[:space:]]*[^l]" "$NGINX_CONF" 2>/dev/null; then
+    # nginx.conf 中 server_name 还是 localhost → 询问
+    # 优先从 .env 读取
+    DOMAIN_FROM_ENV=$(grep "^YACHIYO_DOMAIN=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2)
+    if [ -n "$DOMAIN_FROM_ENV" ]; then
+        ok "从 .env 读取域名: ${GREEN}$DOMAIN_FROM_ENV${NC}"
+        DOMAIN="$DOMAIN_FROM_ENV"
+    else
+        read -p "  域名 (如 yachiyo.example.com，留空跳过 HTTPS): " DOMAIN
+    fi
+else
+    # 获取当前 server_name
+    CURRENT_DOMAIN=$(grep "server_name" "$NGINX_CONF" 2>/dev/null | head -1 | awk '{print $2}' | tr -d ';')
+    if [ "$CURRENT_DOMAIN" != "localhost" ] && [ -n "$CURRENT_DOMAIN" ]; then
+        ok "域名已配置: ${GREEN}$CURRENT_DOMAIN${NC}"
+        DOMAIN="$CURRENT_DOMAIN"
+    else
+        DOMAIN_FROM_ENV=$(grep "^YACHIYO_DOMAIN=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2)
+        if [ -n "$DOMAIN_FROM_ENV" ]; then
+            ok "从 .env 读取域名: ${GREEN}$DOMAIN_FROM_ENV${NC}"
+            DOMAIN="$DOMAIN_FROM_ENV"
+        else
+            read -p "  域名 (如 yachiyo.example.com，留空跳过 HTTPS): " DOMAIN
+        fi
+    fi
+fi
+echo ""
+
+# ═════════════════════════════════════
 # 步骤 1: SSL 证书部署
 # ═════════════════════════════════════
 echo -e "${BLUE}[步骤 1] SSL 证书部署${NC}"
@@ -43,16 +84,30 @@ mkdir -p "$SSL_DIR"
 
 SKIP_SSL=false
 
-if [ -f "$SSL_DIR/cert.pem" ] && [ -f "$SSL_DIR/key.pem" ]; then
+if [ -z "$DOMAIN" ]; then
+    SKIP_SSL=true
+    warn "未填写域名，跳过 HTTPS 配置"
+fi
+
+if [ "$SKIP_SSL" = false ] && [ -f "$SSL_DIR/cert.pem" ] && [ -f "$SSL_DIR/key.pem" ]; then
     ok "SSL 证书已存在: $SSL_DIR/"
-else
-    warn "未检测到 SSL 证书文件"
     echo ""
+    read -p "  重新部署证书? (y/N) " -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        info "保留现有证书"
+    else
+        SKIP_SSL=false  # 需要重新部署
+    fi
+fi
+
+if [ "$SKIP_SSL" = false ] && [ -n "$DOMAIN" ]; then
     echo "请选择证书部署方式:"
     echo "  1) 手动粘贴证书内容 (Cloudflare Origin Certificate)"
     echo "  2) 从本地路径复制证书文件"
-    echo "  3) 跳过 HTTPS 配置"
-    read -p "选择 (1/2/3): " -n 1 -r
+    echo "  3) 使用 acme.sh / certbot 自动申请 (Let's Encrypt)"
+    echo "  4) 跳过 HTTPS 配置"
+    read -p "选择 (1/2/3/4): " -n 1 -r
     echo ""
 
     case "$REPLY" in
@@ -88,7 +143,48 @@ else
                 SKIP_SSL=true
             fi
             ;;
-        3|*)
+        3)
+            echo ""
+            info "使用 Let's Encrypt 自动申请证书 (需要域名 DNS 已指向本机)..."
+            
+            # 检查 certbot 是否安装
+            if ! command -v certbot &>/dev/null; then
+                info "安装 certbot..."
+                if command -v pacman &>/dev/null; then
+                    pacman -S --noconfirm certbot certbot-nginx 2>/dev/null || true
+                elif command -v apt &>/dev/null; then
+                    apt install -y certbot python3-certbot-nginx 2>/dev/null || true
+                fi
+            fi
+
+            if command -v certbot &>/dev/null; then
+                # 先确保 80 端口可达
+                info "申请证书前请确认:"
+                echo "  1. 域名 $DOMAIN 的 DNS 已指向本机 IP"
+                echo "  2. 防火墙已开放 80/443 端口"
+                read -p "  确认继续? (y/N) " -n 1 -r
+                echo ""
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    # certbot standalone 模式（不需要 nginx 先运行）
+                    if certbot certonly --standalone -d "$DOMAIN" \
+                        --non-interactive --agree-tos --email "admin@${DOMAIN}" \
+                        --cert-name yachiyo 2>/dev/null; then
+                        cp /etc/letsencrypt/live/yachiyo/fullchain.pem "$SSL_DIR/cert.pem"
+                        cp /etc/letsencrypt/live/yachiyo/privkey.pem "$SSL_DIR/key.pem"
+                        ok "Let's Encrypt 证书已获取"
+                    else
+                        warn "certbot 申请失败，请手动部署证书"
+                        SKIP_SSL=true
+                    fi
+                else
+                    SKIP_SSL=true
+                fi
+            else
+                warn "certbot 未安装，回退到手动模式"
+                SKIP_SSL=true
+            fi
+            ;;
+        4|*)
             SKIP_SSL=true
             warn "跳过 HTTPS 配置"
             ;;
@@ -102,34 +198,73 @@ else
 fi
 
 # ═════════════════════════════════════
-# 步骤 2: Nginx SSL 配置
+# 步骤 2: 自动配置 Nginx SSL
 # ═════════════════════════════════════
-if [ "$SKIP_SSL" = false ] && [ -f "$SSL_DIR/cert.pem" ] && [ -f "$SSL_DIR/key.pem" ]; then
+if [ "$SKIP_SSL" = false ] && [ -n "$DOMAIN" ] && [ -f "$SSL_DIR/cert.pem" ] && [ -f "$SSL_DIR/key.pem" ]; then
     echo ""
-    echo -e "${BLUE}[步骤 2] Nginx SSL 配置${NC}"
+    echo -e "${BLUE}[步骤 2] 自动配置 Nginx SSL${NC}"
     echo ""
-    info "SSL 证书路径: $SSL_DIR/"
-    info "docker-compose.yml 已将 ./ssl 挂载到容器内 /etc/nginx/ssl"
-    echo ""
-    info "请编辑 nginx.conf 取消 SSL 相关注释:"
-    echo "  取消注释以下行:"
-    echo "    listen 443 ssl http2;"
-    echo "    ssl_certificate /etc/nginx/ssl/cert.pem;"
-    echo "    ssl_certificate_key /etc/nginx/ssl/key.pem;"
-    echo "    ssl_protocols TLSv1.2 TLSv1.3;"
-    echo ""
-    read -p "是否现在编辑 nginx.conf? (y/N) " -n 1 -r
-    echo ""
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        ${EDITOR:-nano} "$NGINX_CONF"
-    fi
 
+    # 备份原配置
+    BACKUP_NGINX="${NGINX_CONF}.backup.$(date +%Y%m%d_%H%M%S)"
+    cp "$NGINX_CONF" "$BACKUP_NGINX"
+    ok "已备份 nginx.conf → ${BACKUP_NGINX##*/}"
+
+    # --- 使用 sed 自动修改 nginx.conf ---
+
+    # 2a. 替换 server_name localhost → 域名
+    sed -i "s/server_name localhost;/server_name ${DOMAIN};/" "$NGINX_CONF"
+
+    # 2b. 取消 SSL listen 注释 (listen 443 ssl http2;)
+    sed -i 's/^[[:space:]]*#[[:space:]]*listen 443 ssl http2;/        listen 443 ssl http2;/' "$NGINX_CONF"
+
+    # 2c. 取消 SSL 证书路径注释
+    sed -i 's/^[[:space:]]*#[[:space:]]*ssl_certificate \/etc\/nginx\/ssl\/cert\.pem;/        ssl_certificate \/etc\/nginx\/ssl\/cert.pem;/' "$NGINX_CONF"
+    sed -i 's/^[[:space:]]*#[[:space:]]*ssl_certificate_key \/etc\/nginx\/ssl\/key\.pem;/        ssl_certificate_key \/etc\/nginx\/ssl\/key.pem;/' "$NGINX_CONF"
+
+    # 2d. 取消 SSL 协议/加密套件注释
+    sed -i 's/^[[:space:]]*#[[:space:]]*ssl_protocols TLSv1\.2 TLSv1\.3;/        ssl_protocols TLSv1.2 TLSv1.3;/' "$NGINX_CONF"
+    sed -i 's/^[[:space:]]*#[[:space:]]*ssl_ciphers HIGH:!aNULL:!MD5;/        ssl_ciphers HIGH:!aNULL:!MD5;/' "$NGINX_CONF"
+
+    # 2e. 启用 HTTP→HTTPS 重定向（取消整个 server 块注释）
+    #     nginx.conf 中 HTTP redirect server 块是：
+    #     # server { listen 80; server_name yachiyo.com; return 301 https://... }
+    sed -i "/^[[:space:]]*# HTTP → HTTPS 重定向/,/^[[:space:]]*#[[:space:]]*}/{
+        s/^[[:space:]]*#[[:space:]]*//
+    }" "$NGINX_CONF"
+
+    # 2f. 把 redirect 块的 server_name 也替换为域名
+    sed -i "s/server_name yachiyo\.com;/server_name ${DOMAIN};/" "$NGINX_CONF"
+
+    ok "Nginx SSL 配置已自动完成:"
+
+    echo ""
+    echo -e "  ${CYAN}已自动修改:${NC}"
+    echo "    • server_name: localhost → ${GREEN}${DOMAIN}${NC}"
+    echo "    • SSL listen 443: 已启用"
+    echo "    • SSL 证书路径: 已配置"
+    echo "    • HTTP→HTTPS 重定向: 已启用"
+
+    # 重启 Nginx 使配置生效
     if [ -n "$DC" ]; then
-        info "重启 Nginx..."
+        echo ""
+        info "重启 Nginx 使 SSL 配置生效..."
         $DC restart nginx
         sleep 2
-        ok "Nginx 已重启"
+        
+        # 验证
+        if $DC ps nginx 2>/dev/null | grep -qi "up"; then
+            ok "Nginx 已重启，HTTPS 已生效"
+            echo ""
+            echo -e "  访问: ${GREEN}https://${DOMAIN}${NC}"
+        else
+            warn "Nginx 重启可能失败，检查配置:"
+            echo "  $DC logs nginx --tail 20"
+        fi
     fi
+else
+    echo ""
+    info "跳过 Nginx SSL 配置 (证书未就绪或已跳过)"
 fi
 
 # ═════════════════════════════════════
@@ -154,9 +289,9 @@ else
 fi
 
 # 检查数据库密码
-DB_PASS=$(grep "DATABASE_PASSWORD=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2)
-if [ "$DB_PASS" = "postgres" ] || [ -z "$DB_PASS" ]; then
-    warn "数据库密码仍为默认值 'postgres'，生产环境请修改"
+DB_PASS=$(grep "^DB_PASSWORD=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2)
+if [ "$DB_PASS" = "postgres" ] || [ "$DB_PASS" = "postgres_dev_only" ] || [ -z "$DB_PASS" ]; then
+    warn "数据库密码仍为默认值，生产环境请修改"
     SEC_WARN=$((SEC_WARN+1))
 else
     ok "数据库密码已自定义"
@@ -199,6 +334,16 @@ else
     SEC_WARN=$((SEC_WARN+1))
 fi
 
+# 检查 OPENCLAW_GATEWAY_TOKEN
+OC_TOKEN=$(grep "^OPENCLAW_GATEWAY_TOKEN=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2)
+if [ -z "$OC_TOKEN" ]; then
+    warn "OPENCLAW_GATEWAY_TOKEN 未配置 — AI 功能将不可用"
+    SEC_WARN=$((SEC_WARN+1))
+else
+    ok "OpenClaw 令牌已配置"
+    SEC_PASS=$((SEC_PASS+1))
+fi
+
 echo ""
 echo -e "${CYAN}════════════════════════════════════════${NC}"
 echo -e "  安全通过: ${GREEN}$SEC_PASS${NC}  |  安全警告: ${YELLOW}$SEC_WARN${NC}"
@@ -207,4 +352,10 @@ echo -e "${CYAN}═════════════════════�
 echo ""
 ok "阶段 7 完成 ✓"
 echo ""
-echo -e "${GREEN}🎀 Yachiyo 全部部署流程完成！${NC}"
+if [ "$SKIP_SSL" = false ] && [ -n "$DOMAIN" ]; then
+    echo -e "${GREEN}🎀 Yachiyo 全部部署流程完成！${NC}"
+    echo -e "  HTTPS: ${GREEN}https://${DOMAIN}${NC}"
+else
+    echo -e "${GREEN}🎀 Yachiyo 部署完成（HTTP 模式）${NC}"
+    echo -e "  后续可手动执行 HTTPS 加固: sudo bash $0"
+fi

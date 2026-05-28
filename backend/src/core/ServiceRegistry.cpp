@@ -16,6 +16,8 @@
 #include <fstream>
 #include <sstream>
 
+extern std::shared_ptr<Yachiyo::Utils::DatabaseUtil> g_databaseUtil;
+
 namespace yachiyo::core {
 
 ServiceRegistry::ServiceRegistry(
@@ -52,6 +54,20 @@ PipelineContext ServiceRegistry::buildPipeline() {
 
 void ServiceRegistry::createSharedServices(PipelineContext& ctx) {
     ctx.dbUtil = std::make_shared<Yachiyo::Utils::DatabaseUtil>();
+
+    // 连接数据库
+    Yachiyo::Utils::DatabaseConfig dbCfg;
+    dbCfg.host     = config_->getString("database.host", "localhost");
+    dbCfg.port     = config_->getInt("database.port", 5432);
+    dbCfg.database = config_->getString("database.name", "yachiyo");
+    dbCfg.username = config_->getString("database.username", "postgres");
+    dbCfg.password = config_->getString("database.password", "");
+    if (!ctx.dbUtil->connect(dbCfg)) {
+        log_->warn("DatabaseUtil 连接失败，认证功能可能不可用");
+    }
+
+    // 设置全局 DatabaseUtil 供 SystemLogger 使用
+    ::g_databaseUtil = ctx.dbUtil;
     ctx.hashUtil = std::make_shared<Yachiyo::Utils::HashUtil>();
 
     std::string jwtSecret = config_->getString("jwt.secret", "");

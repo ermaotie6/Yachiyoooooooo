@@ -1,5 +1,4 @@
 add_library(services
-    AIServiceImpl.cpp
     AuthService.cpp
     AuthServiceImpl.cpp
     AvatarResponseService.cpp

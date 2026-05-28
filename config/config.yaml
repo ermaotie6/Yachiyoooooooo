@@ -105,7 +105,7 @@ openclaw:
   
   # OpenClaw Gateway API 端点
   # Docker 内用 host.docker.internal，宿主机用 localhost
-  api_endpoint: "http://host.docker.internal:8100"
+  api_endpoint: "${OPENCLAW_ENDPOINT:http://host.docker.internal:8100}"
   
   # Gateway 认证令牌 (从环境变量 OPENCLAW_GATEWAY_TOKEN 注入)
   auth_token: "${OPENCLAW_GATEWAY_TOKEN}"
@@ -135,6 +135,8 @@ jwt:
   algorithm: "HS256"
   expiration_hours: 24
   refresh_expiration_days: 7
+  issuer: "yachiyo-cpp"
+  audience: "yachiyo-users"
 
 # ============ 日志配置 ============
 logging:
@@ -143,6 +145,7 @@ logging:
   file_path: "./logs/yachiyo.log"
   max_file_size_mb: 100
   retention_days: 30
+  console_output: true
   
   # 日志模块级别
   modules:
@@ -168,7 +171,41 @@ performance:
   cache_enabled: true
   cache_max_size: 10000
   cache_ttl_seconds: 3600
+  
+  # 请求限制
+  max_request_size_mb: 10
+  rate_limit_enabled: true
+  rate_limit_requests_per_minute: 60
 
 # ============ 环境变量映射 ============
 # 从环境变量中读取敏感信息
 # 在 Docker 或生产环境中配置：
+
+# ============ AI 服务配置 ============
+# AI 对话/审查/翻译 统一由 OpenClaw Gateway 处理
+ai:
+
+# ============ 虚拟形象配置 ============
+avatar:
+  language: "ja"
+  default_emotion: "neutral"
+  model_path: "resources/live2d"
+
+# ============ 安全配置 ============
+security:
+  password_min_length: 8
+  password_require_uppercase: true
+  password_require_lowercase: true
+  password_require_digits: true
+  password_require_special: true
+  login_attempts_limit: 5
+  login_lockout_minutes: 30
+  cors_enabled: true
+  cors_origins: "*"
+
+# ============ 监控配置 ============
+monitoring:
+  enabled: true
+  metrics_port: 9090
+  health_check_path: "/health"
+  prometheus_enabled: true

@@ -17,12 +17,6 @@
       </span>
     </div>
 
-    <!-- 虚拟形象信息 -->
-    <div class="avatar-info">
-      <h2>Yachiyo</h2>
-      <p class="role">AI 虚拟直播助手</p>
-    </div>
-
     <!-- 字幕覆盖层 -->
     <div v-if="subtitleText" class="subtitle-overlay">
       <span class="subtitle-text">{{ subtitleText }}</span>
@@ -107,28 +101,6 @@ defineExpose({
 
 .status-text {
   font-size: 14px;
-}
-
-.avatar-info {
-  position: absolute;
-  bottom: 60px;
-  left: 0;
-  right: 0;
-  text-align: center;
-  color: white;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-}
-
-.avatar-info h2 {
-  margin: 0;
-  font-size: 28px;
-  font-weight: bold;
-}
-
-.avatar-info .role {
-  margin: 4px 0 0;
-  font-size: 14px;
-  opacity: 0.8;
 }
 
 .subtitle-overlay {

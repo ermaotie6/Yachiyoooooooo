@@ -5,6 +5,7 @@
 #include "utils/Logger.hpp"
 #include "utils/JsonUtils.hpp"
 #include <chrono>
+#include <future>
 
 namespace yachiyo::services {
 
@@ -111,27 +112,20 @@ Utils::Result<AvatarResponse> AvatarResponseService::processUserMessage(
     response.text = finalText;
     response.targetLanguage = targetLanguage;
 
-    // ===== 步骤 4: 音频生成 (TTS) =====
-    LOG_DEBUG("生成语音");
+    // ===== 步骤 4+5: TTS + 动画 并行执行 =====
+    // TTS (网络IO) 和动画生成 (CPU) 互不依赖，并行化降低总延迟
+    LOG_DEBUG("并行执行: TTS + Live2D 动画");
+
     std::string emotionType = openclawResponse.emotions.empty()
         ? "neutral" : openclawResponse.emotions[0];
 
-    auto ttsResult = tts_service_->synthesizeWithEmotion(
-        finalText, emotionType, GPTSoVITSService::VoicePreset::DEFAULT
-    );
+    // 启动 TTS 异步任务
+    auto ttsFuture = std::async(std::launch::async, [&]() {
+        return tts_service_->synthesizeWithEmotion(
+            finalText, emotionType, GPTSoVITSService::VoicePreset::DEFAULT);
+    });
 
-    if (!ttsResult.isSuccess()) {
-        LOG_WARN("TTS 生成失败: {}", ttsResult.getError().message);
-        response.audioUrl = "";
-        response.audioDurationMs = 0;
-    } else {
-        auto ttsResponse = ttsResult.getValue();
-        response.audioUrl = ttsResponse.audioUrl;
-        response.audioDurationMs = ttsResponse.durationMs;
-    }
-
-    // ===== 步骤 5: 动画生成 =====
-    LOG_DEBUG("生成动画命令");
+    // 同时启动动画生成（不等待 TTS）
     auto animationResult = animation_service_->generateAnimationSequence(
         openclawResponse.emotions,
         openclawResponse.actions,
@@ -143,6 +137,19 @@ Utils::Result<AvatarResponse> AvatarResponseService::processUserMessage(
         response.animationCommands.clear();
     } else {
         response.animationCommands = animationResult.getValue().commands;
+    }
+
+    // 等待 TTS 完成
+    auto ttsResult = ttsFuture.get();
+
+    if (!ttsResult.isSuccess()) {
+        LOG_WARN("TTS 生成失败: {}", ttsResult.getError().message);
+        response.audioUrl = "";
+        response.audioDurationMs = 0;
+    } else {
+        auto ttsResponse = ttsResult.getValue();
+        response.audioUrl = ttsResponse.audioUrl;
+        response.audioDurationMs = ttsResponse.durationMs;
     }
 
     // ===== 步骤 6: 计算处理时间 =====

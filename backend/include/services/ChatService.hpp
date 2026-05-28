@@ -24,7 +24,6 @@
 #include "../dto/ChatMessageDTO.hpp"
 #include "../utils/Result.hpp"
 #include "../utils/LogUtils.hpp"
-#include "AIService.hpp"
 #include <spdlog/spdlog.h>
 #include <map>
 
@@ -33,6 +32,20 @@ namespace Services {
 
 // 引用 models 命名空间
 namespace Models = yachiyo::models;
+
+// AI 提供商枚举
+enum class AIProvider {
+    DEEPSEEK,
+    OPENAI,
+    OLLAMA,
+    LOCAL
+};
+
+// 聊天消息结构 (内部使用)
+struct ChatMessage {
+    std::string role;     // "user" | "assistant" | "system"
+    std::string content;
+};
 
 // 消息类型枚举 (ChatService 使用)
 enum class MessageType {

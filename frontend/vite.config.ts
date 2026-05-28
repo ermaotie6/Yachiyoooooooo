@@ -7,7 +7,6 @@ import fs from 'node:fs'
 export default defineConfig({
   plugins: [
     vue(),
-    // 自定义插件：将项目根目录的 resources/ 映射为静态资源（开发时）
     {
       name: 'serve-live2d-resources',
       configureServer(server) {
@@ -27,6 +26,16 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
+    }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-pixi': ['pixi.js', 'pixi-live2d-display/cubism4'],
+          'vendor-ui': ['element-plus', '@element-plus/icons-vue'],
+        }
+      }
     }
   },
   server: {

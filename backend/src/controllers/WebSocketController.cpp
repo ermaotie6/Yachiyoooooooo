@@ -1,10 +1,13 @@
 #include "controllers/WebSocketController.hpp"
 #include "utils/Logger.hpp"
 #include "utils/JsonUtils.hpp"
+#include "utils/SystemLogger.hpp"
 #include <chrono>
 #include <uuid/uuid.h>
 #include <iomanip>
 #include <sstream>
+
+extern std::shared_ptr<Yachiyo::Utils::DatabaseUtil> g_databaseUtil;
 
 namespace yachiyo::controllers {
 
@@ -78,6 +81,14 @@ std::string WebSocketController::handleClientConnect(
     sessions_[clientId] = session;
     
     logClientEvent(clientId, "CONNECT", metadata);
+
+    // 写入数据库运行日志
+    yachiyo::utils::SystemLogger::wsEvent(
+        clientId,
+        metadata.value("device_type", "web"),
+        metadata.value("ip", ""),
+        "connected"
+    );
     
     return session.sessionId;
 }
@@ -89,12 +100,16 @@ void WebSocketController::handleClientDisconnect(const std::string& clientId) {
     
     auto it = sessions_.find(clientId);
     if (it != sessions_.end()) {
-        json details = {
-            {"connectedDuration", 
-             std::chrono::duration_cast<std::chrono::milliseconds>(
-                 std::chrono::system_clock::now().time_since_epoch()).count() - it->second.connectedAt}
-        };
+        auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        int64_t duration = now - it->second.connectedAt;
+        json details = {{"connectedDuration", duration}};
         logClientEvent(clientId, "DISCONNECT", details);
+
+        // 写入数据库运行日志
+        yachiyo::utils::SystemLogger::wsEvent(
+            clientId, "web", "", "disconnected", "", duration);
+
         sessions_.erase(it);
     }
 }
@@ -187,6 +202,21 @@ Utils::Result<json> WebSocketController::processUserMessage(
     
     if (!avatar_service_) {
         return Utils::Result<json>::fail(5001, "Avatar 服务不可用");
+    }
+
+    // 持久化用户消息到数据库 (仅登录用户)
+    try {
+        int64_t numericUserId = std::stoll(userId);
+        if (::g_databaseUtil && numericUserId > 0) {
+            ::g_databaseUtil->execute(
+                "INSERT INTO user_messages (user_id, original_message, message_length, "
+                "review_status, is_blocked_keyword, spam_score, user_ip, created_at) "
+                "VALUES ($1, $2, $3, 1, FALSE, 0, $4, NOW())",
+                {userId, text, std::to_string(text.size()), ""}
+            );
+        }
+    } catch (...) {
+        // 静默失败 — 日志记录不应影响消息处理
     }
     
     // 调用 Avatar 服务

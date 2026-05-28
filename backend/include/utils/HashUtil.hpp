@@ -10,37 +10,47 @@ namespace Utils {
 
 class HashUtil {
 public:
-    // 使用SHA256生成哈希
+    // 使用 SHA256 生成哈希（通用用途，非密码哈希）
     static std::string sha256(const std::string& input);
     
     /**
-     * @brief 生成带盐的密码哈希
+     * @brief 使用 bcrypt 生成密码哈希
      * @param password 明文密码
-     * @return pair<hash, salt> — hash为SHA256结果，salt为随机盐值
-     * 
-     * 数据库应分开存储 hash 和 salt 两个字段。
-     * 也可以用 hashPasswordCombined() 获取 "salt:hash" 单字符串格式。
+     * @return pair<hash, salt> — hash 为 bcrypt 结果（含内嵌盐值），salt 留空（向后兼容）
+     *
+     * bcrypt 哈希格式: $2b$12$<22-char-salt><31-char-hash> = 60 字符
+     * cost factor=12, 盐值内嵌于哈希中
      */
     static std::pair<std::string, std::string> hashPassword(const std::string& password);
     
     /**
-     * @brief 生成带盐的密码哈希 (合并格式 salt:hash)
-     * @return 格式为 "salt:hash" 的字符串
+     * @brief 使用 bcrypt 生成密码哈希（单字符串）
+     * @return bcrypt 哈希字符串（含内嵌盐值和 cost factor）
      */
     static std::string hashPasswordCombined(const std::string& password);
     
-    // 验证密码 (支持 "salt:hash" 合并格式和 hash+salt 分离格式)
-    static bool verifyPassword(const std::string& password, const std::string& hashedPassword);
+    /**
+     * @brief 验证密码（支持 bcrypt + 旧版 SHA-256 兼容）
+     *
+     * bcrypt 哈希以 "$2b$" 或 "$2a$" 开头
+     * SHA-256 旧格式为 "salt:hash"
+     */
+    static bool verifyPassword(const std::string& password, const std::string& storedHash);
     static bool verifyPassword(const std::string& password, const std::string& hash, const std::string& salt);
     
     // 生成随机盐
     static std::string generateSalt(size_t length = 16);
     
-    // 生成API密钥
+    // 生成 API 密钥
     static std::string generateApiKey();
     
-    // 生成JWT密钥
+    // 生成 JWT 密钥
     static std::string generateJwtSecret();
+
+private:
+    static std::string bcryptHash(const std::string& password);
+    static bool bcryptVerify(const std::string& password, const std::string& hash);
+    static std::string bcryptGenerateSalt();
 };
 
 } // namespace Utils

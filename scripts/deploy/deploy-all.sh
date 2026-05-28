@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # ============================================================
-# Yachiyo 全流程部署脚本 — 串联执行阶段 1~6
-# (阶段 7 HTTPS 为可选，需手动执行)
+# Yachiyo 全流程部署脚本 — 串联执行阶段 1~7
+# 阶段 7 (HTTPS) 现在自动配置 nginx，不再需要手动编辑
 #
 # 用法:
 #   sudo bash scripts/deploy/deploy-all.sh          # 全流程
 #   sudo bash scripts/deploy/deploy-all.sh --from 4 # 从阶段 4 开始
 #   sudo bash scripts/deploy/deploy-all.sh --only 6 # 只跑阶段 6
+#   sudo bash scripts/deploy/deploy-all.sh --skip-ssl # 跳过 HTTPS
 # ============================================================
 
 set -euo pipefail
@@ -19,8 +20,9 @@ fail()  { echo -e "${RED}[✗]${NC} $*"; }
 
 # ===== 解析参数 =====
 START_STAGE=1
-END_STAGE=6
+END_STAGE=7
 ONLY_STAGE=""
+SKIP_SSL=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -34,12 +36,18 @@ while [ $# -gt 0 ]; do
             END_STAGE="$2"
             shift 2
             ;;
+        --skip-ssl)
+            SKIP_SSL=true
+            END_STAGE=6
+            shift
+            ;;
         --help|-h)
             echo "用法: $0 [选项]"
             echo ""
             echo "选项:"
             echo "  --from N   从阶段 N 开始执行 (1~7)"
             echo "  --only N   只执行阶段 N"
+            echo "  --skip-ssl 跳过阶段 7 (HTTPS 加固)"
             echo "  --help     显示帮助"
             echo ""
             echo "阶段:"
@@ -142,12 +150,14 @@ echo ""
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-if [ "$END_STAGE" -lt 7 ]; then
+if [ "$SKIP_SSL" = true ]; then
     ok "阶段 $START_STAGE ~ $END_STAGE 全部完成 ✓"
     echo ""
-    echo -e "  可选: ${BLUE}sudo bash $SCRIPT_DIR/stage7-secure.sh${NC}  ← 启用 HTTPS + 安全加固"
-else
+    echo -e "  稍后可手动执行: ${BLUE}sudo bash $SCRIPT_DIR/stage7-secure.sh${NC}  ← 启用 HTTPS + 安全加固"
+elif [ "$END_STAGE" -ge 7 ]; then
     ok "全部 7 个阶段执行完成 ✓"
+else
+    ok "阶段 $START_STAGE ~ $END_STAGE 全部完成 ✓"
 fi
 
 echo ""

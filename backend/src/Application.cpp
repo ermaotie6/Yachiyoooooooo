@@ -5,7 +5,6 @@
 #include "controllers/BaseController.hpp"
 #include "controllers/HealthController.hpp"
 #include "controllers/AuthController.hpp"
-#include "controllers/AIController.hpp"
 #include "controllers/UserController.hpp"
 #include "controllers/MessageController.hpp"
 #include "services/DatabaseService.hpp"
@@ -18,6 +17,7 @@
 #include "utils/JwtUtil.hpp"
 #include "utils/HashUtil.hpp"
 #include "utils/DatabaseUtil.hpp"
+#include "utils/SystemLogger.hpp"
 #include "utils/RedisUtil.hpp"
 #include <memory>
 #include <thread>
@@ -27,6 +27,7 @@
 #include <sstream>
 
 // 全局服务实例 (供所有 .cpp extern 引用)
+std::shared_ptr<Yachiyo::Utils::DatabaseUtil> g_databaseUtil = nullptr;
 std::shared_ptr<Yachiyo::Services::DatabaseService> g_databaseService = nullptr;
 std::shared_ptr<Yachiyo::Services::WebSocketService> g_webSocketService = nullptr;
 
@@ -80,9 +81,8 @@ bool Application::initialize(int argc, char* argv[]) {
         // 严格按依赖顺序初始化
         initializeHttpServer(appConfig);   // 1. HTTP 服务器
         initializeDatabase();              // 2. 数据库
-        initializeAIServices();            // 3. AI 检测
-        initializeServices();              // 4. WebSocket + Redis + Avatar 管线
-        initializeControllers();           // 5. 路由注册（最后，依赖所有服务就绪）
+        initializeServices();              // 3. WebSocket + Redis + Avatar 管线
+        initializeControllers();           // 4. 路由注册（最后，依赖所有服务就绪）
 
         logger->info("应用程序初始化完成");
         return true;
@@ -194,36 +194,6 @@ void Application::initializeDatabase() {
     } catch (const std::exception& e) {
         logger->error("数据库初始化异常: {}", e.what());
     }
-}
-
-// ==================== AI 服务检测 ====================
-
-void Application::initializeAIServices() {
-    logger->info("正在检测可用的 AI 提供商...");
-
-    std::string provider = "none";
-    std::string apiKey;
-
-    apiKey = configManager->getString("ai.deepseek.api_key", "");
-    if (!apiKey.empty()) {
-        provider = "deepseek";
-    } else {
-        apiKey = configManager->getString("ai.openai.api_key", "");
-        if (!apiKey.empty()) provider = "openai";
-        else {
-            apiKey = configManager->getString("ai.qianwen.api_key", "");
-            if (!apiKey.empty()) provider = "qianwen";
-            else {
-                std::string ollama = configManager->getString("ai.ollama.base_url", "");
-                if (!ollama.empty()) provider = "ollama";
-            }
-        }
-    }
-
-    if (provider == "none") {
-        logger->warn("未配置任何 AI 服务，AI 聊天功能将不可用");
-    }
-    logger->info("AI 提供商检测完成: provider={}", provider);
 }
 
 // ==================== 服务初始化（重构后 — 使用 ServiceRegistry + WebSocketMessageHandler） ====================
@@ -342,10 +312,6 @@ void Application::initializeControllers() {
     auto authCtrl = std::make_shared<controllers::AuthController>(authSvc, jwtUtil);
     httpServer->registerController("/api/v1/auth", authCtrl);
 
-    // AI
-    auto aiCtrl = std::make_shared<controllers::AIController>();
-    httpServer->registerController("/api/v2/ai", aiCtrl);
-
     // Users
     auto userCtrl = std::make_shared<controllers::UserController>();
     httpServer->registerController("/api/v1/users", userCtrl);
@@ -385,6 +351,8 @@ bool Application::start() {
         registerSignalHandlers();
 
         logger->info("Yachiyo 启动成功，监听端口: {}", httpServer->getPort());
+        yachiyo::utils::SystemLogger::info("Application", "系统启动", 
+            {{"port", std::to_string(httpServer->getPort())}});
         logger->info("健康检查: http://{}:{}/api/v1/health",
                      httpServer->getHost(), httpServer->getPort());
         return true;
