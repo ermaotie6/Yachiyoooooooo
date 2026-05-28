@@ -89,8 +89,8 @@ services:
   frontend:
     image: yachiyo-frontend:latest
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: frontend/Dockerfile
       network: host
     container_name: yachiyo-frontend
     restart: unless-stopped

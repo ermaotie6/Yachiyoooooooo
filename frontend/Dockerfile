@@ -1,4 +1,5 @@
 # 前端 Yachiyo Vue 应用 Dockerfile
+# 构建上下文为项目根目录 (docker-compose build.context: .)
 
 # 构建阶段
 FROM node:18-alpine AS builder
@@ -6,18 +7,22 @@ FROM node:18-alpine AS builder
 # 设置工作目录
 WORKDIR /app
 
-# 复制 package.json 和 package-lock.json
-COPY package*.json ./
+# 复制前端 package.json
+COPY frontend/package*.json ./
 
-# 安装依赖：如果存在 package-lock.json 使用 npm ci，否则回退到 npm install
+# 安装依赖
 RUN if [ -f package-lock.json ]; then \
             npm ci --prefer-offline --no-audit; \
         else \
             npm install --no-audit; \
         fi
 
-# 复制源代码
-COPY . .
+# 复制前端源代码
+COPY frontend/ ./
+
+# 将 Live2D 模型资源复制到 public/，打包进 dist/
+# (开发时 Vite 自定义中间件从 ../resources 服务，生产时需嵌入 dist/)
+COPY resources ./public/resources
 
 # 构建应用
 RUN npm run build
