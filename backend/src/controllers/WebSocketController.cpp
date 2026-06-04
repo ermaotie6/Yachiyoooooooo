@@ -205,21 +205,25 @@ Utils::Result<json> WebSocketController::processUserMessage(
     }
 
     // 持久化用户消息到数据库 (仅登录用户)
+    int64_t savedMessageId = 0;
     try {
         int64_t numericUserId = std::stoll(userId);
         if (::g_databaseUtil && numericUserId > 0) {
-            ::g_databaseUtil->execute(
+            auto inserted = ::g_databaseUtil->insert(
                 "INSERT INTO user_messages (user_id, original_message, message_length, "
                 "review_status, is_blocked_keyword, spam_score, user_ip, created_at) "
-                "VALUES ($1, $2, $3, 1, FALSE, 0, $4, NOW())",
+                "VALUES ($1, $2, $3, 1, FALSE, 0, $4, NOW()) RETURNING id",
                 {userId, text, std::to_string(text.size()), ""}
             );
+            if (!inserted.empty() && inserted[0].count("id")) {
+                savedMessageId = std::stoll(inserted[0]["id"]);
+            }
         }
     } catch (...) {
         // 静默失败 — 日志记录不应影响消息处理
     }
     
-    // 调用 Avatar 服务
+    // 调用 Avatar 服务（消息已由 moderateAndPersist 持久化，此处仅生成回复）
     auto result = avatar_service_->processUserMessage(userId, text, targetLanguage);
     
     if (!result.isSuccess()) {
@@ -265,7 +269,22 @@ Utils::Result<json> WebSocketController::processUserMessage(
     for (const auto& cmd : avatarResponse.animationCommands) {
         response["data"]["animation_commands"].push_back(cmd.toJson());
     }
-    
+
+    // 持久化 avatar_response 到数据库 (刷新后可恢复历史回复)
+    if (savedMessageId > 0 && ::g_databaseUtil) {
+        try {
+            json respData = response["data"];
+            ::g_databaseUtil->insert(
+                "INSERT INTO avatar_responses (user_id, message_id, response_data, created_at) "
+                "VALUES ($1, $2, $3::jsonb, NOW()) "
+                "ON CONFLICT (message_id) DO UPDATE SET response_data = $3::jsonb",
+                {userId, std::to_string(savedMessageId), respData.dump()}
+            );
+        } catch (...) {
+            // 静默失败
+        }
+    }
+
     return Utils::Result<json>::success(response);
 }
 

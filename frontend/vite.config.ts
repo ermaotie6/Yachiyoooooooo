@@ -4,6 +4,8 @@ import { fileURLToPath, URL } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
 export default defineConfig({
   plugins: [
     vue(),
@@ -11,7 +13,7 @@ export default defineConfig({
       name: 'serve-live2d-resources',
       configureServer(server) {
         server.middlewares.use('/resources', (req, res, next) => {
-          const filePath = path.resolve(__dirname, '..', 'resources', req.url || '')
+          const filePath = path.resolve(__dirname, '..', 'resources', (req.url || '').replace(/^\//, ''))
           if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
             res.setHeader('Access-Control-Allow-Origin', '*')
             const stream = fs.createReadStream(filePath)
@@ -29,11 +31,14 @@ export default defineConfig({
     }
   },
   build: {
+    target: 'es2020',
+    cssMinify: true,
+    reportCompressedSize: false,
+    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
         manualChunks: {
           'vendor-pixi': ['pixi.js', 'pixi-live2d-display/cubism4'],
-          'vendor-ui': ['element-plus', '@element-plus/icons-vue'],
         }
       }
     }

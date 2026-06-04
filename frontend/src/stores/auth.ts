@@ -105,17 +105,21 @@ export const useAuthStore = defineStore('auth', () => {
           }
           setUser(userData)
         }
-      } catch {
-        // token 无效或过期，尝试刷新
-        if (refreshToken.value) {
-          try {
-            await refreshAccessToken()
-          } catch {
-            // 刷新也失败，强制登出
+      } catch (err: any) {
+        // 401 直接登出，不尝试 refresh（避免循环重载）
+        if (err?.response?.status === 401) {
+          logout()
+        } else {
+          // 其他错误（网络等），尝试刷新
+          if (refreshToken.value) {
+            try {
+              await refreshAccessToken()
+            } catch {
+              logout()
+            }
+          } else {
             logout()
           }
-        } else {
-          logout()
         }
       }
     }

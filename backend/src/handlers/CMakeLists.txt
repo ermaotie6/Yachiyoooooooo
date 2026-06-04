@@ -14,7 +14,6 @@ target_link_libraries(handlers
     core
     controllers
     services
-    models
     dto
     utils
     config

@@ -121,6 +121,14 @@ void ServiceRegistry::initOpenClawGateway(PipelineContext& ctx) {
 }
 
 void ServiceRegistry::initTTSService(PipelineContext& ctx) {
+    bool ttsEnabled = config_->getBool("gpt_sovits.enabled", true);
+    if (!ttsEnabled) {
+        log_->info("GPT-SoVITS TTS 已禁用 (gpt_sovits.enabled=false), 使用 mock 模式");
+        ctx.ttsService = std::make_shared<yachiyo::services::GPTSoVITSService>();
+        ctx.ttsService->initialize("", yachiyo::services::GPTSoVITSService::InferenceMode::CPU);
+        return;
+    }
+
     ctx.ttsService = std::make_shared<yachiyo::services::GPTSoVITSService>();
 
     std::string endpoint = config_->getString("gpt_sovits.api_endpoint", "http://localhost:5000");

@@ -5,7 +5,6 @@ add_library(controllers
     MessageController.cpp
     WebSocketController.cpp
     routes.cpp
-    UserController.cpp
 )
 
 target_include_directories(controllers
@@ -18,6 +17,10 @@ target_include_directories(controllers
 find_package(Crow REQUIRED)
 find_package(spdlog REQUIRED)
 
+# uuid (from util-linux-libs, no cmake config, use pkg-config)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(UUID REQUIRED uuid)
+
 target_link_libraries(controllers
     PUBLIC
         services
@@ -25,5 +28,6 @@ target_link_libraries(controllers
     PRIVATE
         Crow::Crow
         spdlog::spdlog
-        uuid
+        ${UUID_LIBRARIES}
 )
+target_include_directories(controllers PRIVATE ${UUID_INCLUDE_DIRS})

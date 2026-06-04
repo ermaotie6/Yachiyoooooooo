@@ -17,7 +17,9 @@ ok()    { echo -e "${GREEN}[✓]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[!]${NC} $*"; }
 fail()  { echo -e "${RED}[✗]${NC} $*"; exit 1; }
 
-INSTALL_DIR="${INSTALL_DIR:-/opt/yachiyo}"
+# 默认安装到当前目录 (开发环境) 或可通过环境变量指定
+# 生产部署示例: INSTALL_DIR=/opt/yachiyo bash scripts/deploy/stage3-code.sh
+INSTALL_DIR="${INSTALL_DIR:-$PWD}"
 REPO_URL="${REPO_URL:-https://github.com/ermaotie6/yachiyoooooooo.git}"
 BRANCH="${BRANCH:-main}"
 

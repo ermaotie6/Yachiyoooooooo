@@ -121,34 +121,23 @@ namespace {
         return base64_encode(hash, hash_len);
     }
 
-    // JSON简单序列化
+    // JSON简单序列化 — 使用 nlohmann::json 替代手写编码
     std::string json_encode(const std::map<std::string, std::string>& data) {
-        std::string result = "{";
-        bool first = true;
+        nlohmann::json j;
         for (const auto& [key, value] : data) {
-            if (!first) result += ",";
-            result += "\"" + key + "\":";
-            
-            // 简单的JSON值编码
-            if (value == "true" || value == "false" || value == "null" || 
-                (value.size() > 0 && isdigit(value[0]))) {
-                result += value;
-            } else {
-                // 字符串值需要转义
-                result += "\"";
-                for (char c : value) {
-                    if (c == '"') result += "\\\"";
-                    else if (c == '\\') result += "\\\\";
-                    else if (c == '\n') result += "\\n";
-                    else if (c == '\r') result += "\\r";
-                    else result += c;
+            // 尝试解析为整数
+            if (!value.empty() && value != "true" && value != "false" && value != "null") {
+                bool isInteger = true;
+                for (size_t i = (value[0] == '-' ? 1 : 0); i < value.size(); ++i) {
+                    if (!isdigit(value[i])) { isInteger = false; break; }
                 }
-                result += "\"";
+                if (isInteger) {
+                    try { j[key] = std::stoll(value); continue; } catch (...) {}
+                }
             }
-            first = false;
+            j[key] = value;
         }
-        result += "}";
-        return result;
+        return j.dump();
     }
 
     // JSON反序列化 — 使用 nlohmann::json 正确处理转义字符
@@ -195,16 +184,23 @@ public:
     }
 
     std::string encodePayload(const std::map<std::string, std::string>& claims) {
-        std::map<std::string, std::string> payload = claims;
-        
-        // 添加标准声明
         auto now = std::chrono::system_clock::now();
-        auto since_epoch = now.time_since_epoch();
-        auto seconds = std::chrono::duration_cast<std::chrono::seconds>(since_epoch);
-        
-        payload["iat"] = std::to_string(seconds.count());
-        payload["exp"] = std::to_string(seconds.count() + expirationHours * 3600);
-        
+        auto seconds = std::chrono::duration_cast<std::chrono::seconds>(
+            now.time_since_epoch());
+        return encodePayloadWithTTL(claims, expirationHours * 3600, seconds.count());
+    }
+
+    std::string encodePayloadWithTTL(const std::map<std::string, std::string>& claims,
+                                      int ttlSeconds, std::optional<long long> iatSeconds = std::nullopt) {
+        std::map<std::string, std::string> payload = claims;
+
+        long long nowSec = iatSeconds.value_or(
+            std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count());
+
+        payload["iat"] = std::to_string(nowSec);
+        payload["exp"] = std::to_string(nowSec + ttlSeconds);
+
         std::string json = json_encode(payload);
         return base64_encode((unsigned char*)json.c_str(), json.size());
     }
@@ -423,22 +419,25 @@ std::map<std::string, std::string> JwtUtil::getClaimsFromToken(const std::string
 
 std::string JwtUtil::generateToken(const nlohmann::json& payload, int ttlSeconds) {
     try {
-        // 从 JSON payload 中提取字段
         int64_t userId = payload.value("user_id", int64_t(0));
         std::string username = payload.value("username", std::string(""));
         std::string role = payload.value("role", std::string(""));
 
-        // 临时覆盖过期时间以使用 ttlSeconds
-        int originalExpHours = pImpl->expirationHours;
-        // ttlSeconds 转换为小时（向上取整）
-        pImpl->expirationHours = (ttlSeconds + 3599) / 3600;
+        // 线程安全: 直接传给 encodePayloadWithTTL，不修改实例状态
+        std::map<std::string, std::string> claims;
+        claims["sub"] = std::to_string(userId);
+        claims["username"] = username;
+        claims["role"] = role;
+        claims["jti"] = std::to_string(std::chrono::system_clock::now()
+                                        .time_since_epoch()
+                                        .count());
 
-        std::string token = generateToken(userId, username, role);
+        std::string header = pImpl->encodeHeader();
+        std::string payloadStr = pImpl->encodePayloadWithTTL(claims, ttlSeconds);
+        std::string message = header + "." + payloadStr;
+        std::string signature = pImpl->createSignature(message);
 
-        // 恢复原始过期时间
-        pImpl->expirationHours = originalExpHours;
-
-        return token;
+        return message + "." + signature;
     } catch (const std::exception& e) {
         std::cerr << "[ERROR] JWT令牌生成失败(JSON): " << e.what() << std::endl;
         return "";

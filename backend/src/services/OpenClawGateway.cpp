@@ -149,6 +149,8 @@ Utils::Result<dto::OpenClawResponse> OpenClawGateway::processMessage(
             return Utils::Result<dto::OpenClawResponse>::error("EMPTY_RESPONSE", "OpenClaw 返回空内容");
         }
 
+        LOG_DEBUG("OpenClaw raw (前200字符): {}", rawContent.substr(0, 200));
+
         // === 解析：优先 JSON 结构化输出，fallback 文本标签 ===
         auto parsedJson = parseJsonResponse(rawContent);
         dto::OpenClawResponse response;
@@ -310,9 +312,10 @@ Utils::Result<json> OpenClawGateway::sendToOpenClaw(const std::string& userMessa
     LOG_DEBUG("发送请求到 OpenClaw: {}/v1/chat/completions", openclaw_endpoint_);
 
     json requestBody;
-    requestBody["model"] = model_;  // 🔧 修复: 使用配置的模型，不再硬编码
+    requestBody["model"] = model_;  // OpenClaw Gateway 路由 key (如 openclaw/yachiyo 或 deepseek/deepseek-v4-flash)
     requestBody["messages"] = json::array();
     requestBody["max_tokens"] = 500;
+    requestBody["thinking"] = json::object({{"type", "disabled"}});
 
     // System Prompt
     if (!system_prompt_.empty()) {
@@ -351,10 +354,17 @@ Utils::Result<json> OpenClawGateway::sendToOpenClaw(const std::string& userMessa
         std::string authHeader = "Authorization: Bearer " + auth_token_;
         headers = curl_slist_append(headers, authHeader.c_str());
     }
-    if (!model_.empty()) {
+    if (!model_.empty() && model_.find("openclaw/") != 0) {
+        // x-openclaw-model header 只用于纯模型名(如 deepseek/deepseek-v4-flash)
+        // openclaw/yachiyo 这类 agent ID 不需要此 header
         std::string modelHeader = "x-openclaw-model: " + model_;
         headers = curl_slist_append(headers, modelHeader.c_str());
     }
+    // 每次请求使用独立 session，防止 AI 保留跨对话记忆
+    std::string sessionId = "yachiyo_" + std::to_string(
+        std::chrono::steady_clock::now().time_since_epoch().count());
+    std::string sessionHeader = "x-openclaw-session: " + sessionId;
+    headers = curl_slist_append(headers, sessionHeader.c_str());
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 
     CURLcode res = curl_easy_perform(curl);

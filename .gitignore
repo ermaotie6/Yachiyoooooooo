@@ -1,88 +1,50 @@
-# 构建和编译产物
-build/
-build_test/
-*.o
-*.a
-*.so
-*.dylib
-*.dll
-*.exe
-cmake_install.cmake
-CMakeCache.txt
-CMakeFiles/
-Makefile
-*.cmake
+# Dependencies
+frontend/node_modules/
+backend/build/
+backend/third_party/
 
-# IDE 配置
+# Logs
+*.log
+/logs/
+/tmp/
+
+# Environment
+.env
+.env.local
+.env.production
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
-.DS_Store
 
-# 依赖和包管理
-node_modules/
-npm-debug.log
-package-lock.json
-yarn.lock
-dist/
-.pnp
+# Compiled
+*.o
+*.obj
+*.exe
+backend/lib/
 
-# 环境配置
-.env
-.env.local
-.env.*.local
-config.local.yaml
+# Dist
+frontend/dist/
 
-# 运行时文件
-*.log
-logs/
-*.pid
-*.seed
-*.pid.lock
+# Temp test files
+frontend/public/audio-test.html
+frontend/public/test-audio.wav
+backend/tests/stubs.cpp
+backend/BUGFIX_LOG.md
+config/config.dev.yaml
+docker-compose.dev.yml
+frontend/src/utils/
+scripts/sovits-start.sh
+scripts/pre-commit
+scripts/dev-start.sh
 
-# 临时文件
-tmp/
-temp/
-*.tmp
-*.bak
-
-# 数据库和缓存
-*.db
-*.sqlite
-*.sqlite3
-*.rdb
-*.dump
-
-# 操作系统文件
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# 机密信息
-secrets/
-*.key
-*.pem
-private/
-
-# 大型文件
-*.zip
-*.tar
-*.tar.gz
-*.rar
-*.7z
-
-# 测试覆盖率
-coverage/
-.coverage
-htmlcov/
-
-# Docker
-docker-compose.override.yml
-.dockerignore
-
-# 本地开发
-local.conf
-*.local
+# Large model files (GPT-SoVITS)
 sovits-models/
+resources/live2d/*.moc3
+resources/live2d/*.8192/

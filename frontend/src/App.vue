@@ -2,24 +2,16 @@
   <div class="app-container">
     <div class="app-header">
       <div class="logo">
-        <img src="/images/logo.svg" alt="Yachiyo" class="logo-icon" />
-        <span class="logo-text">Yachiyo</span>
+        <span class="logo-text">Yachiyoの小屋</span>
       </div>
       <div class="nav-right">
-        <el-button v-if="!authStore.isLoggedIn" type="primary" size="small" @click="authDialogVisible = true">
+        <button v-if="!authStore.isLoggedIn" class="login-btn" @click="authDialogVisible = true">
           登录 / 注册
-        </el-button>
-        <el-dropdown v-else>
-          <span class="user-name">
-            {{ authStore.user?.username }}
-            <el-icon><arrow-down /></el-icon>
-          </span>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item @click="handleLogout">退出登录</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+        </button>
+        <div v-else class="user-menu">
+          <span class="user-name">{{ authStore.user?.username }}</span>
+          <button class="logout-btn" @click="handleLogout">退出</button>
+        </div>
       </div>
     </div>
 
@@ -33,9 +25,8 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
-import { ArrowDown } from '@element-plus/icons-vue'
+import { toast } from '@/utils/toast'
 import AuthDialog from '@/components/AuthDialog.vue'
 
 const authStore = useAuthStore()
@@ -49,7 +40,7 @@ const handleLogout = async () => {
     }
   } catch { /* 即使后端失败也清理本地状态 */ }
   authStore.logout()
-  ElMessage.success('已退出登录')
+  toast.success('已退出登录')
 }
 </script>
 
@@ -60,58 +51,29 @@ html, body, #app { height: 100%; width: 100%; overflow: hidden; }
 
 <style scoped>
 .app-container {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex; flex-direction: column;
+  height: 100vh; background: var(--c-bg);
 }
-
 .app-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 50px;
-  padding: 0 20px;
-  background: rgba(255, 255, 255, 0.95);
-  border-bottom: 1px solid #e0e0e0;
-  flex-shrink: 0;
-  z-index: 10;
+  display: flex; align-items: center; justify-content: space-between;
+  height: 46px; padding: 0 16px; flex-shrink: 0; z-index: 50;
+  background: var(--c-surface); border-bottom: 1px solid var(--c-border);
 }
-
-.logo {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.logo-text { font-size: 17px; font-weight: 700; color: var(--c-primary-light); letter-spacing: 0.5px; }
+.nav-right { display: flex; align-items: center; gap: 10px; }
+.login-btn {
+  padding: 6px 14px; background: linear-gradient(135deg, var(--c-primary), var(--c-primary-dark));
+  color: #fff; border: none; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all var(--dur-fast);
 }
-
-.logo-icon {
-  width: 28px;
-  height: 28px;
-  object-fit: contain;
+.login-btn:hover { transform: translateY(-1px); box-shadow: 0 2px 12px rgba(108,92,231,.3); }
+.user-menu { display: flex; align-items: center; gap: 8px; }
+.user-name { font-size: 13px; color: var(--c-text); }
+.logout-btn {
+  padding: 4px 10px; background: rgba(255,118,117,.15); color: var(--c-error);
+  border: 1px solid rgba(255,118,117,.25); border-radius: var(--radius-sm);
+  font-size: 12px; cursor: pointer; transition: all var(--dur-fast);
 }
-
-.logo-text {
-  font-size: 18px;
-  font-weight: bold;
-  color: #667eea;
-}
-
-.nav-right {
-  display: flex;
-  align-items: center;
-}
-
-.user-name {
-  cursor: pointer;
-  color: #333;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 14px;
-}
-
-.app-main {
-  flex: 1;
-  overflow: hidden;
-}
+.logout-btn:hover { background: rgba(255,118,117,.25); }
+.app-main { flex: 1; overflow: hidden; }
 </style>

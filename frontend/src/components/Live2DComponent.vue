@@ -180,8 +180,13 @@ const stopIdleLoop = () => {
 
 // ============ 动作映射（参数降级方案） ============
 // 每个动作定义一组参数的振荡配置。模型无需 .motion3.json 也能动。
+// 同时支持 "Tap Body"（后端旧名）和 "TapBody"（模型真实组名）
 const MOTION_PARAM_MAP: Record<string, (duration: number) => ParamTween[]> = {
   'Tap Body': () => [
+    { paramId: 'ParamAngle_BodyX', baseValue: 0, amplitude: 0.25, frequency: 2.5, phaseOffset: 0 },
+    { paramId: 'ParamAngle_BodyY', baseValue: 0, amplitude: 0.12, frequency: 2.5, phaseOffset: Math.PI / 4 }
+  ],
+  'TapBody': () => [
     { paramId: 'ParamAngle_BodyX', baseValue: 0, amplitude: 0.25, frequency: 2.5, phaseOffset: 0 },
     { paramId: 'ParamAngle_BodyY', baseValue: 0, amplitude: 0.12, frequency: 2.5, phaseOffset: Math.PI / 4 }
   ],
@@ -203,15 +208,27 @@ const initPixiApp = (): boolean => {
   const container = containerRef.value
   if (!container) { loadError.value = '容器元素不可用'; return false }
   const rect = container.getBoundingClientRect()
+  const w = rect.width || props.width
+  const h = rect.height || props.height
   app = new PIXI.Application({
-    width: rect.width || props.width,
-    height: rect.height || props.height,
+    width: w,
+    height: h,
     backgroundAlpha: 0,
     antialias: true,
-    resolution: window.devicePixelRatio || 1,
+    resolution: Math.min(window.devicePixelRatio, 2),
     autoDensity: true
   })
   container.appendChild(app.view as HTMLCanvasElement)
+  // 容器大小变化时同步 PIXI 渲染器
+  resizeObserver = new ResizeObserver(() => {
+    if (!app || !containerRef.value) return
+    const r = containerRef.value.getBoundingClientRect()
+    if (r.width > 0 && r.height > 0) {
+      app.renderer.resize(r.width, r.height)
+      fitModelToStage()
+    }
+  })
+  resizeObserver.observe(container)
   return true
 }
 
@@ -237,10 +254,17 @@ const loadModel = async () => {
 
 const fitModelToStage = () => {
   if (!model || !app) return
-  const scale = Math.min(app.screen.width / model.width, app.screen.height / model.height) * 0.9
+  const m = model as any
+  const sw = app.screen.width
+  const sh = app.screen.height
+  const mw = m.internalModel?.width || m.width || 2000
+  const mh = m.internalModel?.height || m.height || 2000
+  const scale = Math.min(sw / mw, sh / mh) * 1.5
   model.scale.set(scale)
-  model.x = (app.screen.width - model.width * scale) / 2
-  model.y = (app.screen.height - model.height * scale) / 2
+  // 居中对齐（左上角锚点），带微调偏移
+  model.x = (sw - mw * scale) / 2 - sw * 0.18
+  model.y = (sh - mh * scale) / 2 + sh * 0.22
+  console.log('[Live2D] fitModel: screen=(' + sw + ',' + sh + ') model=(' + mw + ',' + mh + ') scale=' + scale.toFixed(3) + ' pos=(' + model.x.toFixed(0) + ',' + model.y.toFixed(0) + ')')
 }
 
 const startMouthSyncLoop = () => {
@@ -268,8 +292,13 @@ const retryLoad = () => {
 // ============ 对外接口 ============
 
 const setExpression = (expressionName: string, _durationMs?: number) => {
-  if (!model) return
-  try { model.expression(expressionName) } catch { /* ignore */ }
+  if (!model) { console.warn('[Live2D] setExpression: model not loaded'); return }
+  try {
+    model.expression(expressionName)
+    console.log('[Live2D] Expression set:', expressionName)
+  } catch (e) {
+    console.warn('[Live2D] Expression failed:', expressionName, e)
+  }
 }
 
 /**
@@ -278,17 +307,27 @@ const setExpression = (expressionName: string, _durationMs?: number) => {
  * 优先尝试原生 motion API（如果将来有 motion3.json 则自动生效），
  * 没有 motion 文件时降级为直接操作 Live2D 参数模拟动作效果。
  *
- * 支持的动作名: "Tap Body"(挥手) | "Nod"(点头) | "Shake"(摇头) | "Think"(思考) | "Idle"(恢复默认)
+ * 支持的动作名: "TapBody"|"Tap Body"(挥手) | "Nod"(点头) | "Shake"(摇头) | "Think"(思考) | "Idle"(恢复默认)
  */
 const playMotion = (motionName: string, priority: number = 1) => {
   if (!model) return
   if (activeParamTweens.length > 0 && priority <= paramTweenPriority) return
 
-  // 先尝试原生 motion
-  try { model.motion(motionName, undefined, priority); return } catch { /* 降级 */ }
+  // 规范化组名: 后端发 "Tap Body"，模型是 "TapBody"
+  const normalized = motionName === 'Tap Body' ? 'TapBody' : motionName
 
-  const mapper = MOTION_PARAM_MAP[motionName]
-  if (!mapper) return
+  // 先尝试原生 motion
+  try {
+    model.motion(normalized, undefined, priority)
+    console.log('[Live2D] Native motion played:', normalized)
+    return
+  } catch { /* 降级到参数动画 */ }
+
+  const mapper = MOTION_PARAM_MAP[motionName] || MOTION_PARAM_MAP[normalized]
+  if (!mapper) {
+    console.warn('[Live2D] Unknown motion:', motionName)
+    return
+  }
 
   if (motionName === 'Idle') {
     activeParamTweens = []; paramTweenStartTime = 0; paramTweenDuration = 0; paramTweenPriority = 0
@@ -334,14 +373,48 @@ const syncMouthFromAudio = (analyserNode: AnalyserNode) => {
   update()
 }
 
+// ============ 可见性管理 (省 CPU — 标签页切后台时暂停渲染) ============
+let pageVisible = true
+let pausedByVisibility = false
+
+const pauseRendering = () => {
+  if (pausedByVisibility) return
+  pausedByVisibility = true
+  if (app?.ticker) app.ticker.stop()
+  stopIdleLoop()
+  if (mouthSyncRAF) { cancelAnimationFrame(mouthSyncRAF); mouthSyncRAF = null }
+  if (audioSyncRAF) { cancelAnimationFrame(audioSyncRAF); audioSyncRAF = null }
+  console.log('[Live2D] Rendering PAUSED (tab hidden)')
+}
+
+const resumeRendering = () => {
+  if (!pausedByVisibility) return
+  pausedByVisibility = false
+  if (app?.ticker) app.ticker.start()
+  if (isModelLoaded.value) {
+    startMouthSyncLoop()
+    startIdleLoop()
+  }
+  console.log('[Live2D] Rendering RESUMED (tab visible)')
+}
+
+const handleVisibilityChange = () => {
+  pageVisible = !document.hidden
+  if (document.hidden) pauseRendering()
+  else resumeRendering()
+}
+
 // ============ 生命周期 ============
 onMounted(async () => {
   if (!initPixiApp()) return
-  if (containerRef.value) { resizeObserver = new ResizeObserver(handleResize); resizeObserver.observe(containerRef.value) }
+  // CPU 模式降帧到 30fps，减少无 GPU 虚拟机上的渲染压力
+  if (app?.ticker) { app.ticker.maxFPS = 30 }
+  document.addEventListener('visibilitychange', handleVisibilityChange)
   await loadModel()
 })
 
 onUnmounted(() => {
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
   stopIdleLoop()
   if (mouthSyncRAF) { cancelAnimationFrame(mouthSyncRAF); mouthSyncRAF = null }
   if (audioSyncRAF) { cancelAnimationFrame(audioSyncRAF); audioSyncRAF = null }
@@ -354,8 +427,8 @@ defineExpose({ setExpression, playMotion, setSyncMouthOpenY, setEyeTrackingTarge
 </script>
 
 <style scoped>
-.live2d-container { position: relative; width: 100%; height: 100%; background: transparent; overflow: hidden; }
-.live2d-container :deep(canvas) { width: 100% !important; height: 100% !important; display: block; }
+.live2d-container { position: relative; width: 100%; height: 100%; background: transparent; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.live2d-container :deep(canvas) { max-width: 100%; max-height: 100%; display: block; margin: auto; }
 .loading-overlay, .error-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.5); backdrop-filter: blur(5px); z-index: 10; }
 .loading-content, .error-content { display: flex; flex-direction: column; align-items: center; gap: 15px; color: white; }
 .spinner { width: 40px; height: 40px; border: 4px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 1s linear infinite; }

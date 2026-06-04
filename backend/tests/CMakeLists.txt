@@ -56,6 +56,7 @@ gtest_discover_tests(yachiyo_unit_tests)
 
 add_executable(yachiyo_integration_tests
     main_test.cpp
+    stubs.cpp
     
     # 集成测试
     integration/AuthFlowTest.cpp
@@ -64,7 +65,15 @@ add_executable(yachiyo_integration_tests
 )
 
 target_include_directories(yachiyo_integration_tests PRIVATE ${TEST_COMMON_INCLUDES})
-target_link_libraries(yachiyo_integration_tests PRIVATE ${TEST_COMMON_LIBS})
+target_link_libraries(yachiyo_integration_tests PRIVATE
+    ${TEST_COMMON_LIBS}
+    core
+    handlers
+    config
+    Crow::Crow
+    yaml-cpp::yaml-cpp
+    nlohmann_json::nlohmann_json
+)
 gtest_discover_tests(yachiyo_integration_tests)
 
 # ==================== 自定义目标: 分别运行 ====================

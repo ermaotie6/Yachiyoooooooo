@@ -181,6 +181,7 @@ CREATE TABLE IF NOT EXISTS avatar_responses (
 );
 
 CREATE INDEX IF NOT EXISTS responses_user_id_idx ON avatar_responses(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS responses_message_id_unique ON avatar_responses(message_id);
 CREATE INDEX IF NOT EXISTS responses_message_id_idx ON avatar_responses(message_id);
 CREATE INDEX IF NOT EXISTS responses_expires_at_idx ON avatar_responses(expires_at);
 CREATE INDEX IF NOT EXISTS responses_request_hash_idx ON avatar_responses(request_hash);

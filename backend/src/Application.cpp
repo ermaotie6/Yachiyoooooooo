@@ -5,7 +5,6 @@
 #include "controllers/BaseController.hpp"
 #include "controllers/HealthController.hpp"
 #include "controllers/AuthController.hpp"
-#include "controllers/UserController.hpp"
 #include "controllers/MessageController.hpp"
 #include "services/DatabaseService.hpp"
 #include "services/WebSocketService.hpp"
@@ -311,10 +310,6 @@ void Application::initializeControllers() {
     }
     auto authCtrl = std::make_shared<controllers::AuthController>(authSvc, jwtUtil);
     httpServer->registerController("/api/v1/auth", authCtrl);
-
-    // Users
-    auto userCtrl = std::make_shared<controllers::UserController>();
-    httpServer->registerController("/api/v1/users", userCtrl);
 
     // Messages
     if (g_databaseService && g_webSocketService) {

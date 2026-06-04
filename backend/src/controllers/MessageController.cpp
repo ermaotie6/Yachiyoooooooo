@@ -686,6 +686,23 @@ void MessageController::getConversationContext(const crow::request& req, crow::r
                     {"created_at", msg->getCreatedAt()}
                 });
             }
+
+            // 批量查询 avatar 响应
+            if (!messages.empty()) {
+                std::vector<int64_t> msgIds;
+                for (const auto& msg : messages) msgIds.push_back(msg->getMessageId());
+                auto arResult = databaseService->messageDAO().getAvatarResponses(msgIds);
+                if (arResult.success) {
+                    auto& arMap = arResult.data.value();
+                    for (auto& item : context) {
+                        int64_t mid = item["message_id"].get<int64_t>();
+                        auto it = arMap.find(mid);
+                        if (it != arMap.end()) {
+                            item["avatar_response"] = it->second;
+                        }
+                    }
+                }
+            }
             
             res.code = 200;
             res.body = json({

@@ -4,11 +4,13 @@
 #include <sstream>
 #include <iomanip>
 #include <ctime>
+#include <map>
+#include <nlohmann/json.hpp>
 
 namespace Yachiyo::Services {
 
 namespace {
-int64_t parseTimestampToEpoch(const pqxx::field& field) {
+int64_t parseTimestampToEpoch(const pqxx::field_ref& field) {
     if (field.is_null()) {
         return 0;
     }
@@ -312,7 +314,44 @@ Result<void> MessageDAO::delete_(int64_t message_id) {
     }
 }
 
-Message MessageDAO::parseRow(const pqxx::row& row) {
+Result<std::map<int64_t, nlohmann::json>> MessageDAO::getAvatarResponses(const std::vector<int64_t>& message_ids) {
+    try {
+        std::lock_guard<std::mutex> lock(mutex_);
+        pqxx::work txn(*conn_);
+
+        std::map<int64_t, nlohmann::json> result;
+        if (message_ids.empty()) return result;
+
+        // 构建 IN 子句
+        std::ostringstream placeholders;
+        for (size_t i = 0; i < message_ids.size(); ++i) {
+            if (i > 0) placeholders << ",";
+            placeholders << "$" << (i + 1);
+        }
+
+        std::string query = "SELECT message_id, response_data::text FROM avatar_responses WHERE message_id IN (" + placeholders.str() + ")";
+        pqxx::params params;
+        for (auto id : message_ids) params.append(id);
+
+        auto rows = txn.exec_params(query, params);
+        txn.commit();
+
+        for (auto row : rows) {
+            int64_t mid = row[0].as<int64_t>();
+            std::string data_str = row[1].as<std::string>();
+            try {
+                result[mid] = nlohmann::json::parse(data_str);
+            } catch (...) {
+                // 解析失败则跳过
+            }
+        }
+        return result;
+    } catch (const std::exception& e) {
+        return Result<std::map<int64_t, nlohmann::json>>::Error(std::string(e.what()));
+    }
+}
+
+Message MessageDAO::parseRow(pqxx::row_ref row) {
     Message msg;
     msg.id = row.at("id").as<int64_t>();
     msg.user_id = row.at("user_id").as<int64_t>();
@@ -532,7 +571,7 @@ Result<void> ConversationContextDAO::addMessageToHistory(int64_t context_id, con
     }
 }
 
-ConversationContext ConversationContextDAO::parseRow(const pqxx::row& row) {
+ConversationContext ConversationContextDAO::parseRow(pqxx::row_ref row) {
     ConversationContext ctx;
     ctx.id = row.at("id").as<int64_t>();
     ctx.user_id = row.at("user_id").as<int64_t>();
@@ -840,7 +879,7 @@ Result<void> UserDAO::delete_(int64_t user_id) {
     }
 }
 
-User UserDAO::parseRow(const pqxx::row& row) {
+User UserDAO::parseRow(pqxx::row_ref row) {
     User user;
     user.id = row.at("id").as<int64_t>();
     user.username = row.at("username").as<std::string>();
@@ -985,7 +1024,7 @@ Result<std::vector<ModerationLog>> ModerationLogDAO::getHighRiskMessages(double 
     }
 }
 
-ModerationLog ModerationLogDAO::parseRow(const pqxx::row& row) {
+ModerationLog ModerationLogDAO::parseRow(pqxx::row_ref row) {
     ModerationLog log;
     log.id = row.at("id").as<int64_t>();
     log.message_id = row.at("message_id").as<int64_t>();

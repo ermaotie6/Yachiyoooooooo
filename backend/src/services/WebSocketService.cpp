@@ -46,7 +46,7 @@ bool WebSocketService::start(const std::string& host, int port,
             handleMessage(conn, data, is_binary);
         })
         .onclose([this](crow::websocket::connection& conn,
-                        const std::string& reason) {
+                        const std::string& reason, uint16_t) {
             handleClose(conn, reason);
         });
 

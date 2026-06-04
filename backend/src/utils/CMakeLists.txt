@@ -3,7 +3,6 @@ add_library(utils
     DatabaseUtil.cpp
     HashUtil.cpp
     HttpServer.cpp
-    JsonUtils.cpp
     JwtUtil.cpp
     Logger.cpp
     LogUtils.cpp
@@ -26,6 +25,13 @@ find_package(yaml-cpp REQUIRED)
 find_package(Crow REQUIRED)
 find_package(CURL REQUIRED)
 
+# crypt (for bcrypt in HashUtil)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(CRYPT QUIET libcrypt)
+if(NOT CRYPT_FOUND)
+    set(CRYPT_LIBRARIES crypt)
+endif()
+
 target_link_libraries(utils
     PUBLIC
         hiredis::hiredis
@@ -36,5 +42,5 @@ target_link_libraries(utils
         yaml-cpp::yaml-cpp
         Crow::Crow
         CURL::libcurl
-        crypt
+        ${CRYPT_LIBRARIES}
 )

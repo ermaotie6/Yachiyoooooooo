@@ -1,0 +1,16 @@
+# Docker build context filter (frontend-only build)
+# Context: project root → only frontend/ and resources/ are needed
+
+# Exclude everything by default
+*
+
+# Include only what's needed for the frontend build
+!frontend/
+!resources/
+
+# Exclude frontend node_modules (it's installed during build)
+frontend/node_modules/
+frontend/dist/
+
+# Exclude git
+.git/

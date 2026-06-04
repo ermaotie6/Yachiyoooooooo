@@ -51,10 +51,14 @@ defineExpose({
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 15px;
-  backdrop-filter: blur(10px);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
   position: relative;
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(20px);
+  min-height: 0;
+  max-height: 100%;
   overflow: hidden;
 }
 
@@ -64,67 +68,66 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  max-height: 80%;
 }
 
+/* 状态指示器 — 右上胶囊 */
 .status-indicator {
   position: absolute;
-  top: 20px;
-  right: 20px;
+  top: 12px;
+  right: 12px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  color: white;
-  font-size: 14px;
+  gap: 8px;
+  font-size: 12px;
   font-weight: 500;
-  background: rgba(0, 0, 0, 0.3);
-  padding: 8px 12px;
+  background: rgba(0,0,0,0.5);
+  padding: 6px 14px;
   border-radius: 20px;
-  backdrop-filter: blur(5px);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--c-border);
+  z-index: 5;
 }
-
 .status-dot {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
+  transition: all var(--dur-normal);
 }
-
 .status-dot.connected {
-  background: #4caf50;
-  box-shadow: 0 0 10px #4caf50;
+  background: var(--c-success);
+  box-shadow: 0 0 8px rgba(0,206,201,0.5);
+  animation: pulse-glow 2s infinite;
 }
-
 .status-dot.disconnected {
-  background: #f44336;
-  box-shadow: 0 0 10px #f44336;
+  background: var(--c-error);
+  box-shadow: 0 0 8px rgba(255,118,117,0.3);
 }
+.status-text { color: var(--c-text); opacity: 0.85; }
 
-.status-text {
-  font-size: 14px;
-}
-
+/* 字幕 — 底部渐变条 */
 .subtitle-overlay {
   position: absolute;
-  bottom: 20px;
-  left: 10%;
-  right: 10%;
-  background: rgba(0, 0, 0, 0.7);
-  border-radius: 8px;
-  padding: 10px 20px;
+  bottom: 24px;
+  left: 8%;
+  right: 8%;
+  background: linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.75) 20%, rgba(0,0,0,0.75) 80%, rgba(0,0,0,0) 100%);
+  border-radius: var(--radius-sm);
+  padding: 12px 24px;
   text-align: center;
-  backdrop-filter: blur(5px);
+  backdrop-filter: blur(8px);
+  z-index: 5;
 }
-
 .subtitle-text {
-  color: white;
-  font-size: 18px;
+  color: #fff;
+  font-size: 17px;
   font-weight: 500;
   line-height: 1.5;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+  letter-spacing: 0.5px;
 }
 
-@media (max-width: 1200px) {
-  .avatar-section {
-    min-height: 400px;
-  }
+@media (max-width: 1100px) {
+  .avatar-section { min-height: 50vh; }
+  .subtitle-text { font-size: 15px; }
 }
 </style>

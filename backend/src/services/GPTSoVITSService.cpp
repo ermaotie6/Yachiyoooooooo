@@ -145,11 +145,11 @@ Utils::Result<dto::TTSResponse> GPTSoVITSService::synthesize(const dto::TTSReque
             return Utils::Result<dto::TTSResponse>::error("PARSE_ERROR", e.what());
         }
     } else {
-        // Mock 回退（未配置 endpoint）
-        LOG_WARN("GPT-SoVITS endpoint 未配置，使用 mock 响应");
+        // Mock 回退（未配置 endpoint）- 空 URL 触发前端静默/浏览器 TTS
+        LOG_WARN("GPT-SoVITS endpoint 未配置，mock 模式（无音频文件）");
         response.success = true;
-        response.audioUrl = "http://localhost:8000/audio/generated_" + request.requestId + ".wav";
-        response.durationMs = request.text.length() * 50;
+        response.audioUrl = "";
+        response.durationMs = 0;
     }
     
     response.processingTimeMs = 

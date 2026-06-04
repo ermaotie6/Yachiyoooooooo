@@ -1,14 +1,11 @@
 add_library(services
-    AuthService.cpp
     AuthServiceImpl.cpp
     AvatarResponseService.cpp
-    ChatService.cpp
     DatabaseService.cpp
     GPTSoVITSService.cpp
     Live2DAnimationService.cpp
     MessageServiceImpl.cpp
     OpenClawGateway.cpp
-    UserService.cpp
     WebSocketService.cpp
 )
 
@@ -30,7 +27,6 @@ target_link_libraries(services
     PUBLIC
         utils
         dto
-        models
     PRIVATE
         Crow::Crow
         spdlog::spdlog

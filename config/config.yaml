@@ -7,6 +7,12 @@ server:
   debug: true
   log_level: "info"
 
+  # 速率限制
+  rateLimit:
+    enabled: true
+    maxRequests: 100    # 每个时间窗口最大请求数
+    windowSeconds: 60    # 时间窗口 (秒)
+
 # ============ WebSocket 配置 ============
 websocket:
   enabled: true
@@ -142,7 +148,7 @@ jwt:
 logging:
   level: "info"  # debug, info, warning, error, critical
   format: "json"  # json, text
-  file_path: "./logs/yachiyo.log"
+  file: "./logs/yachiyo.log"
   max_file_size_mb: 100
   retention_days: 30
   console_output: true

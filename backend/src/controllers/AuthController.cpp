@@ -78,6 +78,7 @@ void AuthController::registerRoutes(crow::SimpleApp& app) {
 // ==================== 用户注册 ====================
 void AuthController::registerUser(const crow::request& req, crow::response& res) {
     try {
+        res.add_header("Content-Type", "application/json");
         auto body = json::parse(req.body);
         
         std::string username = body.value("username", "");
@@ -131,6 +132,7 @@ void AuthController::registerUser(const crow::request& req, crow::response& res)
 // ==================== 用户登录 ====================
 void AuthController::login(const crow::request& req, crow::response& res) {
     try {
+        res.add_header("Content-Type", "application/json");
         auto body = json::parse(req.body);
         
         std::string username = body.value("username", "");
@@ -180,6 +182,7 @@ void AuthController::login(const crow::request& req, crow::response& res) {
 // ==================== 刷新令牌 ====================
 void AuthController::refreshToken(const crow::request& req, crow::response& res) {
     try {
+        res.add_header("Content-Type", "application/json");
         auto body = json::parse(req.body);
         
         std::string refreshToken = body.value("refresh_token", "");
@@ -224,6 +227,7 @@ void AuthController::refreshToken(const crow::request& req, crow::response& res)
 // ==================== 用户注销 ====================
 void AuthController::logout(const crow::request& req, crow::response& res) {
     try {
+        res.add_header("Content-Type", "application/json");
         // 使用基类方法提取令牌
         std::string token = getAuthToken(req);
         if (token.empty()) {
@@ -279,6 +283,7 @@ void AuthController::logout(const crow::request& req, crow::response& res) {
 // ==================== 获取用户资料 ====================
 void AuthController::getProfile(const crow::request& req, crow::response& res) {
     try {
+        res.add_header("Content-Type", "application/json");
         // 使用基类方法提取令牌
         std::string token = getAuthToken(req);
         if (token.empty()) {

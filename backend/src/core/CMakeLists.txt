@@ -13,7 +13,6 @@ target_link_libraries(core
     PUBLIC
     controllers
     services
-    models
     dto
     utils
     config

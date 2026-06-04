@@ -40,8 +40,8 @@ TEST_F(JwtUtilTest, GenerateToken_DifferentUsers) {
 TEST_F(JwtUtilTest, VerifyToken_ValidToken) {
     std::string token = jwtUtil->generateToken(42, "alice", "admin");
     auto [valid, error] = jwtUtil->verifyToken(token);
-    EXPECT_TRUE(valid);
-    EXPECT_TRUE(error.empty());
+    EXPECT_TRUE(valid) << "Error: " << error;
+    // verifyToken 成功时返回 success message，非空串
 }
 
 TEST_F(JwtUtilTest, VerifyToken_InvalidToken) {

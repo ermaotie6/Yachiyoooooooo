@@ -53,49 +53,82 @@ export function useAudioPlayer() {
   }
 
   /**
+   * 停止当前播放并重置 Audio 元素状态
+   */
+  const reset = () => {
+    if (audioElement) {
+      audioElement.pause()
+      audioElement.removeAttribute('src')
+      try { audioElement.load() } catch { /* ignore */ }
+    }
+    if (animationFrameId !== null) {
+      cancelAnimationFrame(animationFrameId)
+      animationFrameId = null
+    }
+    isPlaying.value = false
+    currentTime.value = 0
+    duration.value = 0
+  }
+
+  /**
    * 播放音频并启动分析
    */
   const play = async (audioUrl: string): Promise<void> => {
     return new Promise((resolve, reject) => {
       try {
+        // 先停止/清理当前播放（防止多个音频重叠）
+        reset()
+
         audioElement.src = audioUrl
         audioElement.volume = volume.value
 
-        // 设置事件监听
-        audioElement.onplay = () => {
-          console.log('[AudioPlayer] Playing:', audioUrl)
-          isPlaying.value = true
-          duration.value = audioElement.duration || 0
+        // 确保音频数据加载后再播放
+        const onCanPlay = () => {
+          audioElement.removeEventListener('canplaythrough', onCanPlay)
 
-          // 启动音频分析
-          startAudioAnalysis()
-          resolve()
+          audioElement.play()
+            .then(() => {
+              console.log('[AudioPlayer] Playing:', audioUrl)
+              isPlaying.value = true
+              duration.value = audioElement.duration || 0
+              startAudioAnalysis()
+              resolve()
+            })
+            .catch((error) => {
+              console.error('[AudioPlayer] Play error:', error)
+              reject(error)
+            })
         }
+
+        audioElement.addEventListener('canplaythrough', onCanPlay, { once: true })
 
         audioElement.onended = () => {
           console.log('[AudioPlayer] Playback ended')
           isPlaying.value = false
-          stop()
-
+          if (animationFrameId !== null) {
+            cancelAnimationFrame(animationFrameId)
+            animationFrameId = null
+          }
           if (onAudioEnd) {
             onAudioEnd()
           }
         }
 
-        audioElement.onerror = (error) => {
-          console.error('[AudioPlayer] Error:', error)
+        audioElement.onerror = () => {
+          console.error('[AudioPlayer] Error loading audio:', audioElement.error)
           isPlaying.value = false
-          reject(new Error('Audio playback error'))
+          reject(new Error(`Audio playback error: ${audioElement.error?.message || 'unknown'}`))
         }
 
         audioElement.ontimeupdate = () => {
           currentTime.value = audioElement.currentTime
         }
 
-        audioElement.play().catch((error) => {
-          console.error('[AudioPlayer] Play error:', error)
-          reject(error)
-        })
+        // 如果音频已在缓存中可能立即触发，手动触发
+        if (audioElement.readyState >= 3) {
+          audioElement.removeEventListener('canplaythrough', onCanPlay)
+          onCanPlay()
+        }
       } catch (error) {
         console.error('[AudioPlayer] Setup error:', error)
         reject(error)
@@ -175,18 +208,7 @@ export function useAudioPlayer() {
    * 停止播放
    */
   const stop = () => {
-    if (audioElement) {
-      audioElement.pause()
-      audioElement.currentTime = 0
-    }
-
-    if (animationFrameId !== null) {
-      cancelAnimationFrame(animationFrameId)
-      animationFrameId = null
-    }
-
-    isPlaying.value = false
-    currentTime.value = 0
+    reset()
     console.log('[AudioPlayer] Stopped')
   }
 

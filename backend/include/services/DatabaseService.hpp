@@ -9,6 +9,7 @@
 #include <condition_variable>
 #include <optional>
 #include <pqxx/pqxx>
+#include <map>
 
 namespace Yachiyo::Services {
 
@@ -79,11 +80,14 @@ public:
     // 删除消息
     Result<void> delete_(int64_t message_id);
 
+    // 批量获取 Avatar 响应
+    Result<std::map<int64_t, nlohmann::json>> getAvatarResponses(const std::vector<int64_t>& message_ids);
+
 private:
     std::shared_ptr<pqxx::connection> conn_;
     mutable std::mutex mutex_;  // pqxx::connection 非线程安全，需要互斥锁保护
 
-    Message parseRow(const pqxx::row& row);
+    Message parseRow(pqxx::row_ref row);
 };
 
 /**
@@ -115,7 +119,7 @@ private:
     std::shared_ptr<pqxx::connection> conn_;
     mutable std::mutex mutex_;
 
-    ConversationContext parseRow(const pqxx::row& row);
+    ConversationContext parseRow(pqxx::row_ref row);
 };
 
 /**
@@ -146,7 +150,7 @@ private:
     std::shared_ptr<pqxx::connection> conn_;
     mutable std::mutex mutex_;
 
-    User parseRow(const pqxx::row& row);
+    User parseRow(pqxx::row_ref row);
 };
 
 /**
@@ -170,7 +174,7 @@ private:
     std::shared_ptr<pqxx::connection> conn_;
     mutable std::mutex mutex_;
 
-    ModerationLog parseRow(const pqxx::row& row);
+    ModerationLog parseRow(pqxx::row_ref row);
 };
 
 /**

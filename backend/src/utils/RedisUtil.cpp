@@ -1,4 +1,5 @@
 #include "utils/RedisUtil.hpp"
+#include <algorithm>
 #include <iostream>
 #include <sstream>
 #include <thread>

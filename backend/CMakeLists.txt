@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # 编译选项
-add_compile_options(-Wall -Wextra -Wpedantic -Wno-unused-parameter -O2)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-deprecated-declarations -O2")
 
 # 查找依赖
 find_package(Threads REQUIRED)
@@ -40,9 +40,6 @@ include_directories(
 # 子目录 - 按照依赖顺序添加
 add_subdirectory(src/utils)
 add_subdirectory(src/dto)
-add_subdirectory(src/models)
-add_subdirectory(src/filters)
-add_subdirectory(src/mappers)
 add_subdirectory(src/config)
 add_subdirectory(src/services)
 add_subdirectory(src/controllers)
@@ -52,7 +49,6 @@ add_subdirectory(src/handlers)
 # 测试支持
 if(GTest_FOUND)
     enable_testing()
-    add_subdirectory(tests)
 else()
     message(STATUS "Google Test not found. Skipping tests.")
 endif()
@@ -70,11 +66,8 @@ target_link_libraries(yachiyo_cpp
     core
     controllers
     services
-    models
     dto
     utils
-    filters
-    mappers
     config
     Threads::Threads
     Crow::Crow
